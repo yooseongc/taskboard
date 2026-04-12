@@ -43,7 +43,29 @@ export default function BoardViewPage() {
   const [addingColumn, setAddingColumn] = useState(false);
 
   if (boardLoading) return <Spinner />;
-  if (!board) return <p className="p-8 text-gray-500">Board not found</p>;
+  if (!board) {
+    return (
+      <div className="p-12 max-w-md mx-auto text-center">
+        <div className="text-4xl mb-3">🔍</div>
+        <h2 className="text-lg font-semibold mb-2" style={{ color: 'var(--color-text)' }}>
+          Board not found
+        </h2>
+        <p className="text-sm mb-5" style={{ color: 'var(--color-text-muted)' }}>
+          This board may have been deleted, or you don't have permission to view it.
+        </p>
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg"
+          style={{
+            backgroundColor: 'var(--color-primary)',
+            color: 'var(--color-text-inverse)',
+          }}
+        >
+          ← Back to Boards
+        </Link>
+      </div>
+    );
+  }
 
   const columns = columnsData?.items ?? [];
   const tasks = tasksData?.items ?? [];
@@ -71,16 +93,17 @@ export default function BoardViewPage() {
     )
       return;
 
-    moveTask.mutate(
-      {
-        taskId: draggableId,
-        column_id: destination.droppableId,
-        position: destination.index,
-      },
-      {
-        onError: () => addToast('error', 'Failed to move task'),
-      },
-    );
+    const payload = {
+      taskId: draggableId,
+      column_id: destination.droppableId,
+      position: destination.index,
+    };
+    moveTask.mutate(payload, {
+      onError: () =>
+        addToast('error', 'Failed to move task', {
+          action: { label: 'Retry', onClick: () => moveTask.mutate(payload) },
+        }),
+    });
   };
 
   const handleAddColumn = () => {

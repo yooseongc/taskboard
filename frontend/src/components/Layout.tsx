@@ -54,7 +54,7 @@ export default function Layout() {
             {t('app.name')}
           </span>
         </div>
-        <nav className="flex-1 py-2">
+        <nav className="flex-1 py-2" aria-label="Main navigation">
           {navItems.filter((item) => !item.adminOnly || isSystemAdmin).map((item) => {
             const active = location.pathname === item.path;
             return (
@@ -129,7 +129,10 @@ export default function Layout() {
         >
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="text-gray-500 hover:text-gray-700"
+            aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            aria-expanded={sidebarOpen}
+            className="p-1.5 rounded focus:outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
+            style={{ color: 'var(--color-text-secondary)' }}
           >
             <svg
               className="w-5 h-5"

@@ -18,6 +18,8 @@ import { useBoardLabels, useCreateBoardLabel } from '../api/boards';
 import { useBoardCustomFields, useTaskFieldValues, useSetTaskFieldValue } from '../api/customFields';
 import { useUsers } from '../api/users';
 import { useToastStore } from '../stores/toastStore';
+import { useEscapeKey } from '../hooks/useEscapeKey';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { Spinner } from './Spinner';
 import Badge from './ui/Badge';
 import Button from './ui/Button';
@@ -632,13 +634,27 @@ function CustomFieldInput({
 }
 
 function DrawerShell({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  useEscapeKey(onClose);
+  const trapRef = useFocusTrap<HTMLDivElement>(true);
   return (
     <>
       <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
-      <div className="fixed inset-y-0 right-0 w-full max-w-2xl bg-white shadow-xl z-50 flex flex-col">
+      <div
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Task details"
+        className="fixed inset-y-0 right-0 w-full max-w-2xl z-50 flex flex-col"
+        style={{
+          backgroundColor: 'var(--color-surface)',
+          boxShadow: 'var(--shadow-lg)',
+        }}
+      >
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 z-10"
+          aria-label="Close task details"
+          className="absolute top-4 right-4 z-10 p-1 rounded hover:opacity-70 focus:outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
+          style={{ color: 'var(--color-text-muted)' }}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

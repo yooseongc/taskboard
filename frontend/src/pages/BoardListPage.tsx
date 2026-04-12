@@ -11,7 +11,7 @@ import Modal from '../components/ui/Modal';
 import type { Board } from '../types/api';
 
 export default function BoardListPage() {
-  const { data, isLoading, isError } = useBoards();
+  const { data, isLoading, isError, refetch } = useBoards();
   const { data: deptsData } = useDepartments();
   const [showCreate, setShowCreate] = useState(false);
   const { canCreateBoard } = usePermissions();
@@ -57,13 +57,31 @@ export default function BoardListPage() {
             <p className="text-sm text-gray-400 mt-0.5">{totalBoards} board(s)</p>
           )}
         </div>
-        {canCreateBoard && (
+        {canCreateBoard ? (
           <Button onClick={() => setShowCreate(true)}>+ New Board</Button>
+        ) : (
+          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            Board creation requires Department Admin role
+          </span>
         )}
       </div>
 
       {isLoading && <Spinner />}
-      {isError && <p className="text-red-500">Failed to load boards.</p>}
+      {isError && (
+        <div className="surface-raised p-5 flex items-center justify-between">
+          <div>
+            <p className="font-medium" style={{ color: 'var(--color-danger)' }}>
+              Failed to load boards.
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+              Check your network connection or try again.
+            </p>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => refetch()}>
+            Retry
+          </Button>
+        </div>
+      )}
 
       {data && totalBoards === 0 && (
         <p className="text-center text-gray-400 py-12">
