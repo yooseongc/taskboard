@@ -1,22 +1,25 @@
 import type { ButtonHTMLAttributes } from 'react';
 
+const base =
+  'inline-flex items-center justify-center font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed';
+
 const variants = {
   primary:
-    'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500',
+    'bg-[var(--color-primary)] text-[var(--color-text-inverse)] hover:bg-[var(--color-primary-hover)] focus:ring-[var(--color-primary)]',
   secondary:
-    'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-gray-400',
+    'bg-[var(--color-surface)] text-[var(--color-text)] border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] focus:ring-[var(--color-border)]',
   danger:
-    'bg-white text-red-600 border border-red-200 hover:bg-red-50 focus:ring-red-400',
+    'bg-[var(--color-surface)] text-[var(--color-danger)] border border-[var(--color-danger)]/30 hover:bg-[var(--color-danger-light)] focus:ring-[var(--color-danger)]',
   ghost:
-    'text-gray-500 hover:text-gray-700 hover:bg-gray-100',
+    'text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]',
   success:
-    'bg-green-600 text-white hover:bg-green-700 focus:ring-green-500',
+    'bg-[var(--color-success)] text-[var(--color-text-inverse)] hover:opacity-90 focus:ring-[var(--color-success)]',
 };
 
 const sizes = {
-  sm: 'px-2.5 py-1 text-xs',
-  md: 'px-4 py-2 text-sm',
-  lg: 'px-5 py-2.5 text-sm',
+  sm: 'px-2.5 py-1 text-xs rounded-[var(--radius-md)]',
+  md: 'px-4 py-2 text-sm rounded-[var(--radius-lg)]',
+  lg: 'px-5 py-2.5 text-sm rounded-[var(--radius-lg)]',
 };
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -34,7 +37,7 @@ export default function Button({
 }: ButtonProps) {
   return (
     <button
-      className={`inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed ${variants[variant]} ${sizes[size]} ${className}`}
+      className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}
       disabled={disabled}
       {...props}
     >

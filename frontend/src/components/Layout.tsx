@@ -38,10 +38,19 @@ export default function Layout() {
     <div className="flex h-screen">
       {/* Sidebar */}
       <aside
-        className={`${sidebarOpen ? 'w-56' : 'w-0 overflow-hidden'} flex-shrink-0 bg-gray-900 text-gray-300 flex flex-col transition-all duration-200`}
+        className={`${sidebarOpen ? 'w-56' : 'w-0 overflow-hidden'} flex-shrink-0 flex flex-col transition-all duration-200`}
+        style={{
+          backgroundColor: 'var(--color-sidebar-bg)',
+          color: 'var(--color-sidebar-text)',
+        }}
       >
-        <div className="flex items-center gap-2 px-4 py-4 border-b border-gray-800">
-          <span className="text-lg font-bold text-white">Taskboard</span>
+        <div
+          className="flex items-center gap-2 px-4 py-4"
+          style={{ borderBottom: '1px solid var(--color-sidebar-border)' }}
+        >
+          <span className="text-lg font-bold" style={{ color: 'var(--color-sidebar-text-active)' }}>
+            Taskboard
+          </span>
         </div>
         <nav className="flex-1 py-2">
           {navItems.filter((item) => !item.adminOnly || isSystemAdmin).map((item) => {
@@ -50,7 +59,11 @@ export default function Layout() {
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex items-center gap-3 px-4 py-2 text-sm hover:bg-gray-800 ${active ? 'bg-gray-800 text-white' : ''}`}
+                className="flex items-center gap-3 px-4 py-2 text-sm"
+                style={{
+                  backgroundColor: active ? 'var(--color-sidebar-hover)' : undefined,
+                  color: active ? 'var(--color-sidebar-text-active)' : undefined,
+                }}
               >
                 <svg
                   className="w-5 h-5 flex-shrink-0"
@@ -108,7 +121,10 @@ export default function Layout() {
       {/* Main area */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top bar */}
-        <header className="h-12 bg-white border-b flex items-center px-4 gap-3 flex-shrink-0">
+        <header
+          className="h-12 flex items-center px-4 gap-3 flex-shrink-0"
+          style={{ backgroundColor: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)' }}
+        >
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="text-gray-500 hover:text-gray-700"
@@ -130,7 +146,7 @@ export default function Layout() {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto bg-gray-50">
+        <main className="flex-1 overflow-auto" style={{ backgroundColor: 'var(--color-bg)' }}>
           <Outlet />
         </main>
       </div>

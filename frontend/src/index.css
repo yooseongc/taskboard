@@ -1,1 +1,172 @@
 @import "tailwindcss";
+
+/*
+ * Design Token System
+ *
+ * All visual properties are CSS custom properties.
+ * This enables:
+ *   1. Light/dark theme switching via class toggle
+ *   2. Custom CSS overrides (Mattermost-style)
+ *   3. Runtime theme injection
+ *
+ * To customize: override these variables in a <style> block or custom CSS file.
+ */
+
+:root {
+  /* ---- Brand ---- */
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-light: #dbeafe;
+  --color-primary-text: #1e40af;
+
+  /* ---- Surfaces ---- */
+  --color-bg: #f9fafb;
+  --color-surface: #ffffff;
+  --color-surface-hover: #f3f4f6;
+  --color-surface-active: #eff6ff;
+  --color-surface-raised: #ffffff;
+
+  /* ---- Sidebar ---- */
+  --color-sidebar-bg: #111827;
+  --color-sidebar-text: #d1d5db;
+  --color-sidebar-text-active: #ffffff;
+  --color-sidebar-hover: #1f2937;
+  --color-sidebar-border: #1f2937;
+
+  /* ---- Text ---- */
+  --color-text: #111827;
+  --color-text-secondary: #6b7280;
+  --color-text-muted: #9ca3af;
+  --color-text-placeholder: #9ca3af;
+  --color-text-inverse: #ffffff;
+
+  /* ---- Borders ---- */
+  --color-border: #e5e7eb;
+  --color-border-light: #f3f4f6;
+  --color-border-focus: #2563eb;
+
+  /* ---- Semantic ---- */
+  --color-success: #16a34a;
+  --color-success-light: #dcfce7;
+  --color-warning: #ca8a04;
+  --color-warning-light: #fef9c3;
+  --color-danger: #dc2626;
+  --color-danger-light: #fee2e2;
+  --color-info: #2563eb;
+  --color-info-light: #dbeafe;
+
+  /* ---- Priority ---- */
+  --color-priority-urgent-bg: #fee2e2;
+  --color-priority-urgent-text: #b91c1c;
+  --color-priority-high-bg: #ffedd5;
+  --color-priority-high-text: #c2410c;
+  --color-priority-medium-bg: #fef9c3;
+  --color-priority-medium-text: #a16207;
+  --color-priority-low-bg: #dcfce7;
+  --color-priority-low-text: #15803d;
+
+  /* ---- Dimensions ---- */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  --sidebar-width: 14rem;
+}
+
+/* ---- Dark Theme ---- */
+.dark {
+  --color-primary: #3b82f6;
+  --color-primary-hover: #2563eb;
+  --color-primary-light: #1e3a5f;
+  --color-primary-text: #93c5fd;
+
+  --color-bg: #0f172a;
+  --color-surface: #1e293b;
+  --color-surface-hover: #334155;
+  --color-surface-active: #1e3a5f;
+  --color-surface-raised: #334155;
+
+  --color-sidebar-bg: #020617;
+  --color-sidebar-text: #94a3b8;
+  --color-sidebar-text-active: #f1f5f9;
+  --color-sidebar-hover: #1e293b;
+  --color-sidebar-border: #1e293b;
+
+  --color-text: #f1f5f9;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
+  --color-text-placeholder: #475569;
+  --color-text-inverse: #0f172a;
+
+  --color-border: #334155;
+  --color-border-light: #1e293b;
+  --color-border-focus: #3b82f6;
+
+  --color-success: #22c55e;
+  --color-success-light: #14532d;
+  --color-warning: #eab308;
+  --color-warning-light: #422006;
+  --color-danger: #ef4444;
+  --color-danger-light: #450a0a;
+  --color-info: #3b82f6;
+  --color-info-light: #1e3a5f;
+
+  --color-priority-urgent-bg: #450a0a;
+  --color-priority-urgent-text: #fca5a5;
+  --color-priority-high-bg: #431407;
+  --color-priority-high-text: #fdba74;
+  --color-priority-medium-bg: #422006;
+  --color-priority-medium-text: #fde047;
+  --color-priority-low-bg: #14532d;
+  --color-priority-low-text: #86efac;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5);
+}
+
+/* ---- Base Styles (using tokens) ---- */
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* ---- Utility classes using tokens ---- */
+.surface {
+  background-color: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+.surface-raised {
+  background-color: var(--color-surface-raised);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+/* ---- Scrollbar styling ---- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* ---- Custom CSS injection point ---- */
+/* Users can add custom overrides after this comment.
+   Example: Override primary color:
+   :root { --color-primary: #8b5cf6; }
+*/
