@@ -20,6 +20,7 @@ import TaskDrawer from '../components/TaskDrawer';
 import TableView from '../components/TableView';
 import CalendarView from '../components/CalendarView';
 import { useToastStore } from '../stores/toastStore';
+import { priorityClass } from '../theme/constants';
 import type { TaskDto, BoardColumn } from '../types/api';
 
 type ViewTab = 'board' | 'table' | 'calendar';
@@ -209,6 +210,9 @@ export default function BoardViewPage() {
           tasks={tasks}
           columns={columns}
           onTaskClick={setOpenTaskId}
+          onCreateTask={(title, columnId) =>
+            createTask.mutate({ title, column_id: columnId })
+          }
         />
       )}
 
@@ -393,66 +397,95 @@ function KanbanColumn({
 }
 
 function TaskCardContent({ task }: { task: TaskDto }) {
-  const priorityColors: Record<string, string> = {
-    urgent: 'bg-red-100 text-red-700',
-    high: 'bg-orange-100 text-orange-700',
-    medium: 'bg-yellow-100 text-yellow-700',
-    low: 'bg-green-100 text-green-700',
-  };
+  const labels = task.labels ?? [];
+  const assignees = task.assignees ?? [];
+  const checklist = task.checklist_summary ?? { total: 0, checked: 0 };
+  const commentCount = task.comment_count ?? 0;
+  const isOverdue =
+    task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done';
 
   return (
     <>
-      {/* Labels */}
-      {task.labels.length > 0 && (
+      {/* Labels as color bars */}
+      {labels.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-1.5">
-          {task.labels.map((l) => (
+          {labels.map((l) => (
             <span
               key={l.id}
-              className="inline-block h-1.5 w-8 rounded-full"
+              className="inline-flex items-center gap-0.5 rounded px-1.5 py-0 text-[10px] font-medium text-white"
               style={{ backgroundColor: l.color }}
-            />
+            >
+              {l.name}
+            </span>
           ))}
         </div>
       )}
-      <p className="text-sm font-medium">{task.title}</p>
+      <p className="text-sm font-medium leading-snug">{task.title}</p>
+      {task.description && (
+        <p className="text-xs text-gray-400 mt-0.5 line-clamp-2 leading-relaxed">
+          {task.description}
+        </p>
+      )}
+      {/* Meta row */}
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {task.priority && (
-          <span
-            className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${priorityColors[task.priority] ?? ''}`}
-          >
-            {task.priority}
+        <span
+          className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${priorityClass(task.priority)}`}
+        >
+          {task.priority.toUpperCase()}
+        </span>
+        {task.status !== 'open' && (
+          <span className="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-500">
+            {task.status.replace('_', ' ')}
           </span>
         )}
         {task.due_date && (
-          <span className="text-xs text-gray-400">
+          <span
+            className={`text-[10px] ${isOverdue ? 'text-red-500 font-medium' : 'text-gray-400'}`}
+          >
+            {isOverdue ? 'Overdue ' : ''}
             {new Date(task.due_date).toLocaleDateString()}
           </span>
         )}
-        {task.checklist_summary.total > 0 && (
-          <span className="text-xs text-gray-400">
-            {task.checklist_summary.checked}/{task.checklist_summary.total}
-          </span>
-        )}
-        {task.comment_count > 0 && (
-          <span className="text-xs text-gray-400">
-            {task.comment_count} comment{task.comment_count > 1 ? 's' : ''}
-          </span>
-        )}
       </div>
-      {task.assignees.length > 0 && (
-        <div className="mt-1.5 flex -space-x-1">
-          {task.assignees.slice(0, 3).map((a) => (
-            <div
-              key={a.id}
-              className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center border-2 border-white"
-              title={a.name}
-            >
-              {a.name.charAt(0).toUpperCase()}
-            </div>
-          ))}
-          {task.assignees.length > 3 && (
-            <div className="w-6 h-6 rounded-full bg-gray-300 text-gray-600 text-xs flex items-center justify-center border-2 border-white">
-              +{task.assignees.length - 3}
+      {/* Bottom row: checklist, comments, assignees */}
+      {(checklist.total > 0 ||
+        commentCount > 0 ||
+        assignees.length > 0) && (
+        <div className="mt-2 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-[10px] text-gray-400">
+            {checklist.total > 0 && (
+              <span className="flex items-center gap-0.5" title="Checklist">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                {checklist.checked}/{checklist.total}
+              </span>
+            )}
+            {commentCount > 0 && (
+              <span className="flex items-center gap-0.5" title="Comments">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+                </svg>
+                {commentCount}
+              </span>
+            )}
+          </div>
+          {assignees.length > 0 && (
+            <div className="flex -space-x-1">
+              {assignees.slice(0, 3).map((a) => (
+                <div
+                  key={a.id}
+                  className="w-6 h-6 rounded-full bg-blue-500 text-white text-[10px] flex items-center justify-center border-2 border-white"
+                  title={a.name}
+                >
+                  {a.name.charAt(0).toUpperCase()}
+                </div>
+              ))}
+              {assignees.length > 3 && (
+                <div className="w-6 h-6 rounded-full bg-gray-300 text-gray-600 text-[10px] flex items-center justify-center border-2 border-white">
+                  +{assignees.length - 3}
+                </div>
+              )}
             </div>
           )}
         </div>
