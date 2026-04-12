@@ -130,3 +130,105 @@ export interface Comment {
   created_at: string;
   edited_at: string | null;
 }
+
+/** S-022: Template */
+export interface Template {
+  id: string;
+  title: string;
+  description: string | null;
+  owner_id: string;
+  department_ids: string[];
+  snapshot: TemplateSnapshot;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TemplateSnapshot {
+  columns: TemplateColumn[];
+  labels: TemplateLabelDef[];
+  default_tasks: TemplateTask[];
+}
+
+export interface TemplateColumn {
+  title: string;
+  position: number;
+}
+
+export interface TemplateLabelDef {
+  name: string;
+  color: string;
+}
+
+export interface TemplateTask {
+  title: string;
+  column_index: number;
+  priority: Priority;
+  labels: string[];
+  checklists: TemplateChecklist[];
+}
+
+export interface TemplateChecklist {
+  title: string;
+  items: string[];
+}
+
+/** S-019: Checklist */
+export interface Checklist {
+  id: string;
+  task_id: string;
+  title: string;
+  items: ChecklistItem[];
+  created_at: string;
+}
+
+export interface ChecklistItem {
+  id: string;
+  checklist_id: string;
+  title: string;
+  checked: boolean;
+  position: number;
+}
+
+/** Board member */
+export interface BoardMember {
+  user_id: string;
+  board_id: string;
+  role: string;
+  user_name: string;
+  user_email: string;
+  joined_at: string;
+}
+
+/** Department member */
+export interface DepartmentMember {
+  user_id: string;
+  department_id: string;
+  role: string;
+  user_name: string;
+  user_email: string;
+  joined_at: string;
+}
+
+/** User (admin listing) */
+export interface User {
+  id: string;
+  external_id: string;
+  name: string;
+  email: string;
+  email_verified: boolean;
+  department_ids: string[];
+  roles: GlobalRole[];
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Label (board-level definition) */
+export interface Label {
+  id: string;
+  board_id: string;
+  name: string;
+  color: string;
+  created_at: string;
+}
