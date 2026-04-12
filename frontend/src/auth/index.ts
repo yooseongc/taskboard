@@ -1,20 +1,20 @@
-// D-024: Access tokens stored in JS memory only — no localStorage/sessionStorage.
-// Page refresh clears the token (intended for dev-auth; OIDC uses silent refresh).
+// Token storage in localStorage for session persistence across page navigations.
+// OIDC refresh is handled by Keycloak silent refresh or re-login on expiry.
 
-let _token: string | null = null;
+const TOKEN_KEY = 'taskboard_token';
 
 export function getToken(): string | null {
-  return _token;
+  return localStorage.getItem(TOKEN_KEY);
 }
 
 export function setToken(token: string): void {
-  _token = token;
+  localStorage.setItem(TOKEN_KEY, token);
 }
 
 export function clearToken(): void {
-  _token = null;
+  localStorage.removeItem(TOKEN_KEY);
 }
 
 export function isAuthenticated(): boolean {
-  return _token !== null;
+  return localStorage.getItem(TOKEN_KEY) !== null;
 }
