@@ -85,34 +85,29 @@ pub fn build_router(state: AppState) -> Router {
         )
         // Columns (S-016)
         .route(
-            "/api/boards/{board_id}/columns",
+            "/api/boards/{id}/columns",
             post(collab::create_column),
         )
         .route(
-            "/api/boards/{board_id}/columns",
+            "/api/boards/{id}/columns",
             get(collab::list_columns),
         )
         .route(
-            "/api/boards/{board_id}/columns/{col_id}",
+            "/api/boards/{id}/columns/{col_id}",
             patch(collab::patch_column),
         )
         .route(
-            "/api/boards/{board_id}/columns/{col_id}",
+            "/api/boards/{id}/columns/{col_id}",
             delete(collab::delete_column),
         )
-        // Tasks view (S-020)
+        // Tasks (S-017, S-020)
         .route(
             "/api/boards/{id}/tasks",
-            get(collab::list_board_tasks),
-        )
-        // Tasks (S-017)
-        .route(
-            "/api/boards/{board_id}/tasks",
-            post(collab::create_task),
+            get(collab::list_board_tasks).post(collab::create_task),
         )
         // Board labels (S-019)
         .route(
-            "/api/boards/{board_id}/labels",
+            "/api/boards/{id}/labels",
             post(collab::create_board_label),
         )
         // Activity (S-024)
