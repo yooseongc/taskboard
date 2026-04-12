@@ -8,41 +8,96 @@
       "clientId": "taskboard-frontend",
       "enabled": true,
       "publicClient": true,
-      "redirectUris": ["http://localhost:5173/*"],
-      "webOrigins": ["http://localhost:5173"],
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://localhost:5174/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173",
+        "http://localhost:5174"
+      ],
       "protocol": "openid-connect",
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true
     }
   ],
-  "users": [
-    {
-      "username": "alice",
-      "email": "alice@example.com",
-      "firstName": "Alice",
-      "lastName": "Kim",
-      "enabled": true,
-      "credentials": [
-        {
-          "type": "password",
-          "value": "alice123",
-          "temporary": false
+  "components": {
+    "org.keycloak.storage.UserStorageProvider": [
+      {
+        "name": "ldap-dev-ad",
+        "providerId": "ldap",
+        "config": {
+          "vendor": ["other"],
+          "connectionUrl": ["ldap://ldap:3893"],
+          "bindDn": ["cn=serviceaccount,dc=taskboard,dc=local"],
+          "bindCredential": ["glauth-admin"],
+          "editMode": ["READ_ONLY"],
+          "usersDn": ["dc=taskboard,dc=local"],
+          "usernameLDAPAttribute": ["cn"],
+          "rdnLDAPAttribute": ["cn"],
+          "uuidLDAPAttribute": ["uidNumber"],
+          "userObjectClasses": ["posixAccount"],
+          "searchScope": ["2"],
+          "pagination": ["false"],
+          "importEnabled": ["true"],
+          "syncRegistrations": ["false"],
+          "fullSyncPeriod": ["-1"],
+          "changedSyncPeriod": ["-1"],
+          "batchSizeForSync": ["1000"],
+          "enabled": ["true"],
+          "priority": ["0"],
+          "cachePolicy": ["NO_CACHE"],
+          "trustEmail": ["true"]
+        },
+        "subComponents": {
+          "org.keycloak.storage.ldap.mappers.LDAPStorageMapper": [
+            {
+              "name": "username",
+              "providerId": "user-attribute-ldap-mapper",
+              "config": {
+                "ldap.attribute": ["cn"],
+                "user.model.attribute": ["username"],
+                "read.only": ["true"],
+                "always.read.value.from.ldap": ["true"],
+                "is.mandatory.in.ldap": ["true"]
+              }
+            },
+            {
+              "name": "email",
+              "providerId": "user-attribute-ldap-mapper",
+              "config": {
+                "ldap.attribute": ["mail"],
+                "user.model.attribute": ["email"],
+                "read.only": ["true"],
+                "always.read.value.from.ldap": ["true"],
+                "is.mandatory.in.ldap": ["true"]
+              }
+            },
+            {
+              "name": "first name",
+              "providerId": "user-attribute-ldap-mapper",
+              "config": {
+                "ldap.attribute": ["givenName"],
+                "user.model.attribute": ["firstName"],
+                "read.only": ["true"],
+                "always.read.value.from.ldap": ["true"],
+                "is.mandatory.in.ldap": ["false"]
+              }
+            },
+            {
+              "name": "last name",
+              "providerId": "user-attribute-ldap-mapper",
+              "config": {
+                "ldap.attribute": ["sn"],
+                "user.model.attribute": ["lastName"],
+                "read.only": ["true"],
+                "always.read.value.from.ldap": ["true"],
+                "is.mandatory.in.ldap": ["false"]
+              }
+            }
+          ]
         }
-      ]
-    },
-    {
-      "username": "bob",
-      "email": "bob@example.com",
-      "firstName": "Bob",
-      "lastName": "Park",
-      "enabled": true,
-      "credentials": [
-        {
-          "type": "password",
-          "value": "bob123",
-          "temporary": false
-        }
-      ]
-    }
-  ]
+      }
+    ]
+  }
 }
