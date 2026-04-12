@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDevLogin } from '../api/auth';
 import { useAuthStore } from '../stores/authStore';
+import { startOidcLogin } from '../auth/oidc';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('alice@example.com');
+  const [ssoLoading, setSsoLoading] = useState(false);
   const navigate = useNavigate();
   const devLogin = useDevLogin();
   const { login, isAuthenticated } = useAuthStore();
@@ -14,6 +16,16 @@ export default function LoginPage() {
       navigate('/', { replace: true });
     }
   }, [isAuthenticated, navigate]);
+
+  const handleSsoLogin = async () => {
+    setSsoLoading(true);
+    try {
+      await startOidcLogin();
+    } catch (err) {
+      console.error('SSO login failed:', err);
+      setSsoLoading(false);
+    }
+  };
 
   const handleDevLogin = async () => {
     try {
@@ -32,12 +44,13 @@ export default function LoginPage() {
       <div className="w-full max-w-md space-y-6 rounded-lg bg-white p-8 shadow-lg">
         <h1 className="text-2xl font-bold text-center">Taskboard</h1>
 
-        {/* OIDC Login (placeholder) */}
+        {/* OIDC Login */}
         <button
+          onClick={handleSsoLogin}
+          disabled={ssoLoading}
           className="w-full rounded-lg bg-blue-600 px-4 py-3 text-white font-medium hover:bg-blue-700 disabled:opacity-50"
-          disabled
         >
-          Sign in with SSO
+          {ssoLoading ? 'Redirecting...' : 'Sign in with SSO'}
         </button>
 
         {devAuthEnabled && (

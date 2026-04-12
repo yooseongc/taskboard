@@ -2,6 +2,7 @@ import { Routes, Route } from 'react-router-dom';
 import { AuthGuard } from './components/AuthGuard';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
+import OidcCallbackPage from './pages/OidcCallbackPage';
 import BoardListPage from './pages/BoardListPage';
 import BoardViewPage from './pages/BoardViewPage';
 import TemplatesPage from './pages/TemplatesPage';
@@ -14,6 +15,7 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/login/callback" element={<OidcCallbackPage />} />
       <Route element={<AuthGuard />}>
         <Route element={<Layout />}>
           <Route path="/" element={<BoardListPage />} />

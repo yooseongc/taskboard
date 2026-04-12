@@ -7,6 +7,10 @@ COPY frontend/package.json frontend/pnpm-lock.yaml frontend/.npmrc ./
 RUN pnpm install
 COPY frontend/ .
 ENV VITE_BACKEND_URL=""
+ENV VITE_KEYCLOAK_URL="http://localhost:8180"
+ENV VITE_KEYCLOAK_REALM="taskboard"
+ENV VITE_KEYCLOAK_CLIENT_ID="taskboard-frontend"
+ENV VITE_DEV_AUTH_ENABLED="1"
 RUN pnpm run build
 
 FROM nginx:alpine

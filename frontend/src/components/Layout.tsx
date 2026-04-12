@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { getLogoutUrl } from '../auth/oidc';
 import { ToastContainer } from './Toast';
 
 const navItems = [
@@ -83,7 +84,10 @@ export default function Layout() {
             </div>
           </Link>
           <button
-            onClick={logout}
+            onClick={() => {
+              logout();
+              window.location.href = getLogoutUrl();
+            }}
             className="mt-2 w-full text-left text-xs text-gray-500 hover:text-gray-300"
           >
             Logout
