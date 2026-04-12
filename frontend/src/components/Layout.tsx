@@ -2,29 +2,34 @@ import { useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { getLogoutUrl } from '../auth/oidc';
+import { usePermissions } from '../hooks/usePermissions';
 import { ToastContainer } from './Toast';
 
 const navItems = [
-  { path: '/', label: 'Boards', icon: 'M4 6h16M4 12h16M4 18h16' },
+  { path: '/', label: 'Boards', icon: 'M4 6h16M4 12h16M4 18h16', adminOnly: false },
   {
     path: '/templates',
     label: 'Templates',
     icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+    adminOnly: false,
   },
   {
     path: '/org',
     label: 'Organization',
     icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4',
+    adminOnly: false,
   },
   {
     path: '/admin/users',
     label: 'User Admin',
     icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z',
+    adminOnly: true,
   },
 ];
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const { isSystemAdmin } = usePermissions();
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
@@ -39,7 +44,7 @@ export default function Layout() {
           <span className="text-lg font-bold text-white">Taskboard</span>
         </div>
         <nav className="flex-1 py-2">
-          {navItems.map((item) => {
+          {navItems.filter((item) => !item.adminOnly || isSystemAdmin).map((item) => {
             const active = location.pathname === item.path;
             return (
               <Link

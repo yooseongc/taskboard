@@ -11,6 +11,7 @@ import {
 import { useUsers } from '../api/users';
 import { Spinner } from '../components/Spinner';
 import { useToastStore } from '../stores/toastStore';
+import { usePermissions } from '../hooks/usePermissions';
 import type { Department } from '../types/api';
 
 export default function OrgPage() {
@@ -21,6 +22,7 @@ export default function OrgPage() {
   const patchDept = usePatchDepartment();
   const deleteDept = useDeleteDepartment();
   const addToast = useToastStore((s) => s.addToast);
+  const { canManageDepartments } = usePermissions();
 
   const departments = data?.items ?? [];
 
@@ -40,12 +42,14 @@ export default function OrgPage() {
     <div className="mx-auto max-w-6xl px-6 py-8">
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-2xl font-bold">Organization</h1>
+        {canManageDepartments && (
         <button
           onClick={() => setShowCreate(true)}
           className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
         >
           + New Department
         </button>
+        )}
       </div>
 
       {isLoading && <Spinner />}

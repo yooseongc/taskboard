@@ -5,21 +5,25 @@ import { useDepartments } from '../api/departments';
 import { useTemplates } from '../api/templates';
 import { Spinner } from '../components/Spinner';
 import { useToastStore } from '../stores/toastStore';
+import { usePermissions } from '../hooks/usePermissions';
 
 export default function BoardListPage() {
   const { data, isLoading, isError } = useBoards();
   const [showCreate, setShowCreate] = useState(false);
+  const { canCreateBoard } = usePermissions();
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-2xl font-bold">My Boards</h1>
+        {canCreateBoard && (
         <button
           onClick={() => setShowCreate(true)}
           className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
         >
           + New Board
         </button>
+        )}
       </div>
 
       {isLoading && <Spinner />}

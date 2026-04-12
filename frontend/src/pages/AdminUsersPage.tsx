@@ -1,11 +1,16 @@
+import { Navigate } from 'react-router-dom';
 import { useUsers, usePatchUser } from '../api/users';
 import { Spinner } from '../components/Spinner';
 import { useToastStore } from '../stores/toastStore';
+import { usePermissions } from '../hooks/usePermissions';
 
 export default function AdminUsersPage() {
+  const { canManageUsers } = usePermissions();
   const { data, isLoading } = useUsers();
   const patchUser = usePatchUser();
   const addToast = useToastStore((s) => s.addToast);
+
+  if (!canManageUsers) return <Navigate to="/" replace />;
 
   const users = data?.items ?? [];
 

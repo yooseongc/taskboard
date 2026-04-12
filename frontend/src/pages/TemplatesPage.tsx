@@ -9,6 +9,7 @@ import {
 import { useCreateBoard } from '../api/boards';
 import { Spinner } from '../components/Spinner';
 import { useToastStore } from '../stores/toastStore';
+import { usePermissions } from '../hooks/usePermissions';
 
 export default function TemplatesPage() {
   const { data, isLoading } = useTemplates();
@@ -17,6 +18,7 @@ export default function TemplatesPage() {
   const navigate = useNavigate();
   const addToast = useToastStore((s) => s.addToast);
   const [showCreate, setShowCreate] = useState(false);
+  const { canCreateTemplate, canCreateBoard } = usePermissions();
 
   const handleUseTemplate = (tmpl: TemplateDto) => {
     createBoard.mutate(
@@ -59,12 +61,14 @@ export default function TemplatesPage() {
     <div className="mx-auto max-w-6xl px-6 py-8">
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-2xl font-bold">Templates</h1>
+        {canCreateTemplate && (
         <button
           onClick={() => setShowCreate(true)}
           className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
         >
           + New Template
         </button>
+        )}
       </div>
 
       {isLoading && <Spinner />}
@@ -108,6 +112,7 @@ export default function TemplatesPage() {
               )}
 
               <div className="flex gap-2 mt-4">
+                {canCreateBoard && (
                 <button
                   onClick={() => handleUseTemplate(tmpl)}
                   disabled={createBoard.isPending}
@@ -115,12 +120,15 @@ export default function TemplatesPage() {
                 >
                   Use Template
                 </button>
+                )}
+                {canCreateTemplate && (
                 <button
                   onClick={() => handleDelete(tmpl.id)}
                   className="px-3 py-1.5 text-sm text-red-500 hover:text-red-700"
                 >
                   Delete
                 </button>
+                )}
               </div>
             </div>
           );
