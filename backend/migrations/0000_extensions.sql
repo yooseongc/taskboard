@@ -1,0 +1,3 @@
+-- S-026: Migration 0000 — Extensions
+CREATE EXTENSION IF NOT EXISTS ltree;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
