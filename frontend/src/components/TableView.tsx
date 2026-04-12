@@ -95,7 +95,7 @@ export default function TableView({
   };
 
   const SortIcon = ({ col }: { col: SortKey }) => {
-    if (sortKey !== col) return <span className="ml-1 text-gray-300">\u2195</span>;
+    if (sortKey !== col) return <span className="ml-1 text-gray-300">{'\u2195'}</span>;
     return <span className="ml-1">{sortDir === 'asc' ? '\u25b2' : '\u25bc'}</span>;
   };
 

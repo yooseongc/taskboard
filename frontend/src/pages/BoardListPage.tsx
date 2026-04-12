@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useBoards, useCreateBoard } from '../api/boards';
 import { useDepartments } from '../api/departments';
@@ -8,16 +8,55 @@ import { useToastStore } from '../stores/toastStore';
 import { usePermissions } from '../hooks/usePermissions';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
+import type { Board } from '../types/api';
 
 export default function BoardListPage() {
   const { data, isLoading, isError } = useBoards();
+  const { data: deptsData } = useDepartments();
   const [showCreate, setShowCreate] = useState(false);
   const { canCreateBoard } = usePermissions();
+
+  const departments = deptsData?.items ?? [];
+  const deptMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of departments) m.set(d.id, d.name);
+    return m;
+  }, [departments]);
+
+  // Group boards by their first department
+  const grouped = useMemo(() => {
+    const boards = data?.items ?? [];
+    const groups = new Map<string, { name: string; boards: Board[] }>();
+    const ungrouped: Board[] = [];
+
+    for (const board of boards) {
+      const deptId = board.department_ids?.[0];
+      if (deptId && deptMap.has(deptId)) {
+        const existing = groups.get(deptId);
+        if (existing) {
+          existing.boards.push(board);
+        } else {
+          groups.set(deptId, { name: deptMap.get(deptId)!, boards: [board] });
+        }
+      } else {
+        ungrouped.push(board);
+      }
+    }
+
+    return { groups: [...groups.values()], ungrouped };
+  }, [data, deptMap]);
+
+  const totalBoards = (data?.items ?? []).length;
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
       <div className="flex items-center justify-between mb-8">
-        <h1 className="text-2xl font-bold">My Boards</h1>
+        <div>
+          <h1 className="text-2xl font-bold">My Boards</h1>
+          {totalBoards > 0 && (
+            <p className="text-sm text-gray-400 mt-0.5">{totalBoards} board(s)</p>
+          )}
+        </div>
         {canCreateBoard && (
           <Button onClick={() => setShowCreate(true)}>+ New Board</Button>
         )}
@@ -25,31 +64,38 @@ export default function BoardListPage() {
 
       {isLoading && <Spinner />}
       {isError && <p className="text-red-500">Failed to load boards.</p>}
-      {data && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {data.items.map((board) => (
-            <Link
-              key={board.id}
-              to={`/boards/${board.id}`}
-              className="block rounded-lg border border-gray-200 bg-white p-5 shadow-sm hover:shadow-md transition-shadow"
-            >
-              <h2 className="text-base font-semibold">{board.title}</h2>
-              {board.description && (
-                <p className="mt-1.5 text-sm text-gray-500 line-clamp-2">
-                  {board.description}
-                </p>
-              )}
-              <div className="mt-3 text-xs text-gray-400">
-                v{board.version} &middot;{' '}
-                {new Date(board.created_at).toLocaleDateString()}
-              </div>
-            </Link>
-          ))}
-          {data.items.length === 0 && (
-            <p className="col-span-full text-center text-gray-400 py-12">
-              No boards yet. Create one to get started.
-            </p>
+
+      {data && totalBoards === 0 && (
+        <p className="text-center text-gray-400 py-12">
+          No boards yet. Create one to get started.
+        </p>
+      )}
+
+      {/* Grouped by department */}
+      {grouped.groups.map((group) => (
+        <div key={group.name} className="mb-8">
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+            {group.name}
+          </h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {group.boards.map((board) => (
+              <BoardCard key={board.id} board={board} />
+            ))}
+          </div>
+        </div>
+      ))}
+      {grouped.ungrouped.length > 0 && (
+        <div className="mb-8">
+          {grouped.groups.length > 0 && (
+            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+              Other
+            </h2>
           )}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {grouped.ungrouped.map((board) => (
+              <BoardCard key={board.id} board={board} />
+            ))}
+          </div>
         </div>
       )}
 
@@ -57,6 +103,26 @@ export default function BoardListPage() {
         <CreateBoardModal onClose={() => setShowCreate(false)} />
       )}
     </div>
+  );
+}
+
+function BoardCard({ board }: { board: Board }) {
+  return (
+    <Link
+      to={`/boards/${board.id}`}
+      className="block rounded-lg border border-gray-200 bg-white p-5 shadow-sm hover:shadow-md transition-shadow"
+    >
+      <h3 className="text-base font-semibold">{board.title}</h3>
+      {board.description && (
+        <p className="mt-1.5 text-sm text-gray-500 line-clamp-2">
+          {board.description}
+        </p>
+      )}
+      <div className="mt-3 text-xs text-gray-400">
+        v{board.version} &middot;{' '}
+        {new Date(board.created_at).toLocaleDateString()}
+      </div>
+    </Link>
   );
 }
 

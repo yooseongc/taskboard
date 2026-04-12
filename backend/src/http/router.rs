@@ -140,7 +140,7 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route(
             "/api/tasks/{task_id}/checklists",
-            post(collab::create_checklist),
+            get(collab::list_checklists).post(collab::create_checklist),
         )
         .route(
             "/api/tasks/{task_id}/checklists/{cl_id}/items",

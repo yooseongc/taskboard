@@ -1352,6 +1352,66 @@ pub async fn remove_task_assignee(
 }
 
 // ---------------------------------------------------------------------------
+// GET /api/tasks/:task_id/checklists — list checklists with items
+// ---------------------------------------------------------------------------
+
+pub async fn list_checklists(
+    State(state): State<AppState>,
+    _user: AuthnUser,
+    Path(task_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    // Fetch checklists
+    let checklists = sqlx::query_as::<_, ChecklistRow>(
+        "SELECT * FROM task_checklists WHERE task_id = $1 ORDER BY created_at ASC",
+    )
+    .bind(task_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    // Fetch all items for these checklists in one query
+    let cl_ids: Vec<Uuid> = checklists.iter().map(|c| c.id).collect();
+    let items = if !cl_ids.is_empty() {
+        sqlx::query_as::<_, ChecklistItemRow>(
+            "SELECT * FROM task_checklist_items WHERE checklist_id = ANY($1) ORDER BY position ASC, created_at ASC",
+        )
+        .bind(&cl_ids)
+        .fetch_all(&state.pool)
+        .await?
+    } else {
+        vec![]
+    };
+
+    // Group items by checklist
+    let mut items_map: std::collections::HashMap<Uuid, Vec<&ChecklistItemRow>> = std::collections::HashMap::new();
+    for item in &items {
+        items_map.entry(item.checklist_id).or_default().push(item);
+    }
+
+    let result: Vec<serde_json::Value> = checklists
+        .iter()
+        .map(|cl| {
+            let cl_items = items_map.get(&cl.id).cloned().unwrap_or_default();
+            serde_json::json!({
+                "id": cl.id,
+                "task_id": cl.task_id,
+                "title": cl.title,
+                "created_at": cl.created_at,
+                "items": cl_items.iter().map(|i| serde_json::json!({
+                    "id": i.id,
+                    "checklist_id": i.checklist_id,
+                    "title": i.text,
+                    "checked": i.checked,
+                    "position": i.position,
+                    "created_at": i.created_at,
+                })).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({ "items": result })))
+}
+
+// ---------------------------------------------------------------------------
 // S-019: POST /api/tasks/:task_id/checklists
 // ---------------------------------------------------------------------------
 
