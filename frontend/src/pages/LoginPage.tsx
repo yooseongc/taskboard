@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDevLogin } from '../api/auth';
 import { useAuthStore } from '../stores/authStore';
@@ -9,10 +9,11 @@ export default function LoginPage() {
   const devLogin = useDevLogin();
   const { login, isAuthenticated } = useAuthStore();
 
-  if (isAuthenticated) {
-    navigate('/', { replace: true });
-    return null;
-  }
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleDevLogin = async () => {
     try {
