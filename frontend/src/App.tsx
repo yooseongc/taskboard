@@ -6,8 +6,7 @@ import OidcCallbackPage from './pages/OidcCallbackPage';
 import BoardListPage from './pages/BoardListPage';
 import BoardViewPage from './pages/BoardViewPage';
 import TemplatesPage from './pages/TemplatesPage';
-import OrgPage from './pages/OrgPage';
-import AdminUsersPage from './pages/AdminUsersPage';
+import DirectoryPage from './pages/DirectoryPage';
 import ProfilePage from './pages/ProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
 
@@ -21,8 +20,7 @@ function App() {
           <Route path="/" element={<BoardListPage />} />
           <Route path="/boards/:id" element={<BoardViewPage />} />
           <Route path="/templates" element={<TemplatesPage />} />
-          <Route path="/org" element={<OrgPage />} />
-          <Route path="/admin/users" element={<AdminUsersPage />} />
+          <Route path="/directory" element={<DirectoryPage />} />
           <Route path="/profile" element={<ProfilePage />} />
         </Route>
       </Route>
