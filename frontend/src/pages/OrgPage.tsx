@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useDepartments, useDepartmentMembers } from '../api/departments';
 import { Spinner } from '../components/Spinner';
+import Badge from '../components/ui/Badge';
+import { roleClass } from '../theme/constants';
 import type { Department } from '../types/api';
 
 export default function OrgPage() {
@@ -184,15 +186,9 @@ function MembersTable({ departmentId }: { departmentId: string }) {
                   <td className="px-3 py-2 font-medium">{m.user_name}</td>
                   <td className="px-3 py-2 text-gray-500">{m.user_email}</td>
                   <td className="px-3 py-2">
-                    <span
-                      className={`px-1.5 py-0.5 text-xs rounded ${
-                        m.role_in_department === 'DepartmentAdmin'
-                          ? 'bg-purple-100 text-purple-700'
-                          : 'bg-gray-100 text-gray-600'
-                      }`}
-                    >
+                    <Badge className={roleClass(m.role_in_department)}>
                       {m.role_in_department}
-                    </span>
+                    </Badge>
                   </td>
                   <td className="px-3 py-2 text-gray-400 text-xs">
                     {new Date(m.joined_at).toLocaleDateString()}

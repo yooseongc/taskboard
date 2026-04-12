@@ -1,33 +1,78 @@
+import { useState, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
-import { useUsers, usePatchUser } from '../api/users';
+import { useUsers } from '../api/users';
+import { useDepartments } from '../api/departments';
 import { Spinner } from '../components/Spinner';
-import { useToastStore } from '../stores/toastStore';
 import { usePermissions } from '../hooks/usePermissions';
+import Badge from '../components/ui/Badge';
+import { roleClass } from '../theme/constants';
 
 export default function AdminUsersPage() {
   const { canManageUsers } = usePermissions();
   const { data, isLoading } = useUsers();
-  const patchUser = usePatchUser();
-  const addToast = useToastStore((s) => s.addToast);
+  const { data: deptsData } = useDepartments();
+  const [search, setSearch] = useState('');
+  const [filterRole, setFilterRole] = useState('');
 
   if (!canManageUsers) return <Navigate to="/" replace />;
 
   const users = data?.items ?? [];
+  const departments = deptsData?.items ?? [];
+  const deptMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of departments) m.set(d.id, d.name);
+    return m;
+  }, [departments]);
 
-  const handleToggleActive = (userId: string, active: boolean) => {
-    patchUser.mutate(
-      { id: userId, active: !active },
-      {
-        onSuccess: () =>
-          addToast('success', `User ${!active ? 'activated' : 'deactivated'}`),
-        onError: () => addToast('error', 'Failed to update user'),
-      },
-    );
-  };
+  const filtered = useMemo(() => {
+    let list = [...users];
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (u) =>
+          u.name.toLowerCase().includes(q) ||
+          u.email.toLowerCase().includes(q),
+      );
+    }
+    if (filterRole) {
+      list = list.filter((u) => u.roles.includes(filterRole as never));
+    }
+    return list;
+  }, [users, search, filterRole]);
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
-      <h1 className="text-2xl font-bold mb-8">User Administration</h1>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">User Administration</h1>
+        <p className="text-sm text-gray-400 mt-1">
+          User accounts are managed via Active Directory. This view is read-only.
+        </p>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 mb-4">
+        <input
+          type="text"
+          placeholder="Search by name or email..."
+          className="border rounded-lg px-3 py-2 text-sm w-72 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <select
+          value={filterRole}
+          onChange={(e) => setFilterRole(e.target.value)}
+          className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+        >
+          <option value="">All roles</option>
+          <option value="SystemAdmin">SystemAdmin</option>
+          <option value="DepartmentAdmin">DepartmentAdmin</option>
+          <option value="Member">Member</option>
+          <option value="Viewer">Viewer</option>
+        </select>
+        <span className="self-center text-sm text-gray-400">
+          {filtered.length} user(s)
+        </span>
+      </div>
 
       {isLoading && <Spinner />}
 
@@ -36,7 +81,7 @@ export default function AdminUsersPage() {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left font-medium text-gray-600">
-                Name
+                User
               </th>
               <th className="px-4 py-3 text-left font-medium text-gray-600">
                 Email
@@ -45,59 +90,71 @@ export default function AdminUsersPage() {
                 Roles
               </th>
               <th className="px-4 py-3 text-left font-medium text-gray-600">
+                Departments
+              </th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600">
                 Status
               </th>
               <th className="px-4 py-3 text-left font-medium text-gray-600">
-                Actions
+                Joined
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {users.map((user) => (
+            {filtered.map((user) => (
               <tr key={user.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 font-medium">{user.name}</td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                      {user.name.charAt(0).toUpperCase()}
+                    </div>
+                    <span className="font-medium">{user.name}</span>
+                  </div>
+                </td>
                 <td className="px-4 py-3 text-gray-500">{user.email}</td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">
                     {user.roles.map((r) => (
-                      <span
-                        key={r}
-                        className="px-1.5 py-0.5 text-xs bg-gray-100 text-gray-600 rounded"
-                      >
+                      <Badge key={r} className={roleClass(r)}>
                         {r}
-                      </span>
+                      </Badge>
                     ))}
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <span
-                    className={`px-2 py-0.5 text-xs rounded-full font-medium ${
+                  <div className="flex flex-wrap gap-1">
+                    {user.department_ids.length > 0
+                      ? user.department_ids.map((did) => (
+                          <span
+                            key={did}
+                            className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded"
+                          >
+                            {deptMap.get(did) ?? did.slice(0, 8)}
+                          </span>
+                        ))
+                      : <span className="text-xs text-gray-300">-</span>}
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  <Badge
+                    className={
                       user.active
                         ? 'bg-green-100 text-green-700'
                         : 'bg-red-100 text-red-700'
-                    }`}
+                    }
                   >
                     {user.active ? 'Active' : 'Inactive'}
-                  </span>
+                  </Badge>
                 </td>
-                <td className="px-4 py-3">
-                  <button
-                    onClick={() => handleToggleActive(user.id, user.active)}
-                    className={`text-xs font-medium ${
-                      user.active
-                        ? 'text-red-500 hover:text-red-700'
-                        : 'text-green-500 hover:text-green-700'
-                    }`}
-                  >
-                    {user.active ? 'Deactivate' : 'Activate'}
-                  </button>
+                <td className="px-4 py-3 text-gray-400 text-xs">
+                  {new Date(user.created_at).toLocaleDateString()}
                 </td>
               </tr>
             ))}
-            {users.length === 0 && !isLoading && (
+            {filtered.length === 0 && !isLoading && (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="px-4 py-8 text-center text-gray-400"
                 >
                   No users found.
