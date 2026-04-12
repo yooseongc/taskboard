@@ -8,6 +8,7 @@ import BoardViewPage from './pages/BoardViewPage';
 import TemplatesPage from './pages/TemplatesPage';
 import DirectoryPage from './pages/DirectoryPage';
 import ProfilePage from './pages/ProfilePage';
+import SettingsPage from './pages/SettingsPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 function App() {
@@ -22,6 +23,7 @@ function App() {
           <Route path="/templates" element={<TemplatesPage />} />
           <Route path="/directory" element={<DirectoryPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Route>
       <Route path="*" element={<NotFoundPage />} />

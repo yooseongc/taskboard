@@ -608,3 +608,48 @@ pub struct CommentWithAuthor {
     pub deleted_at: Option<DateTime<Utc>>,
     pub author_name: String,
 }
+
+// ---------------------------------------------------------------------------
+// Custom Fields
+// ---------------------------------------------------------------------------
+
+#[derive(sqlx::FromRow, Serialize, Debug)]
+pub struct CustomFieldRow {
+    pub id: Uuid,
+    pub board_id: Uuid,
+    pub name: String,
+    pub field_type: String,
+    pub options: serde_json::Value,
+    pub position: f64,
+    pub required: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct CreateCustomFieldRequest {
+    pub name: String,
+    pub field_type: String,
+    pub options: Option<serde_json::Value>,
+    pub required: Option<bool>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct PatchCustomFieldRequest {
+    pub name: Option<String>,
+    pub options: Option<serde_json::Value>,
+    pub position: Option<f64>,
+    pub required: Option<bool>,
+}
+
+#[derive(sqlx::FromRow, Serialize, Debug)]
+pub struct TaskFieldValueRow {
+    pub task_id: Uuid,
+    pub field_id: Uuid,
+    pub value: serde_json::Value,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct SetFieldValueRequest {
+    pub value: serde_json::Value,
+}

@@ -15,6 +15,7 @@ import {
   useRemoveLabel,
 } from '../api/tasks';
 import { useBoardLabels, useCreateBoardLabel } from '../api/boards';
+import { useBoardCustomFields, useTaskFieldValues, useSetTaskFieldValue } from '../api/customFields';
 import { useUsers } from '../api/users';
 import { useToastStore } from '../stores/toastStore';
 import { Spinner } from './Spinner';
@@ -48,6 +49,9 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
   const addLabel = useAddLabel(taskId, boardId);
   const removeLabel = useRemoveLabel(taskId, boardId);
   const createBoardLabel = useCreateBoardLabel(boardId);
+  const { data: customFieldsData } = useBoardCustomFields(boardId);
+  const { data: fieldValuesData } = useTaskFieldValues(taskId);
+  const setFieldValue = useSetTaskFieldValue(taskId);
   const addToast = useToastStore((s) => s.addToast);
 
   const [editingTitle, setEditingTitle] = useState(false);
@@ -488,6 +492,24 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                 </div>
               </div>
             </Property>
+
+            {/* Custom Fields */}
+            {(customFieldsData?.items ?? []).map((field) => {
+              const values = fieldValuesData?.items ?? [];
+              const fv = values.find((v) => v.field_id === field.id);
+              const val = fv?.value;
+              return (
+                <Property key={field.id} label={field.name}>
+                  <CustomFieldInput
+                    field={field}
+                    value={val}
+                    onChange={(v) =>
+                      setFieldValue.mutate({ fieldId: field.id, value: v })
+                    }
+                  />
+                </Property>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -515,6 +537,98 @@ function Property({ label, children }: { label: string; children: React.ReactNod
       {children}
     </div>
   );
+}
+
+function CustomFieldInput({
+  field,
+  value,
+  onChange,
+}: {
+  field: { field_type: string; options: { label: string; color?: string }[] };
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  switch (field.field_type) {
+    case 'text':
+    case 'url':
+      return (
+        <input
+          className="w-full text-xs border rounded px-1.5 py-1"
+          placeholder={field.field_type === 'url' ? 'https://...' : ''}
+          value={(value as string) ?? ''}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={(e) => onChange(e.target.value)}
+        />
+      );
+    case 'number':
+      return (
+        <input
+          type="number"
+          className="w-full text-xs border rounded px-1.5 py-1"
+          value={(value as number) ?? ''}
+          onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
+        />
+      );
+    case 'date':
+      return (
+        <input
+          type="date"
+          className="w-full text-xs border rounded px-1.5 py-1"
+          value={(value as string) ?? ''}
+          onChange={(e) => onChange(e.target.value || null)}
+        />
+      );
+    case 'checkbox':
+      return (
+        <input
+          type="checkbox"
+          className="w-4 h-4 rounded"
+          checked={!!value}
+          onChange={(e) => onChange(e.target.checked)}
+        />
+      );
+    case 'select':
+      return (
+        <select
+          className="w-full text-xs border rounded px-1.5 py-1"
+          value={(value as string) ?? ''}
+          onChange={(e) => onChange(e.target.value || null)}
+        >
+          <option value="">-</option>
+          {(field.options ?? []).map((opt) => (
+            <option key={opt.label} value={opt.label}>{opt.label}</option>
+          ))}
+        </select>
+      );
+    case 'multi_select': {
+      const selected = Array.isArray(value) ? (value as string[]) : [];
+      return (
+        <div className="flex flex-wrap gap-1">
+          {(field.options ?? []).map((opt) => {
+            const active = selected.includes(opt.label);
+            return (
+              <button
+                key={opt.label}
+                onClick={() => {
+                  const next = active
+                    ? selected.filter((s) => s !== opt.label)
+                    : [...selected, opt.label];
+                  onChange(next);
+                }}
+                className={`px-1.5 py-0.5 rounded text-[10px] ${
+                  active ? 'bg-blue-100 text-blue-700' : 'bg-gray-50 text-gray-400'
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
+    default:
+      return <span className="text-xs text-gray-400">Unsupported</span>;
+  }
 }
 
 function DrawerShell({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {

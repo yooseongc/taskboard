@@ -3,6 +3,7 @@ use axum::Router;
 
 use crate::collaboration::handlers as collab;
 use crate::identity::handlers as identity;
+use crate::identity::preference_handlers as prefs;
 use crate::infra::state::AppState;
 use crate::organization::handlers as org;
 
@@ -18,7 +19,11 @@ pub fn build_router(state: AppState) -> Router {
     let user_routes = Router::new()
         .route("/api/users", get(identity::list_users))
         .route("/api/users/me", get(identity::whoami))
-        .route("/api/users/{id}", patch(identity::patch_user));
+        .route("/api/users/{id}", patch(identity::patch_user))
+        .route(
+            "/api/users/me/preferences",
+            get(prefs::get_preferences).patch(prefs::patch_preferences),
+        );
 
     let dept_routes = Router::new()
         .route("/api/departments", post(org::create_department))
@@ -114,6 +119,15 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/api/boards/{id}/activity",
             get(collab::list_activity),
+        )
+        // Custom fields
+        .route(
+            "/api/boards/{id}/fields",
+            get(collab::list_custom_fields).post(collab::create_custom_field),
+        )
+        .route(
+            "/api/boards/{id}/fields/{field_id}",
+            patch(collab::patch_custom_field).delete(collab::delete_custom_field),
         );
 
     let task_routes = Router::new()
@@ -166,6 +180,15 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/api/tasks/{task_id}/comments/{comment_id}",
             delete(collab::delete_comment),
+        )
+        // Task custom field values
+        .route(
+            "/api/tasks/{task_id}/fields",
+            get(collab::get_task_field_values),
+        )
+        .route(
+            "/api/tasks/{task_id}/fields/{field_id}",
+            put(collab::set_task_field_value),
         );
 
     let template_routes = Router::new()

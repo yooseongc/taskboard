@@ -5,6 +5,7 @@ pub mod activity;
 pub mod activity_helper;
 pub mod board_handlers;
 pub mod comment_handlers;
+pub mod custom_field_handlers;
 pub mod models;
 pub mod position;
 pub mod task_handlers;
@@ -15,6 +16,7 @@ pub mod template_handlers;
 pub mod handlers {
     pub use super::board_handlers::*;
     pub use super::comment_handlers::*;
+    pub use super::custom_field_handlers::*;
     pub use super::task_handlers::*;
     pub use super::template_handlers::*;
 }
