@@ -41,6 +41,8 @@ export default function BoardViewPage() {
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [newColTitle, setNewColTitle] = useState('');
   const [addingColumn, setAddingColumn] = useState(false);
+  const [boardSearch, setBoardSearch] = useState('');
+  const [filterPriority, setFilterPriority] = useState('');
 
   if (boardLoading) return <Spinner />;
   if (!board) {
@@ -68,7 +70,19 @@ export default function BoardViewPage() {
   }
 
   const columns = columnsData?.items ?? [];
-  const tasks = tasksData?.items ?? [];
+  const rawTasks = tasksData?.items ?? [];
+
+  // Apply board-level search/filter (only affects board view)
+  const tasks = rawTasks.filter((t) => {
+    if (boardSearch) {
+      const q = boardSearch.toLowerCase();
+      if (!t.title.toLowerCase().includes(q) && !(t.description ?? '').toLowerCase().includes(q)) {
+        return false;
+      }
+    }
+    if (filterPriority && t.priority !== filterPriority) return false;
+    return true;
+  });
 
   // Group tasks by column
   const tasksByColumn = new Map<string, TaskDto[]>();
@@ -158,6 +172,52 @@ export default function BoardViewPage() {
         ))}
       </div>
 
+      {/* Board toolbar (search/filter) */}
+      {activeView === 'board' && (
+        <div
+          className="flex items-center gap-2 px-6 py-2"
+          style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface)' }}
+        >
+          <input
+            type="text"
+            placeholder="Search tasks..."
+            value={boardSearch}
+            onChange={(e) => setBoardSearch(e.target.value)}
+            className="text-sm rounded px-3 py-1 w-56 focus:outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
+            style={{
+              backgroundColor: 'var(--color-bg)',
+              border: '1px solid var(--color-border)',
+              color: 'var(--color-text)',
+            }}
+          />
+          <select
+            value={filterPriority}
+            onChange={(e) => setFilterPriority(e.target.value)}
+            className="text-sm rounded px-2 py-1"
+            style={{
+              backgroundColor: 'var(--color-bg)',
+              border: '1px solid var(--color-border)',
+              color: 'var(--color-text)',
+            }}
+          >
+            <option value="">All priorities</option>
+            <option value="urgent">Urgent</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+          {(boardSearch || filterPriority) && (
+            <button
+              onClick={() => { setBoardSearch(''); setFilterPriority(''); }}
+              className="text-xs"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              Clear filters ({tasks.length}/{rawTasks.length})
+            </button>
+          )}
+        </div>
+      )}
+
       {/* View Content */}
       {activeView === 'board' && (
         <div className="flex-1 overflow-x-auto p-4">
@@ -188,7 +248,7 @@ export default function BoardViewPage() {
               ))}
 
               {/* Add column */}
-              <div className="w-72 flex-shrink-0">
+              <div className="w-64 md:w-72 flex-shrink-0">
                 {addingColumn ? (
                   <div className="bg-gray-100 rounded-lg p-3">
                     <input
@@ -295,7 +355,7 @@ function KanbanColumn({
   };
 
   return (
-    <div className="flex flex-col w-72 flex-shrink-0">
+    <div className="flex flex-col w-64 md:w-72 flex-shrink-0">
       {/* Column Header */}
       <div className="flex items-center justify-between rounded-t-lg bg-gray-100 px-3 py-2">
         {editing ? (

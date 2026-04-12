@@ -29,7 +29,7 @@ const navItems = [
 ];
 
 export default function Layout() {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 768);
   const { isSystemAdmin } = usePermissions();
   const { t } = useTranslation();
   const location = useLocation();
@@ -37,10 +37,18 @@ export default function Layout() {
   const logout = useAuthStore((s) => s.logout);
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen relative">
+      {/* Mobile backdrop */}
+      {sidebarOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/40 z-30"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
       {/* Sidebar */}
       <aside
-        className={`${sidebarOpen ? 'w-56' : 'w-0 overflow-hidden'} flex-shrink-0 flex flex-col transition-all duration-200`}
+        className={`${sidebarOpen ? 'w-56' : 'w-0 overflow-hidden'} flex-shrink-0 flex flex-col transition-all duration-200 fixed md:relative inset-y-0 left-0 z-40`}
         style={{
           backgroundColor: 'var(--color-sidebar-bg)',
           color: 'var(--color-sidebar-text)',

@@ -136,7 +136,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
 
       {/* Main content — 2-column layout like Trello */}
       <div className="flex-1 overflow-y-auto">
-        <div className="flex gap-4 px-6 pb-6">
+        <div className="flex flex-col md:flex-row gap-4 px-6 pb-6">
           {/* Left: main content */}
           <div className="flex-1 min-w-0 space-y-5">
 
@@ -316,7 +316,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
           </div>
 
           {/* Right sidebar — properties */}
-          <div className="w-48 flex-shrink-0 space-y-4 pt-1">
+          <div className="w-full md:w-48 md:flex-shrink-0 space-y-4 pt-1 md:border-l-0 border-t md:border-t-0 pt-4 md:pt-1" style={{ borderColor: 'var(--color-border)' }}>
             {/* Status */}
             <Property label="Status">
               <select
@@ -644,7 +644,7 @@ function DrawerShell({ onClose, children }: { onClose: () => void; children: Rea
         role="dialog"
         aria-modal="true"
         aria-label="Task details"
-        className="fixed inset-y-0 right-0 w-full max-w-2xl z-50 flex flex-col"
+        className="fixed inset-0 md:inset-y-0 md:right-0 md:left-auto w-full md:max-w-2xl z-50 flex flex-col"
         style={{
           backgroundColor: 'var(--color-surface)',
           boxShadow: 'var(--shadow-lg)',

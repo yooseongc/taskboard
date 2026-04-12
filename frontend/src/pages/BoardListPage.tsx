@@ -3,11 +3,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useBoards, useCreateBoard } from '../api/boards';
 import { useDepartments } from '../api/departments';
 import { useTemplates } from '../api/templates';
-import { Spinner } from '../components/Spinner';
 import { useToastStore } from '../stores/toastStore';
 import { usePermissions } from '../hooks/usePermissions';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
+import { SkeletonGrid } from '../components/ui/Skeleton';
+import EmptyState from '../components/ui/EmptyState';
 import type { Board } from '../types/api';
 
 export default function BoardListPage() {
@@ -66,7 +67,7 @@ export default function BoardListPage() {
         )}
       </div>
 
-      {isLoading && <Spinner />}
+      {isLoading && <SkeletonGrid count={6} />}
       {isError && (
         <div className="surface-raised p-5 flex items-center justify-between">
           <div>
@@ -84,9 +85,24 @@ export default function BoardListPage() {
       )}
 
       {data && totalBoards === 0 && (
-        <p className="text-center text-gray-400 py-12">
-          No boards yet. Create one to get started.
-        </p>
+        <EmptyState
+          icon={
+            <svg className="w-16 h-16" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+            </svg>
+          }
+          title="아직 보드가 없습니다"
+          description="보드는 팀의 업무를 시각적으로 정리하는 공간입니다. 템플릿으로 빠르게 시작하거나 빈 보드를 만들어보세요."
+          action={
+            canCreateBoard ? (
+              <Button onClick={() => setShowCreate(true)}>첫 보드 만들기</Button>
+            ) : (
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                관리자에게 보드 생성을 요청하세요
+              </p>
+            )
+          }
+        />
       )}
 
       {/* Grouped by department */}
