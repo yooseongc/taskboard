@@ -1,27 +1,28 @@
 import { useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../stores/authStore';
 import { getLogoutUrl } from '../auth/oidc';
 import { usePermissions } from '../hooks/usePermissions';
 import { ToastContainer } from './Toast';
 
 const navItems = [
-  { path: '/', label: 'Boards', icon: 'M4 6h16M4 12h16M4 18h16', adminOnly: false },
+  { path: '/', labelKey: 'nav.boards', icon: 'M4 6h16M4 12h16M4 18h16', adminOnly: false },
   {
     path: '/templates',
-    label: 'Templates',
+    labelKey: 'nav.templates',
     icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
     adminOnly: false,
   },
   {
     path: '/directory',
-    label: 'Directory',
+    labelKey: 'nav.directory',
     icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z',
     adminOnly: false,
   },
   {
     path: '/settings',
-    label: 'Settings',
+    labelKey: 'nav.settings',
     icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z',
     adminOnly: false,
   },
@@ -30,6 +31,7 @@ const navItems = [
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { isSystemAdmin } = usePermissions();
+  const { t } = useTranslation();
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
@@ -49,7 +51,7 @@ export default function Layout() {
           style={{ borderBottom: '1px solid var(--color-sidebar-border)' }}
         >
           <span className="text-lg font-bold" style={{ color: 'var(--color-sidebar-text-active)' }}>
-            Taskboard
+            {t('app.name')}
           </span>
         </div>
         <nav className="flex-1 py-2">
@@ -78,7 +80,7 @@ export default function Layout() {
                     d={item.icon}
                   />
                 </svg>
-                {item.label}
+                {t(item.labelKey)}
               </Link>
             );
           })}

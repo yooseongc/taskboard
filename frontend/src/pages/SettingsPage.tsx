@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { usePreferences, usePatchPreferences } from '../api/preferences';
 import { useTheme } from '../theme/ThemeProvider';
 import { Spinner } from '../components/Spinner';
@@ -43,10 +44,14 @@ export default function SettingsPage() {
     patchPrefs.mutate({ theme: t });
   };
 
+  const { i18n, t } = useTranslation();
+
   const handleLocaleChange = (locale: string) => {
+    i18n.changeLanguage(locale);
+    localStorage.setItem('taskboard_locale', locale);
     patchPrefs.mutate(
       { locale },
-      { onSuccess: () => addToast('success', 'Language updated') },
+      { onSuccess: () => addToast('success', t('settings.langHint')) },
     );
   };
 
