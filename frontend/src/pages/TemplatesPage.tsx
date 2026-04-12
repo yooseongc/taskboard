@@ -14,6 +14,7 @@ import { usePermissions } from '../hooks/usePermissions';
 import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
 import Modal from '../components/ui/Modal';
+import EmptyState from '../components/ui/EmptyState';
 
 export default function TemplatesPage() {
   const { data, isLoading } = useTemplates();
@@ -103,9 +104,22 @@ export default function TemplatesPage() {
         })}
 
         {data && data.items.length === 0 && (
-          <p className="col-span-full text-center text-gray-400 py-12">
-            No templates yet.
-          </p>
+          <div className="col-span-full">
+            <EmptyState
+              icon={
+                <svg className="w-16 h-16" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+              }
+              title="템플릿이 없습니다"
+              description="템플릿은 반복되는 보드 구조를 한 번 만들어두고 재사용할 수 있게 해줍니다. 컬럼 구성과 기본 라벨을 저장해 새 보드에 적용하세요."
+              action={
+                canCreateTemplate ? (
+                  <Button onClick={() => setShowCreate(true)}>첫 템플릿 만들기</Button>
+                ) : undefined
+              }
+            />
+          </div>
         )}
       </div>
 

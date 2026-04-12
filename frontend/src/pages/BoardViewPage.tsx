@@ -20,6 +20,7 @@ import TaskDrawer from '../components/TaskDrawer';
 import TableView from '../components/TableView';
 import CalendarView from '../components/CalendarView';
 import { useToastStore } from '../stores/toastStore';
+import Breadcrumbs from '../components/ui/Breadcrumbs';
 import { priorityClass } from '../theme/constants';
 import type { TaskDto, BoardColumn } from '../types/api';
 
@@ -143,16 +144,19 @@ export default function BoardViewPage() {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center gap-4 border-b bg-white px-6 py-3">
-        <Link to="/" className="text-gray-400 hover:text-gray-600 text-sm">
-          &larr; Boards
-        </Link>
-        <h1 className="text-lg font-bold">{board.title}</h1>
-        {board.description && (
-          <span className="text-sm text-gray-400 truncate max-w-md">
-            {board.description}
-          </span>
-        )}
+      <div
+        className="px-6 py-3"
+        style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface)' }}
+      >
+        <Breadcrumbs items={[{ label: 'Boards', to: '/' }, { label: board.title }]} />
+        <div className="flex items-baseline gap-3 mt-1">
+          <h1 className="text-lg font-bold" style={{ color: 'var(--color-text)' }}>{board.title}</h1>
+          {board.description && (
+            <span className="text-sm truncate max-w-md" style={{ color: 'var(--color-text-muted)' }}>
+              {board.description}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* View Tabs */}

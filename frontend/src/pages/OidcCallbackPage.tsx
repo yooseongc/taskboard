@@ -50,15 +50,27 @@ export default function OidcCallbackPage() {
 
   if (error) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="max-w-md text-center space-y-4">
-          <p className="text-red-600 font-medium">Authentication Error</p>
-          <p className="text-sm text-gray-600">{error}</p>
+      <div className="flex min-h-screen items-center justify-center" style={{ backgroundColor: 'var(--color-bg)' }}>
+        <div className="surface-raised p-8 max-w-md text-center">
+          <div className="text-4xl mb-3">⚠️</div>
+          <h2 className="font-semibold text-lg mb-2" style={{ color: 'var(--color-danger)' }}>로그인 오류</h2>
+          <p className="text-sm mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+            로그인 과정에서 문제가 발생했습니다. 다시 시도해주세요.
+          </p>
+          <details className="text-left mb-4">
+            <summary className="text-xs cursor-pointer" style={{ color: 'var(--color-text-muted)' }}>
+              상세 정보
+            </summary>
+            <pre className="text-xs mt-2 p-2 rounded overflow-auto" style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text-secondary)' }}>
+              {error}
+            </pre>
+          </details>
           <a
             href="/login"
-            className="inline-block px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="inline-block px-4 py-2 text-sm rounded-lg"
+            style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-text-inverse)' }}
           >
-            Back to Login
+            로그인 페이지로 돌아가기
           </a>
         </div>
       </div>
@@ -66,10 +78,10 @@ export default function OidcCallbackPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
+    <div className="flex min-h-screen items-center justify-center" style={{ backgroundColor: 'var(--color-bg)' }}>
       <div className="text-center space-y-2">
         <Spinner />
-        <p className="text-sm text-gray-500">Completing sign-in...</p>
+        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>로그인 처리 중...</p>
       </div>
     </div>
   );

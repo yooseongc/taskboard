@@ -189,7 +189,10 @@ function CreateBoardModal({ onClose }: { onClose: () => void }) {
         onClose();
         navigate(`/boards/${board.id}`);
       },
-      onError: () => addToast('error', 'Failed to create board'),
+      onError: () =>
+        addToast('error', `Failed to create board "${title}"`, {
+          action: { label: 'Retry', onClick: handleCreate },
+        }),
     });
   };
 
