@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useBoards, useCreateBoard } from '../api/boards';
 import { useDepartments } from '../api/departments';
 import { useTemplates } from '../api/templates';
@@ -12,6 +13,7 @@ import EmptyState from '../components/ui/EmptyState';
 import type { Board } from '../types/api';
 
 export default function BoardListPage() {
+  const { t } = useTranslation();
   const { data, isLoading, isError, refetch } = useBoards();
   const { data: deptsData } = useDepartments();
   const [showCreate, setShowCreate] = useState(false);
@@ -53,13 +55,13 @@ export default function BoardListPage() {
     <div className="mx-auto max-w-6xl px-6 py-8">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold">My Boards</h1>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--color-text)' }}>{t('boards.title')}</h1>
           {totalBoards > 0 && (
             <p className="text-sm text-gray-400 mt-0.5">{totalBoards} board(s)</p>
           )}
         </div>
         {canCreateBoard ? (
-          <Button onClick={() => setShowCreate(true)}>+ New Board</Button>
+          <Button onClick={() => setShowCreate(true)}>{t('boards.newBoard')}</Button>
         ) : (
           <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
             Board creation requires Department Admin role
