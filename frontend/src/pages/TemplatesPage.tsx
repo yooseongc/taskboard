@@ -4,11 +4,11 @@ import {
   useTemplates,
   useCreateTemplate,
   useDeleteTemplate,
+  type TemplateDto,
 } from '../api/templates';
 import { useCreateBoard } from '../api/boards';
 import { Spinner } from '../components/Spinner';
 import { useToastStore } from '../stores/toastStore';
-import type { TemplateSnapshot } from '../types/api';
 
 export default function TemplatesPage() {
   const { data, isLoading } = useTemplates();
@@ -18,11 +18,11 @@ export default function TemplatesPage() {
   const addToast = useToastStore((s) => s.addToast);
   const [showCreate, setShowCreate] = useState(false);
 
-  const handleUseTemplate = (templateId: string, templateTitle: string) => {
+  const handleUseTemplate = (tmpl: TemplateDto) => {
     createBoard.mutate(
       {
-        title: `${templateTitle} Board`,
-        from_template: templateId,
+        title: `${tmpl.name} Board`,
+        from_template: tmpl.id,
       },
       {
         onSuccess: (board) => {
@@ -41,6 +41,20 @@ export default function TemplatesPage() {
     });
   };
 
+  const getColumns = (tmpl: TemplateDto): string[] => {
+    const p = tmpl.payload as Record<string, unknown>;
+    const cols = p?.columns;
+    if (Array.isArray(cols)) {
+      return cols.map((c: unknown) => {
+        if (typeof c === 'object' && c !== null && 'title' in c) {
+          return (c as { title: string }).title;
+        }
+        return String(c);
+      });
+    }
+    return [];
+  };
+
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
       <div className="flex items-center justify-between mb-8">
@@ -56,55 +70,61 @@ export default function TemplatesPage() {
       {isLoading && <Spinner />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {(data?.items ?? []).map((tmpl) => (
-          <div
-            key={tmpl.id}
-            className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
-          >
-            <h2 className="text-lg font-semibold">{tmpl.title}</h2>
-            {tmpl.description && (
-              <p className="mt-1 text-sm text-gray-500 line-clamp-2">
-                {tmpl.description}
-              </p>
-            )}
-
-            {/* Snapshot preview */}
-            <div className="mt-3 text-xs text-gray-400">
-              {tmpl.snapshot.columns.length} column(s)
-              {tmpl.snapshot.default_tasks.length > 0 &&
-                `, ${tmpl.snapshot.default_tasks.length} task(s)`}
-              {tmpl.snapshot.labels.length > 0 &&
-                `, ${tmpl.snapshot.labels.length} label(s)`}
-            </div>
-
-            <div className="mt-2 flex flex-wrap gap-1">
-              {tmpl.snapshot.columns.map((col, i) => (
-                <span
-                  key={i}
-                  className="inline-block bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded"
-                >
-                  {col.title}
+        {(data?.items ?? []).map((tmpl) => {
+          const columns = getColumns(tmpl);
+          return (
+            <div
+              key={tmpl.id}
+              className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <h2 className="text-lg font-semibold">{tmpl.name}</h2>
+                <span className="px-1.5 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
+                  {tmpl.kind}
                 </span>
-              ))}
-            </div>
+              </div>
+              {tmpl.description && (
+                <p className="text-sm text-gray-500 line-clamp-2">
+                  {tmpl.description}
+                </p>
+              )}
 
-            <div className="flex gap-2 mt-4">
-              <button
-                onClick={() => handleUseTemplate(tmpl.id, tmpl.title)}
-                disabled={createBoard.isPending}
-                className="px-3 py-1.5 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
-              >
-                Use Template
-              </button>
-              <button
-                onClick={() => handleDelete(tmpl.id)}
-                className="px-3 py-1.5 text-sm text-red-500 hover:text-red-700"
-              >
-                Delete
-              </button>
+              <div className="mt-3 text-xs text-gray-400">
+                scope: {tmpl.scope}
+                {columns.length > 0 && ` · ${columns.length} column(s)`}
+              </div>
+
+              {columns.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {columns.map((col, i) => (
+                    <span
+                      key={i}
+                      className="inline-block bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded"
+                    >
+                      {col}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex gap-2 mt-4">
+                <button
+                  onClick={() => handleUseTemplate(tmpl)}
+                  disabled={createBoard.isPending}
+                  className="px-3 py-1.5 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                >
+                  Use Template
+                </button>
+                <button
+                  onClick={() => handleDelete(tmpl.id)}
+                  className="px-3 py-1.5 text-sm text-red-500 hover:text-red-700"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {data && data.items.length === 0 && (
           <p className="col-span-full text-center text-gray-400 py-12">
@@ -121,31 +141,31 @@ export default function TemplatesPage() {
 }
 
 function CreateTemplateModal({ onClose }: { onClose: () => void }) {
-  const [title, setTitle] = useState('');
+  const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [columnsText, setColumnsText] = useState('To Do, In Progress, Done');
   const createTemplate = useCreateTemplate();
   const addToast = useToastStore((s) => s.addToast);
 
   const handleCreate = () => {
-    if (!title.trim()) return;
+    if (!name.trim()) return;
 
     const columns = columnsText
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
 
-    const snapshot: TemplateSnapshot = {
-      columns: columns.map((c, i) => ({ title: c, position: i })),
-      labels: [],
-      default_tasks: [],
-    };
-
     createTemplate.mutate(
       {
-        title,
+        kind: 'board',
+        name,
         description: description || undefined,
-        snapshot,
+        scope: 'global',
+        payload: {
+          columns: columns.map((c, i) => ({ title: c, position: i })),
+          labels: [],
+          default_tasks: [],
+        },
       },
       {
         onSuccess: () => {
@@ -167,14 +187,14 @@ function CreateTemplateModal({ onClose }: { onClose: () => void }) {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Title *
+                Name *
               </label>
               <input
                 autoFocus
                 className="w-full border rounded-lg px-3 py-2 text-sm"
-                placeholder="Template title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Template name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
               />
             </div>
             <div>
@@ -209,7 +229,7 @@ function CreateTemplateModal({ onClose }: { onClose: () => void }) {
             </button>
             <button
               onClick={handleCreate}
-              disabled={!title.trim() || createTemplate.isPending}
+              disabled={!name.trim() || createTemplate.isPending}
               className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
               {createTemplate.isPending ? 'Creating...' : 'Create'}

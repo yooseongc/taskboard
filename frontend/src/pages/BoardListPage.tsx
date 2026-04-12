@@ -148,7 +148,7 @@ function CreateBoardModal({ onClose }: { onClose: () => void }) {
                 <option value="">No template</option>
                 {(templates?.items ?? []).map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.title}
+                    {t.name}
                   </option>
                 ))}
               </select>

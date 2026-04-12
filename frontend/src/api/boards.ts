@@ -70,16 +70,25 @@ export function useBoardActivity(boardId: string) {
 export function useCreateBoard() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: {
+    mutationFn: ({
+      from_template,
+      ...body
+    }: {
       title: string;
       description?: string;
       department_ids?: string[];
       from_template?: string;
-    }) =>
-      apiFetch<Board>('/api/boards', {
+    }) => {
+      const payload = {
+        ...body,
+        department_ids: body.department_ids ?? [],
+      };
+      const query = from_template ? `?from_template=${from_template}` : '';
+      return apiFetch<Board>(`/api/boards${query}`, {
         method: 'POST',
-        body: JSON.stringify(body),
-      }),
+        body: JSON.stringify(payload),
+      });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['boards'] });
     },

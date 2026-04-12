@@ -93,7 +93,7 @@ pub async fn create_department(
     let (path, depth) = if let Some(parent_id) = body.parent_id {
         // Fetch parent
         let parent = sqlx::query_as::<_, DepartmentRow>(
-            "SELECT * FROM departments WHERE id = $1",
+            "SELECT id, name, slug, parent_id, path::TEXT as path, depth, created_at, updated_at FROM departments WHERE id = $1",
         )
         .bind(parent_id)
         .fetch_optional(&state.pool)
@@ -116,7 +116,7 @@ pub async fn create_department(
         r#"
         INSERT INTO departments (id, name, slug, parent_id, path, depth)
         VALUES ($1, $2, $3, $4, $5::ltree, $6)
-        RETURNING *
+        RETURNING id, name, slug, parent_id, path::TEXT as path, depth, created_at, updated_at
         "#,
     )
     .bind(id)
@@ -182,7 +182,7 @@ pub async fn list_departments(
         (Some(pid), Some((cp, cid))) if pid == "root" => {
             sqlx::query_as::<_, DepartmentRow>(
                 r#"
-                SELECT * FROM departments
+                SELECT id, name, slug, parent_id, path::TEXT as path, depth, created_at, updated_at FROM departments
                 WHERE parent_id IS NULL
                   AND (path, id) > ($1::ltree, $2)
                 ORDER BY path ASC, id ASC
@@ -198,7 +198,7 @@ pub async fn list_departments(
         (Some(pid), None) if pid == "root" => {
             sqlx::query_as::<_, DepartmentRow>(
                 r#"
-                SELECT * FROM departments
+                SELECT id, name, slug, parent_id, path::TEXT as path, depth, created_at, updated_at FROM departments
                 WHERE parent_id IS NULL
                 ORDER BY path ASC, id ASC
                 LIMIT $1
@@ -214,7 +214,7 @@ pub async fn list_departments(
                 .map_err(|_| AppError::InvalidInput("parent_id must be 'root' or a valid UUID".into()))?;
             sqlx::query_as::<_, DepartmentRow>(
                 r#"
-                SELECT * FROM departments
+                SELECT id, name, slug, parent_id, path::TEXT as path, depth, created_at, updated_at FROM departments
                 WHERE parent_id = $1
                   AND (path, id) > ($2::ltree, $3)
                 ORDER BY path ASC, id ASC
@@ -234,7 +234,7 @@ pub async fn list_departments(
                 .map_err(|_| AppError::InvalidInput("parent_id must be 'root' or a valid UUID".into()))?;
             sqlx::query_as::<_, DepartmentRow>(
                 r#"
-                SELECT * FROM departments
+                SELECT id, name, slug, parent_id, path::TEXT as path, depth, created_at, updated_at FROM departments
                 WHERE parent_id = $1
                 ORDER BY path ASC, id ASC
                 LIMIT $2
@@ -248,7 +248,7 @@ pub async fn list_departments(
         (None, Some((cp, cid))) => {
             sqlx::query_as::<_, DepartmentRow>(
                 r#"
-                SELECT * FROM departments
+                SELECT id, name, slug, parent_id, path::TEXT as path, depth, created_at, updated_at FROM departments
                 WHERE (path, id) > ($1::ltree, $2)
                 ORDER BY path ASC, id ASC
                 LIMIT $3
@@ -263,7 +263,7 @@ pub async fn list_departments(
         (None, None) => {
             sqlx::query_as::<_, DepartmentRow>(
                 r#"
-                SELECT * FROM departments
+                SELECT id, name, slug, parent_id, path::TEXT as path, depth, created_at, updated_at FROM departments
                 ORDER BY path ASC, id ASC
                 LIMIT $1
                 "#,
@@ -304,7 +304,7 @@ pub async fn get_department(
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     let row = sqlx::query_as::<_, DepartmentRow>(
-        "SELECT * FROM departments WHERE id = $1",
+        "SELECT id, name, slug, parent_id, path::TEXT as path, depth, created_at, updated_at FROM departments WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&state.pool)
@@ -335,7 +335,7 @@ pub async fn patch_department(
         SET name = COALESCE($2, name),
             updated_at = now()
         WHERE id = $1
-        RETURNING *
+        RETURNING id, name, slug, parent_id, path::TEXT as path, depth, created_at, updated_at
         "#,
     )
     .bind(id)
@@ -364,7 +364,7 @@ pub async fn delete_department(
 
     // Fetch target department for path
     let dept = sqlx::query_as::<_, DepartmentRow>(
-        "SELECT * FROM departments WHERE id = $1",
+        "SELECT id, name, slug, parent_id, path::TEXT as path, depth, created_at, updated_at FROM departments WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&state.pool)
@@ -420,7 +420,7 @@ pub async fn get_ancestors(
 ) -> Result<impl IntoResponse, AppError> {
     // Fetch target department to get its path
     let dept = sqlx::query_as::<_, DepartmentRow>(
-        "SELECT * FROM departments WHERE id = $1",
+        "SELECT id, name, slug, parent_id, path::TEXT as path, depth, created_at, updated_at FROM departments WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&state.pool)
@@ -430,7 +430,7 @@ pub async fn get_ancestors(
     // Find all ancestors (departments whose path is an ancestor-or-self of target)
     let rows = sqlx::query_as::<_, DepartmentRow>(
         r#"
-        SELECT * FROM departments
+        SELECT id, name, slug, parent_id, path::TEXT as path, depth, created_at, updated_at FROM departments
         WHERE path @> $1::ltree
         ORDER BY depth ASC
         "#,
@@ -461,7 +461,7 @@ pub async fn get_descendants(
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     let dept = sqlx::query_as::<_, DepartmentRow>(
-        "SELECT * FROM departments WHERE id = $1",
+        "SELECT id, name, slug, parent_id, path::TEXT as path, depth, created_at, updated_at FROM departments WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&state.pool)
@@ -470,7 +470,7 @@ pub async fn get_descendants(
 
     let rows = sqlx::query_as::<_, DepartmentRow>(
         r#"
-        SELECT * FROM departments
+        SELECT id, name, slug, parent_id, path::TEXT as path, depth, created_at, updated_at FROM departments
         WHERE path <@ $1::ltree AND id != $2
         ORDER BY depth ASC, name ASC
         "#,
@@ -510,7 +510,7 @@ pub async fn add_member(
 
     // Verify department exists
     let _dept = sqlx::query_as::<_, DepartmentRow>(
-        "SELECT * FROM departments WHERE id = $1",
+        "SELECT id, name, slug, parent_id, path::TEXT as path, depth, created_at, updated_at FROM departments WHERE id = $1",
     )
     .bind(dept_id)
     .fetch_optional(&state.pool)
@@ -578,7 +578,7 @@ pub async fn list_members(
 
     // Verify department exists
     let _dept = sqlx::query_as::<_, DepartmentRow>(
-        "SELECT * FROM departments WHERE id = $1",
+        "SELECT id, name, slug, parent_id, path::TEXT as path, depth, created_at, updated_at FROM departments WHERE id = $1",
     )
     .bind(dept_id)
     .fetch_optional(&state.pool)

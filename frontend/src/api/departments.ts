@@ -97,7 +97,7 @@ export function useAddDepartmentMember() {
     }) =>
       apiFetch<void>(`/api/departments/${departmentId}/members`, {
         method: 'POST',
-        body: JSON.stringify({ user_id, role }),
+        body: JSON.stringify({ user_id, role_in_department: role }),
       }),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({

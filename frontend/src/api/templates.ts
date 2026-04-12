@@ -1,19 +1,35 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from './client';
-import type { PaginatedResponse, Template, TemplateSnapshot } from '../types/api';
+import type { PaginatedResponse } from '../types/api';
+
+// Backend template schema (S-022)
+export interface TemplateDto {
+  id: string;
+  kind: string;
+  name: string;
+  description: string | null;
+  owner_id: string;
+  scope: string;
+  scope_ref_id: string | null;
+  auto_enroll_members: boolean;
+  payload: Record<string, unknown>;
+  payload_version: number;
+  created_at: string;
+  updated_at: string;
+}
 
 export function useTemplates() {
   return useQuery({
     queryKey: ['templates'],
     queryFn: () =>
-      apiFetch<PaginatedResponse<Template>>('/api/templates?limit=100'),
+      apiFetch<PaginatedResponse<TemplateDto>>('/api/templates?limit=100'),
   });
 }
 
 export function useTemplate(id: string) {
   return useQuery({
     queryKey: ['template', id],
-    queryFn: () => apiFetch<Template>(`/api/templates/${id}`),
+    queryFn: () => apiFetch<TemplateDto>(`/api/templates/${id}`),
     enabled: !!id,
   });
 }
@@ -22,12 +38,14 @@ export function useCreateTemplate() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: {
-      title: string;
+      kind: string;
+      name: string;
       description?: string;
-      department_ids?: string[];
-      snapshot: TemplateSnapshot;
+      scope: string;
+      scope_ref_id?: string;
+      payload: Record<string, unknown>;
     }) =>
-      apiFetch<Template>('/api/templates', {
+      apiFetch<TemplateDto>('/api/templates', {
         method: 'POST',
         body: JSON.stringify(body),
       }),
@@ -45,12 +63,11 @@ export function usePatchTemplate() {
       ...body
     }: {
       id: string;
-      title?: string;
+      name?: string;
       description?: string | null;
-      snapshot?: TemplateSnapshot;
-      version: number;
+      payload?: Record<string, unknown>;
     }) =>
-      apiFetch<Template>(`/api/templates/${id}`, {
+      apiFetch<TemplateDto>(`/api/templates/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(body),
       }),
