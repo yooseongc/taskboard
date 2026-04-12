@@ -204,7 +204,7 @@ export interface BoardMember {
 export interface DepartmentMember {
   user_id: string;
   department_id: string;
-  role: string;
+  role_in_department: string;
   user_name: string;
   user_email: string;
   joined_at: string;

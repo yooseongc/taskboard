@@ -71,32 +71,37 @@ export default function Layout() {
           })}
         </nav>
         {/* User section */}
-        <div className="border-t border-gray-800 p-4">
-          <Link
-            to="/profile"
-            className="flex items-center gap-2 text-sm hover:text-white"
-          >
-            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">
-              {user?.name?.charAt(0)?.toUpperCase() ?? '?'}
-            </div>
-            <div className="truncate">
-              <div className="text-sm font-medium text-white truncate">
-                {user?.name ?? 'User'}
+        <div className="border-t border-gray-800 p-3">
+          <div className="flex items-center gap-2">
+            <Link
+              to="/profile"
+              className="flex items-center gap-2 flex-1 min-w-0 text-sm hover:text-white"
+            >
+              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                {user?.name?.charAt(0)?.toUpperCase() ?? '?'}
               </div>
-              <div className="text-xs text-gray-400 truncate">
-                {user?.email}
+              <div className="truncate">
+                <div className="text-sm font-medium text-white truncate">
+                  {user?.name ?? 'User'}
+                </div>
+                <div className="text-xs text-gray-400 truncate">
+                  {user?.email}
+                </div>
               </div>
-            </div>
-          </Link>
-          <button
-            onClick={() => {
-              logout();
-              window.location.href = getLogoutUrl();
-            }}
-            className="mt-2 w-full text-left text-xs text-gray-500 hover:text-gray-300"
-          >
-            Logout
-          </button>
+            </Link>
+            <button
+              onClick={() => {
+                logout();
+                window.location.href = getLogoutUrl();
+              }}
+              className="p-1.5 text-gray-500 hover:text-white hover:bg-gray-800 rounded flex-shrink-0"
+              title="Logout"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+            </button>
+          </div>
         </div>
       </aside>
 
