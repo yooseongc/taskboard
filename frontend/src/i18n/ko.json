@@ -218,6 +218,9 @@
     "fieldNamePrompt": "필드 이름을 입력하세요",
     "deleteConfirm": "\"{{name}}\" 필드를 삭제할까요?\n이 필드의 모든 값이 함께 제거됩니다.",
     "openSettings": "보드 설정",
+    "reorder": "순서 변경",
+    "moveUp": "위로",
+    "moveDown": "아래로",
     "type": {
       "text": "텍스트",
       "checkbox": "토글",

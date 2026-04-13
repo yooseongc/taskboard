@@ -1,6 +1,13 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  type DropResult,
+  type DraggableProvidedDragHandleProps,
+} from '@hello-pangea/dnd';
+import {
   useBoardCustomFields,
   useCreateCustomField,
   usePatchCustomField,
@@ -61,6 +68,7 @@ export default function BoardSettingsModal({ boardId, onClose }: BoardSettingsMo
   const { t } = useTranslation();
   const { data, isLoading } = useBoardCustomFields(boardId);
   const createField = useCreateCustomField(boardId);
+  const patchField = usePatchCustomField(boardId);
   const deleteField = useDeleteCustomField(boardId);
   const addToast = useToastStore((s) => s.addToast);
 
@@ -68,6 +76,29 @@ export default function BoardSettingsModal({ boardId, onClose }: BoardSettingsMo
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const fields = data?.items ?? [];
+
+  /**
+   * Persist a field reorder. We compute new positions as a clean integer
+   * sequence (i * 1024) and patch every field whose position actually moved.
+   * Using a coarse step keeps fractional inserts cheap if we ever add
+   * client-only optimistic ordering; the absolute number is otherwise
+   * meaningless beyond defining sort order.
+   */
+  const handleDragEnd = (result: DropResult) => {
+    if (!result.destination) return;
+    if (result.destination.index === result.source.index) return;
+
+    const next = [...fields];
+    const [moved] = next.splice(result.source.index, 1);
+    next.splice(result.destination.index, 0, moved);
+
+    next.forEach((field, idx) => {
+      const desiredPosition = idx * 1024;
+      if (field.position !== desiredPosition) {
+        patchField.mutate({ fieldId: field.id, position: desiredPosition });
+      }
+    });
+  };
 
   const handleAddField = (fieldType: string) => {
     const name = window.prompt(t('boardSettings.fieldNamePrompt'));
@@ -121,7 +152,7 @@ export default function BoardSettingsModal({ boardId, onClose }: BoardSettingsMo
             </h3>
           </div>
 
-          {/* Existing fields */}
+          {/* Existing fields — drag the ⋮⋮ handle on a row to reorder. */}
           {isLoading ? (
             <Spinner />
           ) : fields.length === 0 ? (
@@ -129,20 +160,43 @@ export default function BoardSettingsModal({ boardId, onClose }: BoardSettingsMo
               {t('boardSettings.noFields')}
             </p>
           ) : (
-            <ul className="space-y-2 mb-4">
-              {fields.map((field) => (
-                <li key={field.id}>
-                  <FieldRow
-                    boardId={boardId}
-                    field={field}
-                    isEditing={editingId === field.id}
-                    onStartEdit={() => setEditingId(field.id)}
-                    onStopEdit={() => setEditingId(null)}
-                    onDelete={() => handleDelete(field)}
-                  />
-                </li>
-              ))}
-            </ul>
+            <DragDropContext onDragEnd={handleDragEnd}>
+              <Droppable droppableId="fields">
+                {(provided) => (
+                  <ul
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                    className="space-y-2 mb-4"
+                  >
+                    {fields.map((field, index) => (
+                      <Draggable key={field.id} draggableId={field.id} index={index}>
+                        {(dragProvided, dragSnapshot) => (
+                          <li
+                            ref={dragProvided.innerRef}
+                            {...dragProvided.draggableProps}
+                            style={{
+                              ...dragProvided.draggableProps.style,
+                              opacity: dragSnapshot.isDragging ? 0.85 : 1,
+                            }}
+                          >
+                            <FieldRow
+                              boardId={boardId}
+                              field={field}
+                              isEditing={editingId === field.id}
+                              onStartEdit={() => setEditingId(field.id)}
+                              onStopEdit={() => setEditingId(null)}
+                              onDelete={() => handleDelete(field)}
+                              dragHandleProps={dragProvided.dragHandleProps}
+                            />
+                          </li>
+                        )}
+                      </Draggable>
+                    ))}
+                    {provided.placeholder}
+                  </ul>
+                )}
+              </Droppable>
+            </DragDropContext>
           )}
 
           {/* Add field — primary types */}
@@ -213,6 +267,7 @@ function FieldRow({
   onStartEdit,
   onStopEdit,
   onDelete,
+  dragHandleProps,
 }: {
   boardId: string;
   field: CustomField;
@@ -220,6 +275,7 @@ function FieldRow({
   onStartEdit: () => void;
   onStopEdit: () => void;
   onDelete: () => void;
+  dragHandleProps: DraggableProvidedDragHandleProps | null | undefined;
 }) {
   const { t } = useTranslation();
   const patchField = usePatchCustomField(boardId);
@@ -259,6 +315,20 @@ function FieldRow({
     setOptions(options.map((o, i) => (i === idx ? { ...o, ...patch } : o)));
   };
 
+  /**
+   * Move an option one slot up or down. Using ↑↓ buttons rather than a
+   * nested DragDropContext keeps the BoardSettingsModal's outer field-level
+   * dnd context free of cross-component droppable plumbing — option lists
+   * are short (typically 2–8 entries) so adjacent-swap is fine in practice.
+   */
+  const handleMoveOption = (idx: number, direction: -1 | 1) => {
+    const target = idx + direction;
+    if (target < 0 || target >= options.length) return;
+    const next = [...options];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setOptions(next);
+  };
+
   if (!isEditing) {
     return (
       <div
@@ -268,6 +338,18 @@ function FieldRow({
           border: '1px solid var(--color-border)',
         }}
       >
+        {/* Drag handle — react-dnd attaches mouse/touch listeners through
+            the spread props. Visually a vertical 6-dot grip; the cursor
+            switches to grab on hover. */}
+        <span
+          {...(dragHandleProps ?? {})}
+          aria-label={t('boardSettings.reorder')}
+          title={t('boardSettings.reorder')}
+          className="cursor-grab active:cursor-grabbing select-none px-1"
+          style={{ color: 'var(--color-text-muted)' }}
+        >
+          ⋮⋮
+        </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium truncate"
@@ -334,6 +416,30 @@ function FieldRow({
           </p>
           {options.map((opt, idx) => (
             <div key={idx} className="flex items-center gap-2">
+              <div className="flex flex-col gap-0">
+                <button
+                  type="button"
+                  onClick={() => handleMoveOption(idx, -1)}
+                  disabled={idx === 0}
+                  aria-label={t('boardSettings.moveUp')}
+                  title={t('boardSettings.moveUp')}
+                  className="text-[10px] leading-none px-0.5 disabled:opacity-30"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  ▲
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleMoveOption(idx, 1)}
+                  disabled={idx === options.length - 1}
+                  aria-label={t('boardSettings.moveDown')}
+                  title={t('boardSettings.moveDown')}
+                  className="text-[10px] leading-none px-0.5 disabled:opacity-30"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  ▼
+                </button>
+              </div>
               <input
                 className="flex-1 text-xs rounded px-2 py-1 outline-none"
                 style={{

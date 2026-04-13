@@ -218,6 +218,9 @@
     "fieldNamePrompt": "Enter field name",
     "deleteConfirm": "Delete the \"{{name}}\" field?\nAll values for this field will also be removed.",
     "openSettings": "Board settings",
+    "reorder": "Reorder",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
     "type": {
       "text": "Text",
       "checkbox": "Toggle",
