@@ -50,6 +50,7 @@
   "task": {
     "summary": "Summary",
     "summaryPlaceholder": "One-line summary (optional)",
+    "column": "Column",
     "description": "Description",
     "descPlaceholder": "Click to add description (Markdown supported)...",
     "descEditPlaceholder": "Write in Markdown...",
@@ -170,6 +171,15 @@
   },
   "tableView": {
     "searchPlaceholder": "Search tasks...",
+    "addFilter": "Add filter",
+    "clearFilters": "Clear filters",
+    "op": {
+      "contains": "contains",
+      "equals": "is",
+      "empty": "is empty",
+      "is_true": "is true",
+      "is_false": "is false"
+    },
     "allStatuses": "All statuses",
     "allPriorities": "All priorities",
     "statusOpen": "Open",
@@ -196,6 +206,27 @@
     "colInfo": "Info",
     "noTasks": "No tasks found.",
     "checklistProgress": "Checklist progress"
+  },
+  "boardSettings": {
+    "title": "Board Settings",
+    "fields": "Custom Fields",
+    "noFields": "No fields defined.",
+    "addField": "Add field",
+    "advanced": "Advanced types",
+    "options": "Options",
+    "addOption": "Add option",
+    "fieldNamePrompt": "Enter field name",
+    "deleteConfirm": "Delete the \"{{name}}\" field?\nAll values for this field will also be removed.",
+    "openSettings": "Board settings",
+    "type": {
+      "text": "Text",
+      "checkbox": "Toggle",
+      "select": "Select",
+      "multi_select": "Multi-select",
+      "date": "Date",
+      "number": "Number",
+      "url": "URL"
+    }
   },
   "templatePreview": {
     "title": "{{name}} preview",

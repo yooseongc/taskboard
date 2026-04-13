@@ -19,6 +19,53 @@ use crate::infra::uuid7;
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// Seed the Status and Priority built-in custom select fields for a newly
+/// created board. Option payload mirrors migration 0010 exactly so
+/// post-creation boards are indistinguishable from pre-migration ones that
+/// were seeded by the SQL script.
+///
+/// Runs inside the caller's transaction so a failure rolls back board
+/// creation as a whole.
+async fn seed_status_priority_fields(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    board_id: Uuid,
+) -> Result<(), AppError> {
+    let status_options = serde_json::json!([
+        {"label": "Open",        "color": "info"},
+        {"label": "In Progress", "color": "warning"},
+        {"label": "Done",        "color": "success"},
+        {"label": "Archived",    "color": "neutral"}
+    ]);
+    let priority_options = serde_json::json!([
+        {"label": "Urgent", "color": "critical"},
+        {"label": "High",   "color": "orange"},
+        {"label": "Medium", "color": "warning"},
+        {"label": "Low",    "color": "success"}
+    ]);
+
+    for (name, options, position) in [
+        ("Status", status_options, 0.0_f64),
+        ("Priority", priority_options, 1.0_f64),
+    ] {
+        sqlx::query(
+            r#"
+            INSERT INTO board_custom_fields (id, board_id, name, field_type, options, position, required)
+            VALUES ($1, $2, $3, 'select', $4, $5, false)
+            ON CONFLICT (board_id, name) DO NOTHING
+            "#,
+        )
+        .bind(uuid7::now_v7())
+        .bind(board_id)
+        .bind(name)
+        .bind(options)
+        .bind(position)
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    Ok(())
+}
+
 fn validate_board_role(role: &str) -> Result<(), AppError> {
     match role {
         "BoardAdmin" | "BoardMember" | "BoardViewer" => Ok(()),
@@ -147,6 +194,12 @@ pub async fn create_board(
     .bind(board_id)
     .execute(&mut *tx)
     .await?;
+
+    // Seed built-in Status/Priority custom fields so new boards look exactly
+    // like existing ones post-migration-0010. Option `color` values match the
+    // 8-family tag palette tokens (see theme/constants.ts) so `tagClass()`
+    // can render them directly without a mapping layer.
+    seed_status_priority_fields(&mut tx, board_id).await?;
 
     // Activity log
     insert_activity(

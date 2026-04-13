@@ -140,6 +140,38 @@ pub async fn delete_custom_field(
 }
 
 // ---------------------------------------------------------------------------
+// GET /api/boards/:board_id/field-values — bulk read of every task's
+// custom-field values for an entire board.
+// ---------------------------------------------------------------------------
+//
+// Used by TableView's filter builder to evaluate filters client-side without
+// firing one request per task. Authorized by Board Read; the result already
+// includes only tasks the user can see (joins through `tasks` which itself
+// honors deletion/board scoping).
+
+pub async fn list_board_field_values(
+    State(state): State<AppState>,
+    user: AuthnUser,
+    Path(board_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    check_board_permission(&state.pool, &user, board_id, Action::Read, ResourceType::Board).await?;
+
+    let rows = sqlx::query_as::<_, TaskFieldValueRow>(
+        r#"
+        SELECT tfv.*
+        FROM task_field_values tfv
+        JOIN tasks t ON t.id = tfv.task_id
+        WHERE t.board_id = $1 AND t.deleted_at IS NULL
+        "#,
+    )
+    .bind(board_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    Ok(Json(serde_json::json!({ "items": rows })))
+}
+
+// ---------------------------------------------------------------------------
 // GET /api/tasks/:task_id/fields — get all field values for a task
 // ---------------------------------------------------------------------------
 

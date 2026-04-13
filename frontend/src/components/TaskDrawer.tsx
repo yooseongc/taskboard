@@ -6,6 +6,7 @@ import {
   useTaskComments,
   useTaskChecklists,
   usePatchTask,
+  useMoveTask,
   useCreateComment,
   useCreateChecklist,
   useAddChecklistItem,
@@ -15,7 +16,7 @@ import {
   useAddLabel,
   useRemoveLabel,
 } from '../api/tasks';
-import { useBoardLabels, useCreateBoardLabel } from '../api/boards';
+import { useBoardColumns, useBoardLabels, useCreateBoardLabel } from '../api/boards';
 import { useBoardCustomFields, useTaskFieldValues, useSetTaskFieldValue } from '../api/customFields';
 import { useUsers } from '../api/users';
 import { useToastStore } from '../stores/toastStore';
@@ -41,8 +42,10 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
   const { data: commentsData } = useTaskComments(taskId);
   const { data: checklistsData } = useTaskChecklists(taskId);
   const { data: labelsData } = useBoardLabels(boardId);
+  const { data: columnsData } = useBoardColumns(boardId);
   const { data: usersData } = useUsers();
   const patchTask = usePatchTask(boardId);
+  const moveTask = useMoveTask(boardId);
   const createComment = useCreateComment(taskId);
   const createChecklist = useCreateChecklist(taskId);
   const addChecklistItem = useAddChecklistItem(taskId);
@@ -80,6 +83,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
   const comments = commentsData?.items ?? [];
   const checklists = checklistsData?.items ?? [];
   const boardLabels = labelsData?.items ?? [];
+  const boardColumns = columnsData?.items ?? [];
   const allUsers = usersData?.items ?? [];
   const taskLabels = task?.labels ?? [];
   const taskAssignees = task?.assignees ?? [];
@@ -364,6 +368,35 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
 
           {/* Right sidebar — properties */}
           <div className="w-full md:w-48 md:flex-shrink-0 space-y-4 pt-1 md:border-l-0 border-t md:border-t-0 pt-4 md:pt-1" style={{ borderColor: 'var(--color-border)' }}>
+            {/* Column — moving between columns goes through the dedicated
+                move endpoint (not PATCH /tasks/:id), since patch_task rejects
+                column_id/position changes with ColumnMovNotAllowed. Position
+                0 drops the card at the top of the target column; users can
+                then drag to reorder within the column. */}
+            <Property label={t('task.column')}>
+              <select
+                value={task.column_id}
+                onChange={(e) => {
+                  const nextColumnId = e.target.value;
+                  if (nextColumnId === task.column_id) return;
+                  moveTask.mutate(
+                    { taskId, column_id: nextColumnId, position: 0 },
+                    { onError: () => addToast('error', t('common.saveFailed')) },
+                  );
+                }}
+                className="w-full text-sm rounded px-2 py-1"
+                style={{
+                  backgroundColor: 'var(--color-surface)',
+                  border: '1px solid var(--color-border)',
+                  color: 'var(--color-text)',
+                }}
+              >
+                {boardColumns.map((c) => (
+                  <option key={c.id} value={c.id}>{c.title}</option>
+                ))}
+              </select>
+            </Property>
+
             {/* Status */}
             <Property label={t('task.status')}>
               <select

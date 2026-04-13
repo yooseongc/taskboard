@@ -1,17 +1,39 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TaskDto, BoardColumn, Priority, TaskStatus } from '../types/api';
 import Badge from './ui/Badge';
 import Button from './ui/Button';
 import { useTagTheme } from '../theme/constants';
+import {
+  useBoardCustomFields,
+  useBoardFieldValues,
+  type CustomField,
+  type TaskFieldValue,
+} from '../api/customFields';
 
 interface TableViewProps {
+  boardId: string;
   tasks: TaskDto[];
   columns: BoardColumn[];
   onTaskClick: (taskId: string) => void;
   onCreateTask?: (title: string, columnId: string) => void;
   onBulkMove?: (taskIds: string[], columnId: string) => void;
   onBulkDelete?: (taskIds: string[]) => void;
+}
+
+/**
+ * One filter the user has added to the toolbar. Operators differ by field
+ * type (text supports `contains`/`equals`/`empty`; select supports
+ * `equals`/`empty`; checkbox supports `is_true`/`is_false`/`empty`).
+ *
+ * `value` is stored as a string for select labels and text needles, ignored
+ * for empty/is_true/is_false.
+ */
+interface FilterChip {
+  id: string; // local UUID for React key
+  fieldId: string;
+  operator: string;
+  value: string;
 }
 
 type SortKey = 'title' | 'priority' | 'status' | 'due_date' | 'column';
@@ -24,7 +46,51 @@ const priorityOrder: Record<Priority, number> = {
   low: 3,
 };
 
+/**
+ * Evaluate a single FilterChip against one task's value for that field.
+ * Returns true if the task PASSES (stays in the filtered set).
+ *
+ * Operator semantics:
+ *   - text:     contains (substring, case-insensitive) / equals / empty
+ *   - select:   equals (label match) / empty
+ *   - checkbox: is_true / is_false / empty
+ *   - date/number/url: contains/equals as text fallback (good enough for v1)
+ *
+ * Unset value (undefined/null) only matches `empty`; all other operators
+ * treat it as a fail so partial data doesn't accidentally satisfy filters.
+ */
+function evaluateFilter(
+  chip: FilterChip,
+  field: CustomField,
+  value: unknown,
+): boolean {
+  if (chip.operator === 'empty') {
+    return value === undefined || value === null || value === '';
+  }
+  if (value === undefined || value === null) return false;
+
+  if (field.field_type === 'checkbox') {
+    if (chip.operator === 'is_true') return value === true;
+    if (chip.operator === 'is_false') return value === false;
+    return false;
+  }
+
+  const stringVal = String(value).toLowerCase();
+  const needle = chip.value.trim().toLowerCase();
+  if (chip.operator === 'equals') return stringVal === needle;
+  if (chip.operator === 'contains') return stringVal.includes(needle);
+  return false;
+}
+
+/** Operators offered for a given field type. Order matters — first is default. */
+function operatorsFor(fieldType: string): string[] {
+  if (fieldType === 'checkbox') return ['is_true', 'is_false', 'empty'];
+  if (fieldType === 'select' || fieldType === 'multi_select') return ['equals', 'empty'];
+  return ['contains', 'equals', 'empty'];
+}
+
 export default function TableView({
+  boardId,
   tasks,
   columns,
   onTaskClick,
@@ -35,14 +101,34 @@ export default function TableView({
   const [sortKey, setSortKey] = useState<SortKey>('title');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('');
-  const [filterPriority, setFilterPriority] = useState<string>('');
+  const [filters, setFilters] = useState<FilterChip[]>([]);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newColumnId, setNewColumnId] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const { t } = useTranslation();
   const { priorityClass, statusClass } = useTagTheme();
+
+  // Custom fields and their values for the entire board — feeds the filter
+  // builder. Field defs let us populate the operator/value pickers; values
+  // let us evaluate filters client-side without N task-level requests.
+  const { data: fieldsData } = useBoardCustomFields(boardId);
+  const { data: fieldValuesData } = useBoardFieldValues(boardId);
+  const customFields = fieldsData?.items ?? [];
+  // Index field values by task_id → field_id → value for O(1) lookup during
+  // the filter pass below.
+  const valuesByTaskField = useMemo(() => {
+    const m = new Map<string, Map<string, unknown>>();
+    for (const v of fieldValuesData?.items ?? []) {
+      let inner = m.get(v.task_id);
+      if (!inner) {
+        inner = new Map();
+        m.set(v.task_id, inner);
+      }
+      inner.set(v.field_id, v.value);
+    }
+    return m;
+  }, [fieldValuesData]);
 
   const columnMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -64,14 +150,18 @@ export default function TableView({
           (t.summary ?? '').toLowerCase().includes(q),
       );
     }
-    if (filterStatus) {
-      list = list.filter((t) => t.status === filterStatus);
-    }
-    if (filterPriority) {
-      list = list.filter((t) => t.priority === filterPriority);
+    // Custom filter chips. Each chip applied as AND. Skip incomplete chips
+    // (no field selected) so the user can edit a chip without flickering.
+    for (const chip of filters) {
+      if (!chip.fieldId) continue;
+      const field = customFields.find((f) => f.id === chip.fieldId);
+      if (!field) continue;
+      list = list.filter((task) =>
+        evaluateFilter(chip, field, valuesByTaskField.get(task.id)?.get(field.id)),
+      );
     }
     return list;
-  }, [tasks, search, filterStatus, filterPriority]);
+  }, [tasks, search, filters, customFields, valuesByTaskField]);
 
   const sorted = useMemo(() => {
     const list = [...filtered];
@@ -136,7 +226,7 @@ export default function TableView({
   return (
     <div className="p-4">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-3">
         <input
           type="text"
           placeholder={t('tableView.searchPlaceholder')}
@@ -145,30 +235,26 @@ export default function TableView({
           onChange={(e) => setSearch(e.target.value)}
           style={inputStyle}
         />
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="rounded-lg px-2 py-1.5 text-sm"
-          style={inputStyle}
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => {
+            const firstField = customFields[0];
+            if (!firstField) return;
+            setFilters([
+              ...filters,
+              {
+                id: crypto.randomUUID(),
+                fieldId: firstField.id,
+                operator: operatorsFor(firstField.field_type)[0],
+                value: '',
+              },
+            ]);
+          }}
+          disabled={customFields.length === 0}
         >
-          <option value="">{t('tableView.allStatuses')}</option>
-          <option value="open">{t('tableView.statusOpen')}</option>
-          <option value="in_progress">{t('tableView.statusInProgress')}</option>
-          <option value="done">{t('tableView.statusDone')}</option>
-          <option value="archived">{t('tableView.statusArchived')}</option>
-        </select>
-        <select
-          value={filterPriority}
-          onChange={(e) => setFilterPriority(e.target.value)}
-          className="rounded-lg px-2 py-1.5 text-sm"
-          style={inputStyle}
-        >
-          <option value="">{t('tableView.allPriorities')}</option>
-          <option value="urgent">{t('tableView.priorityUrgent')}</option>
-          <option value="high">{t('tableView.priorityHigh')}</option>
-          <option value="medium">{t('tableView.priorityMedium')}</option>
-          <option value="low">{t('tableView.priorityLow')}</option>
-        </select>
+          + {t('tableView.addFilter')}
+        </Button>
         <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
           {t('tableView.count', { count: sorted.length })}
         </span>
@@ -178,6 +264,33 @@ export default function TableView({
           </Button>
         )}
       </div>
+
+      {/* Active filter chips. Each chip is editable in place — change the
+          field, operator, or value and the table re-filters live. */}
+      {filters.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          {filters.map((chip) => (
+            <FilterChipEditor
+              key={chip.id}
+              chip={chip}
+              fields={customFields}
+              onChange={(next) =>
+                setFilters((prev) => prev.map((c) => (c.id === chip.id ? next : c)))
+              }
+              onRemove={() =>
+                setFilters((prev) => prev.filter((c) => c.id !== chip.id))
+              }
+            />
+          ))}
+          <button
+            onClick={() => setFilters([])}
+            className="text-xs hover:underline"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            {t('tableView.clearFilters')}
+          </button>
+        </div>
+      )}
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
@@ -460,6 +573,116 @@ export default function TableView({
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Inline editor for one FilterChip. Three pickers laid out horizontally:
+ * field → operator → value. The value control morphs based on field type:
+ *
+ *   • select / multi_select → dropdown of option labels
+ *   • checkbox → no value (true/false is in the operator)
+ *   • text / number / url / date → free text input
+ *
+ * All edits flow through `onChange` so the parent's state is the single
+ * source of truth — chip remains controlled.
+ */
+function FilterChipEditor({
+  chip,
+  fields,
+  onChange,
+  onRemove,
+}: {
+  chip: FilterChip;
+  fields: CustomField[];
+  onChange: (next: FilterChip) => void;
+  onRemove: () => void;
+}) {
+  const { t } = useTranslation();
+  const field = fields.find((f) => f.id === chip.fieldId);
+  const operators = field ? operatorsFor(field.field_type) : [];
+  const showValueInput =
+    field?.field_type !== 'checkbox' && chip.operator !== 'empty';
+  const isSelect =
+    field?.field_type === 'select' || field?.field_type === 'multi_select';
+
+  const inputStyle = {
+    backgroundColor: 'var(--color-surface)',
+    border: '1px solid var(--color-border)',
+    color: 'var(--color-text)',
+  } as const;
+
+  return (
+    <div
+      className="inline-flex items-center gap-1 rounded-lg p-1"
+      style={{
+        backgroundColor: 'var(--color-surface-hover)',
+        border: '1px solid var(--color-border)',
+      }}
+    >
+      <select
+        value={chip.fieldId}
+        onChange={(e) => {
+          const nextField = fields.find((f) => f.id === e.target.value);
+          onChange({
+            ...chip,
+            fieldId: e.target.value,
+            operator: nextField ? operatorsFor(nextField.field_type)[0] : 'equals',
+            value: '',
+          });
+        }}
+        className="text-xs rounded px-1.5 py-0.5"
+        style={inputStyle}
+      >
+        {fields.map((f) => (
+          <option key={f.id} value={f.id}>{f.name}</option>
+        ))}
+      </select>
+      <select
+        value={chip.operator}
+        onChange={(e) => onChange({ ...chip, operator: e.target.value, value: '' })}
+        className="text-xs rounded px-1.5 py-0.5"
+        style={inputStyle}
+      >
+        {operators.map((op) => (
+          <option key={op} value={op}>
+            {t(`tableView.op.${op}`)}
+          </option>
+        ))}
+      </select>
+      {showValueInput && (
+        isSelect ? (
+          <select
+            value={chip.value}
+            onChange={(e) => onChange({ ...chip, value: e.target.value })}
+            className="text-xs rounded px-1.5 py-0.5"
+            style={inputStyle}
+          >
+            <option value="">--</option>
+            {(field?.options ?? []).map((opt) => (
+              <option key={opt.label} value={opt.label}>{opt.label}</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            type="text"
+            value={chip.value}
+            onChange={(e) => onChange({ ...chip, value: e.target.value })}
+            className="text-xs rounded px-1.5 py-0.5 w-24 outline-none"
+            style={inputStyle}
+            placeholder="…"
+          />
+        )
+      )}
+      <button
+        onClick={onRemove}
+        aria-label={t('common.delete')}
+        className="text-xs px-1 hover:opacity-70"
+        style={{ color: 'var(--color-text-muted)' }}
+      >
+        ✕
+      </button>
     </div>
   );
 }

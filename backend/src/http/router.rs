@@ -128,6 +128,10 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/api/boards/{id}/fields/{field_id}",
             patch(collab::patch_custom_field).delete(collab::delete_custom_field),
+        )
+        .route(
+            "/api/boards/{id}/field-values",
+            get(collab::list_board_field_values),
         );
 
     let task_routes = Router::new()

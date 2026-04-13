@@ -47,6 +47,29 @@ export function useCreateCustomField(boardId: string) {
   });
 }
 
+export function usePatchCustomField(boardId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      fieldId,
+      ...body
+    }: {
+      fieldId: string;
+      name?: string;
+      options?: { label: string; color?: string }[];
+      position?: number;
+      required?: boolean;
+    }) =>
+      apiFetch<CustomField>(`/api/boards/${boardId}/fields/${fieldId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['board', boardId, 'fields'] });
+    },
+  });
+}
+
 export function useDeleteCustomField(boardId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -57,6 +80,20 @@ export function useDeleteCustomField(boardId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['board', boardId, 'fields'] });
     },
+  });
+}
+
+/**
+ * Bulk fetch every task's custom-field values for a board in one round-trip.
+ * Used by TableView's filter builder so we can evaluate filter expressions
+ * client-side without N per-task requests.
+ */
+export function useBoardFieldValues(boardId: string) {
+  return useQuery({
+    queryKey: ['board', boardId, 'field-values'],
+    queryFn: () =>
+      apiFetch<{ items: TaskFieldValue[] }>(`/api/boards/${boardId}/field-values`),
+    enabled: !!boardId,
   });
 }
 
