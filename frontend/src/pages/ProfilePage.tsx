@@ -17,7 +17,13 @@ export default function ProfilePage() {
       <div className="surface-raised p-6 space-y-6">
         {/* Avatar + Name */}
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center text-white text-2xl font-bold">
+          <div
+            className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold"
+            style={{
+              backgroundColor: 'var(--color-primary)',
+              color: 'var(--color-text-inverse)',
+            }}
+          >
             {me.name.charAt(0).toUpperCase()}
           </div>
           <div>
@@ -44,13 +50,7 @@ export default function ProfilePage() {
             <span className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">
               {t('profile.status')}
             </span>
-            <Badge
-              className={
-                me.active
-                  ? 'bg-green-100 text-green-700'
-                  : 'bg-red-100 text-red-700'
-              }
-            >
+            <Badge variant={me.active ? 'success' : 'neutral'}>
               {me.active ? t('directory.active') : t('directory.inactive')}
             </Badge>
           </div>

@@ -392,6 +392,15 @@ pub async fn create_task(
         }
     }
 
+    // Validate summary length — short one-liner shown on cards
+    if let Some(ref s) = body.summary {
+        if s.chars().count() > 256 {
+            return Err(AppError::InvalidInput(
+                "summary must not exceed 256 characters".into(),
+            ));
+        }
+    }
+
     // Validate priority if provided
     if let Some(ref p) = body.priority {
         match p.as_str() {
@@ -453,8 +462,8 @@ pub async fn create_task(
 
     let row = sqlx::query_as::<_, TaskRow>(
         r#"
-        INSERT INTO tasks (id, board_id, column_id, position, title, description, priority, status, start_date, due_date, created_by, version)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0)
+        INSERT INTO tasks (id, board_id, column_id, position, title, summary, description, priority, status, start_date, due_date, created_by, version)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 0)
         RETURNING *
         "#,
     )
@@ -463,6 +472,7 @@ pub async fn create_task(
     .bind(body.column_id)
     .bind(position)
     .bind(&body.title)
+    .bind(&body.summary)
     .bind(&body.description)
     .bind(priority)
     .bind(status)
@@ -491,6 +501,7 @@ pub async fn create_task(
         "column_id": row.column_id,
         "position": row.position,
         "title": row.title,
+        "summary": row.summary,
         "description": row.description,
         "priority": row.priority,
         "status": row.status,
@@ -575,6 +586,7 @@ pub async fn get_task(
         column_id: task.column_id,
         position: task.position,
         title: task.title,
+        summary: task.summary,
         description: task.description,
         priority: task.priority,
         status: task.status,
@@ -637,6 +649,15 @@ pub async fn patch_task(
         }
     }
 
+    // Validate summary if provided
+    if let Some(ref s) = body.summary {
+        if s.chars().count() > 256 {
+            return Err(AppError::InvalidInput(
+                "summary must not exceed 256 characters".into(),
+            ));
+        }
+    }
+
     // Validate priority if provided
     if let Some(ref p) = body.priority {
         match p.as_str() {
@@ -668,6 +689,9 @@ pub async fn patch_task(
     if body.title.is_some() {
         changed_fields.push("title");
     }
+    if body.summary.is_some() {
+        changed_fields.push("summary");
+    }
     if body.description.is_some() {
         changed_fields.push("description");
     }
@@ -696,17 +720,19 @@ pub async fn patch_task(
         r#"
         UPDATE tasks
         SET title = COALESCE($2, title),
-            description = COALESCE($3, description),
-            priority = COALESCE($4, priority),
-            status = COALESCE($5, status),
+            summary = COALESCE($3, summary),
+            description = COALESCE($4, description),
+            priority = COALESCE($5, priority),
+            status = COALESCE($6, status),
             version = version + 1,
             updated_at = now()
-        WHERE id = $1 AND version = $6 AND deleted_at IS NULL
+        WHERE id = $1 AND version = $7 AND deleted_at IS NULL
         RETURNING *
         "#,
     )
     .bind(id)
     .bind(&body.title)
+    .bind(&body.summary)
     .bind(&body.description)
     .bind(&body.priority)
     .bind(&body.status)
@@ -782,6 +808,7 @@ pub async fn patch_task(
         "column_id": row.column_id,
         "position": row.position,
         "title": row.title,
+        "summary": row.summary,
         "description": row.description,
         "priority": row.priority,
         "status": row.status,
@@ -1023,6 +1050,7 @@ pub async fn move_task(
         "column_id": row.column_id,
         "position": row.position,
         "title": row.title,
+        "summary": row.summary,
         "description": row.description,
         "priority": row.priority,
         "status": row.status,
@@ -1109,6 +1137,40 @@ pub async fn create_board_label(
             "color": row.color,
         })),
     ))
+}
+
+// ---------------------------------------------------------------------------
+// S-019: GET /api/boards/:board_id/labels
+// ---------------------------------------------------------------------------
+
+pub async fn list_board_labels(
+    State(state): State<AppState>,
+    user: AuthnUser,
+    Path(board_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    // Authz: Board Read — anyone who can view the board can see its labels.
+    check_board_permission(&state.pool, &user, board_id, Action::Read, ResourceType::Board).await?;
+
+    let rows = sqlx::query_as::<_, BoardLabelRow>(
+        "SELECT id, board_id, name, color FROM labels WHERE board_id = $1 ORDER BY name",
+    )
+    .bind(board_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let items: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|r| {
+            serde_json::json!({
+                "id": r.id,
+                "board_id": r.board_id,
+                "name": r.name,
+                "color": r.color,
+            })
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({ "items": items })))
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   useTemplates,
   useCreateTemplate,
@@ -20,8 +21,10 @@ export default function TemplatesPage() {
   const { data, isLoading } = useTemplates();
   const deleteTemplate = useDeleteTemplate();
   const addToast = useToastStore((s) => s.addToast);
+  const { t } = useTranslation();
   const [showCreate, setShowCreate] = useState(false);
   const [useTemplateTarget, setUseTemplateTarget] = useState<TemplateDto | null>(null);
+  const [previewTarget, setPreviewTarget] = useState<TemplateDto | null>(null);
   const { canCreateTemplate, canCreateBoard } = usePermissions();
 
   const handleDelete = (id: string) => {
@@ -34,9 +37,11 @@ export default function TemplatesPage() {
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
       <div className="flex items-center justify-between mb-8">
-        <h1 className="text-2xl font-bold">Templates</h1>
+        <h1 className="text-2xl font-bold" style={{ color: 'var(--color-text)' }}>
+          {t('templates.title')}
+        </h1>
         {canCreateTemplate && (
-          <Button onClick={() => setShowCreate(true)}>+ New Template</Button>
+          <Button onClick={() => setShowCreate(true)}>{t('templates.newTemplate')}</Button>
         )}
       </div>
 
@@ -74,14 +79,24 @@ export default function TemplatesPage() {
                 </div>
               )}
 
-              <div className="flex gap-2 mt-auto pt-2 border-t border-gray-100">
+              <div
+                className="flex gap-2 mt-auto pt-2"
+                style={{ borderTop: '1px solid var(--color-border-light)' }}
+              >
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setPreviewTarget(tmpl)}
+                >
+                  {t('common.preview')}
+                </Button>
                 {canCreateBoard && (
                   <Button
                     variant="success"
                     size="sm"
                     onClick={() => setUseTemplateTarget(tmpl)}
                   >
-                    Use Template
+                    {t('templates.useTemplate')}
                   </Button>
                 )}
                 {canCreateTemplate && !isGlobal && (
@@ -90,12 +105,15 @@ export default function TemplatesPage() {
                     size="sm"
                     onClick={() => handleDelete(tmpl.id)}
                   >
-                    Delete
+                    {t('common.delete')}
                   </Button>
                 )}
                 {isGlobal && (
-                  <span className="text-xs text-[var(--color-text-muted)] self-center ml-auto">
-                    System template
+                  <span
+                    className="text-xs self-center ml-auto"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  >
+                    {t('templates.systemTemplate')}
                   </span>
                 )}
               </div>
@@ -111,11 +129,13 @@ export default function TemplatesPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                 </svg>
               }
-              title="템플릿이 없습니다"
-              description="템플릿은 반복되는 보드 구조를 한 번 만들어두고 재사용할 수 있게 해줍니다. 컬럼 구성과 기본 라벨을 저장해 새 보드에 적용하세요."
+              title={t('templates.emptyTitle')}
+              description={t('templates.emptyDesc')}
               action={
                 canCreateTemplate ? (
-                  <Button onClick={() => setShowCreate(true)}>첫 템플릿 만들기</Button>
+                  <Button onClick={() => setShowCreate(true)}>
+                    {t('templates.emptyAction')}
+                  </Button>
                 ) : undefined
               }
             />
@@ -133,8 +153,210 @@ export default function TemplatesPage() {
           onClose={() => setUseTemplateTarget(null)}
         />
       )}
+
+      {previewTarget && (
+        <TemplatePreviewModal
+          template={previewTarget}
+          onClose={() => setPreviewTarget(null)}
+          onUse={() => {
+            const target = previewTarget;
+            setPreviewTarget(null);
+            setUseTemplateTarget(target);
+          }}
+          canUse={canCreateBoard}
+        />
+      )}
     </div>
   );
+}
+
+// --- Template Preview Modal -------------------------------------------------
+//
+// Surfaces the structure embedded in `template.payload`:
+//   • columns: [{ title, position }, ...]
+//   • labels:  [{ name, color }, ...]
+//   • default_tasks: [{ title, ... }, ...]   (optional, free-form)
+//
+// Read-only — used so the user can confirm what they're about to instantiate
+// before committing to a real board.
+
+interface TemplateColumn { title: string; position?: number; }
+interface TemplateLabel { name: string; color: string; }
+interface TemplateDefaultTask { title: string; column?: string; priority?: string; }
+
+function TemplatePreviewModal({
+  template,
+  onClose,
+  onUse,
+  canUse,
+}: {
+  template: TemplateDto;
+  onClose: () => void;
+  onUse: () => void;
+  canUse: boolean;
+}) {
+  const { t } = useTranslation();
+  const payload = (template.payload ?? {}) as Record<string, unknown>;
+
+  const columns: TemplateColumn[] = Array.isArray(payload.columns)
+    ? (payload.columns as unknown[]).map((c) => {
+        if (typeof c === 'object' && c !== null && 'title' in c) {
+          return c as TemplateColumn;
+        }
+        return { title: String(c) };
+      })
+    : [];
+
+  const labels: TemplateLabel[] = Array.isArray(payload.labels)
+    ? (payload.labels as unknown[])
+        .filter((l): l is TemplateLabel =>
+          typeof l === 'object' && l !== null && 'name' in l && 'color' in l,
+        )
+    : [];
+
+  const defaultTasks: TemplateDefaultTask[] = Array.isArray(payload.default_tasks)
+    ? (payload.default_tasks as unknown[])
+        .filter((tk): tk is TemplateDefaultTask =>
+          typeof tk === 'object' && tk !== null && 'title' in tk,
+        )
+    : [];
+
+  return (
+    <Modal
+      title={t('templatePreview.title', { name: template.name })}
+      onClose={onClose}
+      width="max-w-2xl"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            {t('common.close')}
+          </Button>
+          {canUse && (
+            <Button onClick={onUse}>{t('templatePreview.useThis')}</Button>
+          )}
+        </>
+      }
+    >
+      <div className="space-y-6">
+        {template.description && (
+          <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+            {template.description}
+          </p>
+        )}
+
+        {/* Columns — rendered as mini Kanban headers */}
+        <section>
+          <h3
+            className="text-xs font-semibold uppercase tracking-wider mb-2"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            {t('templatePreview.columns', { count: columns.length })}
+          </h3>
+          {columns.length === 0 ? (
+            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+              {t('templatePreview.noColumns')}
+            </p>
+          ) : (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {columns.map((col, i) => (
+                <div
+                  key={i}
+                  className="flex-shrink-0 w-32 rounded-lg p-2 text-center text-xs font-medium"
+                  style={{
+                    backgroundColor: 'var(--color-surface-hover)',
+                    color: 'var(--color-text)',
+                    border: '1px solid var(--color-border)',
+                  }}
+                >
+                  {col.title}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Labels */}
+        <section>
+          <h3
+            className="text-xs font-semibold uppercase tracking-wider mb-2"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            {t('templatePreview.labels', { count: labels.length })}
+          </h3>
+          {labels.length === 0 ? (
+            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+              {t('templatePreview.noLabels')}
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {labels.map((l, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                  style={{
+                    backgroundColor: l.color,
+                    color: pickContrastText(l.color),
+                  }}
+                >
+                  {l.name}
+                </span>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Default tasks */}
+        <section>
+          <h3
+            className="text-xs font-semibold uppercase tracking-wider mb-2"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            {t('templatePreview.defaultTasks', { count: defaultTasks.length })}
+          </h3>
+          {defaultTasks.length === 0 ? (
+            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+              {t('templatePreview.noDefaultTasks')}
+            </p>
+          ) : (
+            <ul className="space-y-1.5">
+              {defaultTasks.map((task, i) => (
+                <li
+                  key={i}
+                  className="flex items-center gap-2 text-sm rounded px-2 py-1.5"
+                  style={{
+                    backgroundColor: 'var(--color-surface)',
+                    color: 'var(--color-text)',
+                    border: '1px solid var(--color-border)',
+                  }}
+                >
+                  <span className="flex-1 truncate">{task.title}</span>
+                  {task.column && (
+                    <Badge>{task.column}</Badge>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Pick black or white text for a given background hex so labels stay readable.
+ * Uses the YIQ luminance heuristic (cheap, good enough for preview chips).
+ */
+function pickContrastText(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return '#ffffff';
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16) & 0xff;
+  const g = (n >> 8) & 0xff;
+  const b = n & 0xff;
+  // YIQ formula
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+  return yiq >= 160 ? '#111827' : '#ffffff';
 }
 
 // --- Use Template Modal (with department selection) ---
@@ -146,6 +368,7 @@ function UseTemplateModal({
   template: TemplateDto;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [departmentId, setDepartmentId] = useState('');
   const [title, setTitle] = useState(`${template.name} Board`);
   const { data: depts } = useDepartments();
@@ -174,44 +397,60 @@ function UseTemplateModal({
 
   return (
     <Modal
-      title={`Create board from "${template.name}"`}
+      title={t('templates.createFrom', { name: template.name })}
       onClose={onClose}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             onClick={handleCreate}
             disabled={!title.trim() || !departmentId || createBoard.isPending}
           >
-            {createBoard.isPending ? 'Creating...' : 'Create Board'}
+            {createBoard.isPending ? t('boards.creating') : t('boards.createBoard')}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Board Title
+          <label
+            className="block text-sm font-medium mb-1"
+            style={{ color: 'var(--color-text)' }}
+          >
+            {t('boards.boardTitle')}
           </label>
           <input
             autoFocus
-            className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+            className="w-full rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+            style={{
+              backgroundColor: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              color: 'var(--color-text)',
+            }}
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Department *
+          <label
+            className="block text-sm font-medium mb-1"
+            style={{ color: 'var(--color-text)' }}
+          >
+            {t('boards.department')} *
           </label>
           <select
-            className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+            className="w-full rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
             value={departmentId}
             onChange={(e) => setDepartmentId(e.target.value)}
+            style={{
+              backgroundColor: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              color: 'var(--color-text)',
+            }}
           >
-            <option value="">Select department...</option>
+            <option value="">{t('boards.selectDept')}</option>
             {(depts?.items ?? []).map((d) => (
               <option key={d.id} value={d.id}>
                 {'\u00A0'.repeat(d.depth * 3)}{d.depth > 0 ? '└ ' : ''}{d.name}
@@ -219,8 +458,8 @@ function UseTemplateModal({
             ))}
           </select>
           {!departmentId && (
-            <p className="text-xs text-[var(--color-text-muted)] mt-1">
-              A department is required to create a board.
+            <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+              {t('boards.deptRequired')}
             </p>
           )}
         </div>
@@ -232,6 +471,7 @@ function UseTemplateModal({
 // --- Create Template Modal ---
 
 function CreateTemplateModal({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [columnsText, setColumnsText] = useState('To Do, In Progress, Done');
@@ -267,56 +507,66 @@ function CreateTemplateModal({ onClose }: { onClose: () => void }) {
     );
   };
 
+  const inputStyle = {
+    backgroundColor: 'var(--color-surface)',
+    border: '1px solid var(--color-border)',
+    color: 'var(--color-text)',
+  } as const;
+  const labelStyle = { color: 'var(--color-text)' } as const;
+
   return (
     <Modal
-      title="Create Template"
+      title={t('templates.createTitle')}
       onClose={onClose}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             onClick={handleCreate}
             disabled={!name.trim() || createTemplate.isPending}
           >
-            {createTemplate.isPending ? 'Creating...' : 'Create'}
+            {createTemplate.isPending ? t('boards.creating') : t('common.create')}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Name *
+          <label className="block text-sm font-medium mb-1" style={labelStyle}>
+            {t('templates.name')} *
           </label>
           <input
             autoFocus
-            className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            placeholder="Template name"
+            className="w-full rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
+            placeholder={t('templates.name')}
             value={name}
             onChange={(e) => setName(e.target.value)}
+            style={inputStyle}
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Description
+          <label className="block text-sm font-medium mb-1" style={labelStyle}>
+            {t('boards.description')}
           </label>
           <textarea
-            className="w-full border rounded-lg px-3 py-2 text-sm min-h-[60px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+            className="w-full rounded-lg px-3 py-2 text-sm min-h-[60px] outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+            style={inputStyle}
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Columns (comma-separated)
+          <label className="block text-sm font-medium mb-1" style={labelStyle}>
+            {t('templates.columns')}
           </label>
           <input
-            className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+            className="w-full rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
             value={columnsText}
             onChange={(e) => setColumnsText(e.target.value)}
             placeholder="To Do, In Progress, Done"
+            style={inputStyle}
           />
         </div>
       </div>

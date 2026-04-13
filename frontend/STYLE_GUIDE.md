@@ -107,7 +107,18 @@ Tailwind 기본 스케일을 따르되, 다음 규칙을 지킵니다:
 | `success` | 긍정 액션 (템플릿 사용 등) |
 
 ### Badge
-역할, 우선순위, 상태 표시에 사용. `theme/constants.ts`의 `priorityClass()`, `roleClass()` 함수로 색상 매핑.
+역할, 우선순위, 상태, 활성 여부 등 모든 인라인 태그는 `<Badge variant="…">` 한 곳으로 표준화되어 있습니다. 색상 팔레트는 아래 **Tag Palette** 절을 참조하세요. 도메인-↔-variant 매핑은 `theme/constants.ts`에서 일원화됩니다.
+
+```tsx
+<Badge variant="success">Active</Badge>
+<Badge variant="warning">In Progress</Badge>
+<Badge variant="critical">Urgent</Badge>
+
+// 도메인 래퍼 (내부에서 tagClass로 resolve)
+<Badge className={priorityClass(task.priority)}>{task.priority}</Badge>
+<Badge className={statusClass(task.status)}>{task.status}</Badge>
+<Badge className={roleClass(user.role)}>{user.role}</Badge>
+```
 
 ### Modal
 `ui/Modal.tsx` — title, body, footer 구조. backdrop은 `bg-black/30`.
@@ -117,6 +128,56 @@ Tailwind 기본 스케일을 따르되, 다음 규칙을 지킵니다:
 
 ### Input / Textarea / Select
 `ui/Input.tsx` — 토큰 기반 스타일. label, hint 지원.
+
+---
+
+## Tag Palette
+
+모든 인라인 태그(Badge)는 **8개의 semantic family** 중 하나로 분류됩니다. 값은 CSS custom property로 정의되고 `.dark` 오버라이드를 통해 자동으로 전환됩니다. 파일별로 Tailwind `dark:` 접두사를 반복하지 않고, `var(--tag-<family>-{bg,text})` 한 쌍만 참조합니다.
+
+**Soft-chip 패턴**:
+- Light: `bg = 100-tier` (연한 틴트) + `text = 700-tier` (채도 높은 톤)
+- Dark: `bg = 900-tier` (어두운 톤) + `text = 200-tier` (밝은 톤)
+- 모든 조합 WCAG AA (≥ 4.5:1 명도비) 이상
+
+### Family matrix
+
+| Family | 용도 | Light bg / text | Dark bg / text |
+|---|---|---|---|
+| `neutral` | 기본, 보관됨, 기본 부서/카테고리 | `gray-100` / `gray-700` | `gray-700` / `gray-300` |
+| `info` | 정보, 열림 상태, 팀 어드민 | `blue-100` / `blue-700` | `blue-900` / `blue-200` |
+| `success` | 완료, 활성, 낮은 우선순위 | `green-100` / `green-700` | `green-900` / `green-200` |
+| `warning` | 진행중, 보통 우선순위, 주의 | `amber-100` / `amber-700` | `amber-900` / `amber-200` |
+| `orange` | 높은 우선순위 | `orange-100` / `orange-700` | `orange-900` / `orange-200` |
+| `danger` | 위험, 에러 | `red-100` / `red-700` | `red-900` / `red-200` |
+| `critical` | 긴급, 최고관리자 | `red-200` / `red-800` | `red-800` / `red-100` |
+| `accent` | 특수 역할(부서 관리자) | `violet-100` / `violet-700` | `violet-900` / `violet-200` |
+
+### Domain mapping
+
+| 도메인 값 | Variant | 근거 |
+|---|---|---|
+| Priority: `urgent` | `critical` | 최강 시각 강조 |
+| Priority: `high` | `orange` | 산업 표준 gradient (red→orange→amber→green) |
+| Priority: `medium` | `warning` | 중간 단계 |
+| Priority: `low` | `success` | 완료 가능한 낮은 압력 |
+| Status: `open` | `info` | 새로운 열린 태스크 |
+| Status: `in_progress` | `warning` | 주의·진행중 |
+| Status: `done` | `success` | 완료 |
+| Status: `archived` | `neutral` | 저신호 |
+| Role: `SystemAdmin` | `critical` | 최상위 접근권 |
+| Role: `DepartmentAdmin` | `accent` | 확장 권한 |
+| Role: `TeamAdmin` | `info` | 일반 관리 |
+| Role: `Member` | `neutral` | 기본 |
+| Role: `Viewer` | `neutral` | 읽기 전용 |
+| Active/Inactive | `success` / `neutral` | inactive는 오류가 아니라 중립 상태 |
+
+### 팔레트 사용 규칙
+
+1. **새 태그가 필요하면** 먼저 8 family 중 어디에 속하는지 정한 뒤 `<Badge variant="…">`를 쓴다.
+2. **도메인 문자열을 variant로 매핑할 곳은 `theme/constants.ts`에만 둔다** — `priorityClass(p)` 형태의 래퍼로 노출. 이렇게 하면 priority 재분류가 한 파일 수정으로 끝난다.
+3. **CalendarView 같은 raster 표면** (react-big-calendar 등 CSS 변수를 못 읽는 캔버스류) 에는 `PRIORITY_EVENT_COLORS` 상수의 solid hex를 쓴다. 이 값은 `index.css`의 팔레트와 의미상 동기화되어야 한다.
+4. **bg/text를 한쪽만 덮어쓰지 말 것.** 배경만 바꾸면 다크 모드에서 흰-흰 사고가 난다 — 항상 쌍으로.
 
 ---
 

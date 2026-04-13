@@ -1,6 +1,14 @@
 use serde::{Deserialize, Serialize};
 
 /// S-027: ActivityAction enum — 23 actions (+ 1 dev-auth conditional).
+///
+/// The codebase currently logs actions as string literals (`"task.created"`,
+/// etc.) directly into the `activity_logs.action` column, so this typed enum
+/// is not yet referenced from handler code. Retained as the canonical
+/// machine-readable list of allowed action values — removing it would lose
+/// the traceability anchor to S-027 and the `#[serde(rename = …)]` mapping
+/// that any future typed-logging refactor should preserve.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ActivityAction {
     // Task actions (12)

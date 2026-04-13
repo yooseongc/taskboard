@@ -40,6 +40,7 @@ pub struct TaskRow {
     pub column_id: Uuid,
     pub position: f64,
     pub title: String,
+    pub summary: Option<String>,
     pub description: Option<String>,
     pub priority: String,
     pub status: String,
@@ -61,13 +62,6 @@ pub struct BoardMemberRow {
     pub added_at: DateTime<Utc>,
 }
 
-/// Row type for the `board_departments` table.
-#[derive(sqlx::FromRow, Serialize, Debug)]
-pub struct BoardDepartmentRow {
-    pub board_id: Uuid,
-    pub department_id: Uuid,
-}
-
 /// Row type for the `labels` table.
 #[derive(sqlx::FromRow, Serialize, Debug)]
 pub struct BoardLabelRow {
@@ -75,20 +69,6 @@ pub struct BoardLabelRow {
     pub board_id: Uuid,
     pub name: String,
     pub color: String,
-}
-
-/// Row type for the `task_labels` table.
-#[derive(sqlx::FromRow, Serialize, Debug)]
-pub struct TaskLabelRow {
-    pub task_id: Uuid,
-    pub label_id: Uuid,
-}
-
-/// Row type for the `task_assignees` table.
-#[derive(sqlx::FromRow, Serialize, Debug)]
-pub struct TaskAssigneeRow {
-    pub task_id: Uuid,
-    pub user_id: Uuid,
 }
 
 /// Row type for the `checklists` table.
@@ -121,18 +101,6 @@ pub struct CommentRow {
     pub created_at: DateTime<Utc>,
     pub edited_at: Option<DateTime<Utc>>,
     pub deleted_at: Option<DateTime<Utc>>,
-}
-
-/// Row type for the `activity_logs` table.
-#[derive(sqlx::FromRow, Serialize, Debug)]
-pub struct ActivityLogRow {
-    pub id: Uuid,
-    pub board_id: Uuid,
-    pub task_id: Option<Uuid>,
-    pub actor_id: Uuid,
-    pub action: String,
-    pub payload: serde_json::Value,
-    pub created_at: DateTime<Utc>,
 }
 
 /// Row type for the `templates` table.
@@ -333,6 +301,7 @@ fn default_limit() -> i64 {
 #[derive(Deserialize, Debug)]
 pub struct CreateTaskRequest {
     pub title: String,
+    pub summary: Option<String>,
     pub description: Option<String>,
     pub column_id: Uuid,
     pub priority: Option<String>,
@@ -345,6 +314,7 @@ pub struct CreateTaskRequest {
 #[derive(Deserialize, Debug)]
 pub struct PatchTaskRequest {
     pub title: Option<String>,
+    pub summary: Option<String>,
     pub description: Option<String>,
     pub priority: Option<String>,
     pub status: Option<String>,
@@ -371,6 +341,7 @@ pub struct TaskDto {
     pub column_id: Uuid,
     pub position: f64,
     pub title: String,
+    pub summary: Option<String>,
     pub description: Option<String>,
     pub priority: String,
     pub status: String,
@@ -597,6 +568,11 @@ pub struct TemplatesQuery {
 }
 
 /// Comment row with joined author_name.
+///
+/// `deleted_at` is materialized by `SELECT c.*` but not consumed — the list
+/// query already filters `deleted_at IS NULL`, so downstream code never
+/// inspects it. Kept on the struct so `sqlx::FromRow` can map every column
+/// returned by `c.*` without requiring an explicit projection rewrite.
 #[derive(sqlx::FromRow, Debug)]
 pub struct CommentWithAuthor {
     pub id: Uuid,
@@ -605,6 +581,7 @@ pub struct CommentWithAuthor {
     pub body: String,
     pub created_at: DateTime<Utc>,
     pub edited_at: Option<DateTime<Utc>>,
+    #[allow(dead_code)]
     pub deleted_at: Option<DateTime<Utc>>,
     pub author_name: String,
 }

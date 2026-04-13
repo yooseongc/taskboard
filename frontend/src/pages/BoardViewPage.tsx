@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams, Link } from 'react-router-dom';
 import {
   DragDropContext,
@@ -21,7 +22,7 @@ import TableView from '../components/TableView';
 import CalendarView from '../components/CalendarView';
 import { useToastStore } from '../stores/toastStore';
 import Breadcrumbs from '../components/ui/Breadcrumbs';
-import { priorityClass } from '../theme/constants';
+import { useTagTheme } from '../theme/constants';
 import type { TaskDto, BoardColumn } from '../types/api';
 
 type ViewTab = 'board' | 'table' | 'calendar';
@@ -31,6 +32,7 @@ export default function BoardViewPage() {
   const { data: board, isLoading: boardLoading } = useBoard(id!);
   const { data: columnsData } = useBoardColumns(id!);
   const { data: tasksData } = useBoardTasks(id!);
+  const { t } = useTranslation();
   const moveTask = useMoveTask(id!);
   const deleteTask = useDeleteTask(id!);
   const createColumn = useCreateColumn(id!);
@@ -78,7 +80,14 @@ export default function BoardViewPage() {
   const tasks = rawTasks.filter((t) => {
     if (boardSearch) {
       const q = boardSearch.toLowerCase();
-      if (!t.title.toLowerCase().includes(q) && !(t.description ?? '').toLowerCase().includes(q)) {
+      // Search covers title + summary (the two card-visible fields). Long-form
+      // description lives only in the drawer and is intentionally excluded —
+      // matching Markdown body text would surface cards whose visible copy
+      // doesn't mention the query, feeling broken to users.
+      if (
+        !t.title.toLowerCase().includes(q) &&
+        !(t.summary ?? '').toLowerCase().includes(q)
+      ) {
         return false;
       }
     }
@@ -136,10 +145,10 @@ export default function BoardViewPage() {
     );
   };
 
-  const viewTabs: { key: ViewTab; label: string }[] = [
-    { key: 'board', label: 'Board' },
-    { key: 'table', label: 'Table' },
-    { key: 'calendar', label: 'Calendar' },
+  const viewTabs: { key: ViewTab }[] = [
+    { key: 'board' },
+    { key: 'table' },
+    { key: 'calendar' },
   ];
 
   return (
@@ -161,20 +170,29 @@ export default function BoardViewPage() {
       </div>
 
       {/* View Tabs */}
-      <div className="flex gap-1 border-b bg-white px-6 py-1.5">
-        {viewTabs.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveView(tab.key)}
-            className={`rounded-md px-3 py-1 text-sm font-medium ${
-              activeView === tab.key
-                ? 'bg-blue-100 text-blue-700'
-                : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div
+        className="flex gap-1 px-6 py-1.5"
+        style={{
+          backgroundColor: 'var(--color-surface)',
+          borderBottom: '1px solid var(--color-border)',
+        }}
+      >
+        {viewTabs.map((tab) => {
+          const active = activeView === tab.key;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveView(tab.key)}
+              className="rounded-md px-3 py-1 text-sm font-medium"
+              style={{
+                backgroundColor: active ? 'var(--color-primary-light)' : 'transparent',
+                color: active ? 'var(--color-primary-text)' : 'var(--color-text-secondary)',
+              }}
+            >
+              {t(`board.${tab.key}`)}
+            </button>
+          );
+        })}
       </div>
 
       {/* Board toolbar (search/filter) */}
@@ -255,36 +273,50 @@ export default function BoardViewPage() {
               {/* Add column */}
               <div className="w-64 md:w-72 flex-shrink-0">
                 {addingColumn ? (
-                  <div className="bg-[var(--color-surface-hover)] rounded-lg p-3">
+                  <div
+                    className="rounded-lg p-3"
+                    style={{ backgroundColor: 'var(--color-surface-hover)' }}
+                  >
                     <input
                       autoFocus
-                      className="w-full border rounded px-2 py-1.5 text-sm mb-2"
-                      placeholder="Column title..."
+                      className="w-full rounded px-2 py-1.5 text-sm mb-2"
+                      placeholder={t('board.columnTitle')}
                       value={newColTitle}
                       onChange={(e) => setNewColTitle(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleAddColumn()}
+                      style={{
+                        backgroundColor: 'var(--color-surface)',
+                        border: '1px solid var(--color-border)',
+                        color: 'var(--color-text)',
+                      }}
                     />
                     <div className="flex gap-2">
                       <button
                         onClick={handleAddColumn}
-                        className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                        className="px-3 py-1 text-sm rounded"
+                        style={{
+                          backgroundColor: 'var(--color-primary)',
+                          color: 'var(--color-text-inverse)',
+                        }}
                       >
-                        Add
+                        {t('common.create')}
                       </button>
                       <button
                         onClick={() => setAddingColumn(false)}
-                        className="px-3 py-1 text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text)]"
+                        className="px-3 py-1 text-sm"
+                        style={{ color: 'var(--color-text-secondary)' }}
                       >
-                        Cancel
+                        {t('common.cancel')}
                       </button>
                     </div>
                   </div>
                 ) : (
                   <button
                     onClick={() => setAddingColumn(true)}
-                    className="w-full text-left px-3 py-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] rounded-lg"
+                    className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-[var(--color-surface-hover)]"
+                    style={{ color: 'var(--color-text-muted)' }}
                   >
-                    + Add column
+                    {t('board.addColumn')}
                   </button>
                 )}
               </div>
@@ -347,6 +379,7 @@ function KanbanColumn({
   onDeleteColumn: () => void;
   onCreateTask: (title: string) => void;
 }) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(column.title);
   const [adding, setAdding] = useState(false);
@@ -370,49 +403,68 @@ function KanbanColumn({
   return (
     <div className="flex flex-col w-64 md:w-72 flex-shrink-0">
       {/* Column Header */}
-      <div className="flex items-center justify-between rounded-t-lg bg-[var(--color-surface-hover)] px-3 py-2">
+      <div
+        className="flex items-center justify-between rounded-t-lg px-3 py-2"
+        style={{ backgroundColor: 'var(--color-surface-hover)' }}
+      >
         {editing ? (
           <input
             autoFocus
-            className="text-sm font-semibold bg-white border rounded px-1 py-0.5 w-full mr-2"
+            className="text-sm font-semibold rounded px-1 py-0.5 w-full mr-2"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onBlur={handleRename}
             onKeyDown={(e) => e.key === 'Enter' && handleRename()}
+            style={{
+              backgroundColor: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              color: 'var(--color-text)',
+            }}
           />
         ) : (
-          <h3 className="text-sm font-semibold text-[var(--color-text)]">
+          <h3 className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>
             {column.title}
           </h3>
         )}
         <div className="flex items-center gap-1">
-          <span className="text-xs text-[var(--color-text-muted)]">{tasks.length}</span>
+          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{tasks.length}</span>
           <div className="relative">
             <button
               onClick={() => setShowMenu(!showMenu)}
-              className="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] px-1"
+              className="px-1"
+              style={{ color: 'var(--color-text-muted)' }}
+              aria-label="Column menu"
             >
               ...
             </button>
             {showMenu && (
-              <div className="absolute right-0 top-6 bg-white border rounded shadow-lg py-1 z-10 w-32">
+              <div
+                className="absolute right-0 top-6 rounded py-1 z-10 w-32"
+                style={{
+                  backgroundColor: 'var(--color-surface)',
+                  border: '1px solid var(--color-border)',
+                  boxShadow: 'var(--shadow-md)',
+                }}
+              >
                 <button
                   onClick={() => {
                     setEditing(true);
                     setShowMenu(false);
                   }}
-                  className="block w-full text-left px-3 py-1.5 text-sm hover:bg-[var(--color-bg)]"
+                  className="block w-full text-left px-3 py-1.5 text-sm hover:bg-[var(--color-surface-hover)]"
+                  style={{ color: 'var(--color-text)' }}
                 >
-                  Rename
+                  {t('common.rename')}
                 </button>
                 <button
                   onClick={() => {
                     onDeleteColumn();
                     setShowMenu(false);
                   }}
-                  className="block w-full text-left px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
+                  className="block w-full text-left px-3 py-1.5 text-sm hover:bg-[var(--color-danger-light)]"
+                  style={{ color: 'var(--color-danger)' }}
                 >
-                  Delete
+                  {t('common.delete')}
                 </button>
               </div>
             )}
@@ -426,9 +478,12 @@ function KanbanColumn({
           <div
             ref={provided.innerRef}
             {...provided.droppableProps}
-            className={`flex-1 space-y-2 overflow-y-auto rounded-b-lg p-2 min-h-[100px] ${
-              snapshot.isDraggingOver ? 'bg-blue-50' : 'bg-[var(--color-bg)]'
-            }`}
+            className="flex-1 space-y-2 overflow-y-auto rounded-b-lg p-2 min-h-[100px]"
+            style={{
+              backgroundColor: snapshot.isDraggingOver
+                ? 'var(--color-primary-light)'
+                : 'var(--color-bg)',
+            }}
           >
             {tasks.map((task, index) => (
               <Draggable key={task.id} draggableId={task.id} index={index}>
@@ -437,11 +492,13 @@ function KanbanColumn({
                     ref={provided.innerRef}
                     {...provided.draggableProps}
                     {...provided.dragHandleProps}
-                    className={`rounded-lg border bg-white p-3 shadow-sm transition-shadow cursor-pointer ${
-                      snapshot.isDragging
-                        ? 'shadow-lg border-blue-300'
-                        : 'border-[var(--color-border)] hover:shadow-md'
-                    }`}
+                    className="rounded-lg p-3 transition-shadow cursor-pointer"
+                    style={{
+                      backgroundColor: 'var(--color-surface)',
+                      color: 'var(--color-text)',
+                      border: `1px solid ${snapshot.isDragging ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                      boxShadow: snapshot.isDragging ? 'var(--shadow-lg)' : 'var(--shadow-sm)',
+                    }}
                     onClick={() => onTaskClick(task.id)}
                   >
                     <TaskCardContent task={task} />
@@ -453,36 +510,52 @@ function KanbanColumn({
 
             {/* Add task */}
             {adding ? (
-              <div className="bg-white border rounded-lg p-2">
+              <div
+                className="rounded-lg p-2"
+                style={{
+                  backgroundColor: 'var(--color-surface)',
+                  border: '1px solid var(--color-border)',
+                }}
+              >
                 <input
                   autoFocus
-                  className="w-full text-sm border-b pb-1 outline-none"
-                  placeholder="Task title..."
+                  className="w-full text-sm pb-1 outline-none bg-transparent"
+                  placeholder={t('board.taskTitle')}
                   value={newTaskTitle}
                   onChange={(e) => setNewTaskTitle(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
+                  style={{
+                    color: 'var(--color-text)',
+                    borderBottom: '1px solid var(--color-border)',
+                  }}
                 />
                 <div className="flex gap-2 mt-2">
                   <button
                     onClick={handleAddTask}
-                    className="px-2 py-1 text-xs bg-blue-600 text-white rounded"
+                    className="px-2 py-1 text-xs rounded"
+                    style={{
+                      backgroundColor: 'var(--color-primary)',
+                      color: 'var(--color-text-inverse)',
+                    }}
                   >
-                    Add
+                    {t('common.create')}
                   </button>
                   <button
                     onClick={() => setAdding(false)}
-                    className="px-2 py-1 text-xs text-[var(--color-text-secondary)]"
+                    className="px-2 py-1 text-xs"
+                    style={{ color: 'var(--color-text-secondary)' }}
                   >
-                    Cancel
+                    {t('common.cancel')}
                   </button>
                 </div>
               </div>
             ) : (
               <button
                 onClick={() => setAdding(true)}
-                className="w-full text-left text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] px-2 py-1"
+                className="w-full text-left text-sm px-2 py-1"
+                style={{ color: 'var(--color-text-muted)' }}
               >
-                + Add task
+                {t('board.addTask')}
               </button>
             )}
           </div>
@@ -493,6 +566,7 @@ function KanbanColumn({
 }
 
 function TaskCardContent({ task }: { task: TaskDto }) {
+  const { priorityClass, statusClass } = useTagTheme();
   const labels = task.labels ?? [];
   const assignees = task.assignees ?? [];
   const checklist = task.checklist_summary ?? { total: 0, checked: 0 };
@@ -516,10 +590,18 @@ function TaskCardContent({ task }: { task: TaskDto }) {
           ))}
         </div>
       )}
-      <p className="text-sm font-medium leading-snug">{task.title}</p>
-      {task.description && (
-        <p className="text-xs text-[var(--color-text-muted)] mt-0.5 line-clamp-2 leading-relaxed">
-          {task.description}
+      <p
+        className="text-sm font-medium leading-snug"
+        style={{ color: 'var(--color-text)' }}
+      >
+        {task.title}
+      </p>
+      {task.summary && (
+        <p
+          className="text-xs mt-0.5 line-clamp-2 leading-relaxed"
+          style={{ color: 'var(--color-text-secondary)' }}
+        >
+          {task.summary}
         </p>
       )}
       {/* Meta row */}
@@ -530,7 +612,9 @@ function TaskCardContent({ task }: { task: TaskDto }) {
           {task.priority.toUpperCase()}
         </span>
         {task.status !== 'open' && (
-          <span className="inline-block rounded px-1.5 py-0.5 text-xs font-medium bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)]">
+          <span
+            className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${statusClass(task.status)}`}
+          >
             {task.status.replace('_', ' ')}
           </span>
         )}
@@ -571,14 +655,26 @@ function TaskCardContent({ task }: { task: TaskDto }) {
               {assignees.slice(0, 3).map((a) => (
                 <div
                   key={a.id}
-                  className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center border-2 border-white"
+                  className="w-6 h-6 rounded-full text-xs flex items-center justify-center"
+                  style={{
+                    backgroundColor: 'var(--color-primary)',
+                    color: 'var(--color-text-inverse)',
+                    border: '2px solid var(--color-surface)',
+                  }}
                   title={a.name}
                 >
                   {a.name.charAt(0).toUpperCase()}
                 </div>
               ))}
               {assignees.length > 3 && (
-                <div className="w-6 h-6 rounded-full bg-gray-300 text-[var(--color-text-secondary)] text-xs flex items-center justify-center border-2 border-white">
+                <div
+                  className="w-6 h-6 rounded-full text-xs flex items-center justify-center"
+                  style={{
+                    backgroundColor: 'var(--color-surface-hover)',
+                    color: 'var(--color-text-secondary)',
+                    border: '2px solid var(--color-surface)',
+                  }}
+                >
                   +{assignees.length - 3}
                 </div>
               )}

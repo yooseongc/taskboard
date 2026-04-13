@@ -3,6 +3,15 @@ use std::net::SocketAddr;
 
 /// Application configuration loaded from environment variables (S-029).
 /// All 11 backend core keys + 2 dev-auth keys.
+///
+/// `log_level`, `log_format`, `jwks_grace_ttl_secs`, and `seed_on_start` are
+/// parsed and validated from the environment for fail-fast startup, but are
+/// not yet wired to their consumers (tracing subscriber, JWKS cache grace
+/// window, seed-on-start runner). Keeping them on the struct means an
+/// operator deploying a malformed value still crashes at boot rather than
+/// silently ignoring it, and the consuming code can adopt them without a
+/// config surface change.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct AppConfig {
     // Backend core (11 keys)

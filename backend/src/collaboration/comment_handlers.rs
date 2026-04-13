@@ -25,11 +25,6 @@ fn is_admin(user: &AuthnUser) -> bool {
     ))
 }
 
-/// Returns true if the user's only global role is Viewer.
-fn is_viewer_only(user: &AuthnUser) -> bool {
-    user.global_roles.len() == 1 && user.global_roles[0] == GlobalRole::Viewer
-}
-
 /// Verify task exists (non-deleted) and return its board_id.
 async fn verify_task(pool: &sqlx::PgPool, task_id: Uuid) -> Result<Uuid, AppError> {
     let row: Option<(Uuid,)> = sqlx::query_as(

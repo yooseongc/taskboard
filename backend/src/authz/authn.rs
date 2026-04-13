@@ -34,16 +34,6 @@ pub enum GlobalRole {
 }
 
 impl GlobalRole {
-    pub fn from_str_opt(s: &str) -> Option<Self> {
-        match s {
-            "SystemAdmin" => Some(Self::SystemAdmin),
-            "DepartmentAdmin" => Some(Self::DepartmentAdmin),
-            "Member" => Some(Self::Member),
-            "Viewer" => Some(Self::Viewer),
-            _ => None,
-        }
-    }
-
     /// Privilege level for max() comparison in evaluate.
     pub fn privilege_level(self) -> u8 {
         match self {

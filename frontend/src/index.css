@@ -57,15 +57,42 @@
   --color-info: #2563eb;
   --color-info-light: #dbeafe;
 
-  /* ---- Priority ---- */
-  --color-priority-urgent-bg: #fee2e2;
-  --color-priority-urgent-text: #b91c1c;
-  --color-priority-high-bg: #ffedd5;
-  --color-priority-high-text: #c2410c;
-  --color-priority-medium-bg: #fef9c3;
-  --color-priority-medium-text: #a16207;
-  --color-priority-low-bg: #dcfce7;
-  --color-priority-low-text: #15803d;
+  /* ---- Tag palette — 8 semantic families (light mode) ----
+   *
+   * Standardized "soft chip" pattern:
+   *   bg  = 100-tier (light tint)
+   *   text = 700-tier (saturated)
+   *
+   * All ≥ 4.5:1 contrast (WCAG AA). Used by priority / status / role /
+   * active-inactive badges. Domain-specific aliases live in theme/constants.ts
+   * so a role rename or priority reshuffle never touches this file.
+   */
+  --tag-neutral-bg: #f3f4f6;
+  --tag-neutral-text: #374151;
+  --tag-info-bg: #dbeafe;
+  --tag-info-text: #1d4ed8;
+  --tag-success-bg: #dcfce7;
+  --tag-success-text: #15803d;
+  --tag-warning-bg: #fef3c7;
+  --tag-warning-text: #b45309;
+  --tag-orange-bg: #ffedd5;
+  --tag-orange-text: #c2410c;
+  --tag-danger-bg: #fee2e2;
+  --tag-danger-text: #b91c1c;
+  --tag-critical-bg: #fecaca;
+  --tag-critical-text: #991b1b;
+  --tag-accent-bg: #ede9fe;
+  --tag-accent-text: #6d28d9;
+
+  /* ---- Legacy priority tokens (aliased to unified tag palette) ---- */
+  --color-priority-urgent-bg: var(--tag-critical-bg);
+  --color-priority-urgent-text: var(--tag-critical-text);
+  --color-priority-high-bg: var(--tag-orange-bg);
+  --color-priority-high-text: var(--tag-orange-text);
+  --color-priority-medium-bg: var(--tag-warning-bg);
+  --color-priority-medium-text: var(--tag-warning-text);
+  --color-priority-low-bg: var(--tag-success-bg);
+  --color-priority-low-text: var(--tag-success-text);
 
   /* ---- Dimensions ---- */
   --radius-sm: 0.25rem;
@@ -130,14 +157,32 @@
   --color-info: #3b82f6;
   --color-info-light: #1e3a5f;
 
-  --color-priority-urgent-bg: #450a0a;
-  --color-priority-urgent-text: #fca5a5;
-  --color-priority-high-bg: #431407;
-  --color-priority-high-text: #fdba74;
-  --color-priority-medium-bg: #422006;
-  --color-priority-medium-text: #fde047;
-  --color-priority-low-bg: #14532d;
-  --color-priority-low-text: #86efac;
+  /* ---- Tag palette — dark mode override ----
+   *
+   * Inverse relationship: bg becomes dark (900-tier), text becomes light
+   * (200-tier). The `.dark` variant overrides each --tag-*-{bg,text} pair
+   * so any consumer reading these variables automatically flips without
+   * needing a class combinator.
+   */
+  --tag-neutral-bg: #374151;
+  --tag-neutral-text: #d1d5db;
+  --tag-info-bg: #1e3a8a;
+  --tag-info-text: #bfdbfe;
+  --tag-success-bg: #14532d;
+  --tag-success-text: #bbf7d0;
+  --tag-warning-bg: #78350f;
+  --tag-warning-text: #fde68a;
+  --tag-orange-bg: #7c2d12;
+  --tag-orange-text: #fed7aa;
+  --tag-danger-bg: #7f1d1d;
+  --tag-danger-text: #fecaca;
+  --tag-critical-bg: #991b1b;
+  --tag-critical-text: #fee2e2;
+  --tag-accent-bg: #4c1d95;
+  --tag-accent-text: #ddd6fe;
+
+  /* Legacy priority tokens remain aliased to the unified palette; no override
+   * needed here since the `--tag-*` vars already redefine above. */
 
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4);
@@ -186,6 +231,129 @@ code, pre, .font-mono {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-text-muted);
+}
+
+/* ---- Markdown body ----
+ *
+ * Scoped styling for react-markdown output. Replaces the Tailwind
+ * `prose` utility family since this project doesn't install the
+ * `@tailwindcss/typography` plugin — keeping a self-contained, token-based
+ * rendering path that flips cleanly in dark mode without extra overrides.
+ */
+.markdown-body {
+  color: var(--color-text);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  word-wrap: break-word;
+}
+.markdown-body > *:first-child { margin-top: 0; }
+.markdown-body > *:last-child { margin-bottom: 0; }
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 1.25em 0 0.5em;
+  color: var(--color-text);
+}
+.markdown-body h1 { font-size: var(--text-xl); }
+.markdown-body h2 { font-size: var(--text-lg); }
+.markdown-body h3 { font-size: var(--text-base); }
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 { font-size: var(--text-sm); }
+
+.markdown-body p {
+  margin: 0 0 0.75em;
+}
+
+.markdown-body strong { font-weight: 600; color: var(--color-text); }
+.markdown-body em { font-style: italic; }
+
+.markdown-body a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.markdown-body a:hover { color: var(--color-primary-hover); }
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0 0 0.75em;
+  padding-left: 1.5em;
+}
+.markdown-body ul { list-style: disc; }
+.markdown-body ol { list-style: decimal; }
+.markdown-body li { margin: 0.15em 0; }
+.markdown-body li > ul,
+.markdown-body li > ol { margin: 0.15em 0; }
+
+.markdown-body blockquote {
+  margin: 0 0 0.75em;
+  padding: 0.25em 0.75em;
+  border-left: 3px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+.markdown-body code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  padding: 0.15em 0.35em;
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface-hover);
+  color: var(--color-text);
+}
+.markdown-body pre {
+  margin: 0 0 0.75em;
+  padding: 0.75em 1em;
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-hover);
+  overflow-x: auto;
+  font-size: 0.9em;
+}
+.markdown-body pre code {
+  background: transparent;
+  padding: 0;
+  font-size: inherit;
+}
+
+.markdown-body hr {
+  margin: 1em 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.markdown-body table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 0 0.75em;
+  border-collapse: collapse;
+  overflow-x: auto;
+}
+.markdown-body th,
+.markdown-body td {
+  padding: 0.35em 0.75em;
+  border: 1px solid var(--color-border);
+}
+.markdown-body th {
+  background-color: var(--color-surface-hover);
+  font-weight: 600;
+}
+
+.markdown-body img {
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+}
+
+.markdown-body input[type="checkbox"] {
+  margin-right: 0.4em;
+  vertical-align: middle;
 }
 
 /* ---- Custom CSS injection point ---- */

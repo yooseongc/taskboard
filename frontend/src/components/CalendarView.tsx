@@ -3,6 +3,7 @@ import { Calendar, dateFnsLocalizer, type View } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { enUS } from 'date-fns/locale/en-US';
 import type { TaskDto } from '../types/api';
+import { PRIORITY_EVENT_COLORS } from '../theme/constants';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
 const locales = { 'en-US': enUS };
@@ -27,12 +28,11 @@ interface CalendarEvent {
   priority: string;
 }
 
-const priorityColors: Record<string, string> = {
-  urgent: '#dc2626',
-  high: '#ea580c',
-  medium: '#ca8a04',
-  low: '#16a34a',
-};
+// Calendar event blocks draw onto the react-big-calendar grid, which paints
+// its own backdrop — so event blocks use saturated solid fills with white
+// text rather than the soft-chip pattern used by Badge. The *hex* palette
+// is the single PRIORITY_EVENT_COLORS map shared with any other raster
+// surface that can't read CSS custom properties.
 
 export default function CalendarView({
   tasks,
@@ -59,10 +59,10 @@ export default function CalendarView({
   const eventStyleGetter = useCallback((event: CalendarEvent) => {
     return {
       style: {
-        backgroundColor: priorityColors[event.priority] ?? '#3b82f6',
+        backgroundColor: PRIORITY_EVENT_COLORS[event.priority] ?? '#3b82f6',
         borderRadius: '4px',
         opacity: 0.9,
-        color: 'white',
+        color: '#ffffff',
         border: 'none',
         fontSize: '12px',
       },

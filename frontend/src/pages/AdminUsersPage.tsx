@@ -125,24 +125,22 @@ export default function AdminUsersPage() {
                   <div className="flex flex-wrap gap-1">
                     {user.department_ids.length > 0
                       ? user.department_ids.map((did) => (
-                          <span
-                            key={did}
-                            className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded"
-                          >
+                          <Badge key={did} variant="neutral">
                             {deptMap.get(did) ?? did.slice(0, 8)}
-                          </span>
+                          </Badge>
                         ))
-                      : <span className="text-xs text-gray-300">-</span>}
+                      : (
+                        <span
+                          className="text-xs"
+                          style={{ color: 'var(--color-text-muted)' }}
+                        >
+                          -
+                        </span>
+                      )}
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <Badge
-                    className={
-                      user.active
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-red-100 text-red-700'
-                    }
-                  >
+                  <Badge variant={user.active ? 'success' : 'neutral'}>
                     {user.active ? 'Active' : 'Inactive'}
                   </Badge>
                 </td>

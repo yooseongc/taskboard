@@ -113,7 +113,7 @@ pub fn build_router(state: AppState) -> Router {
         // Board labels (S-019)
         .route(
             "/api/boards/{id}/labels",
-            post(collab::create_board_label),
+            get(collab::list_board_labels).post(collab::create_board_label),
         )
         // Activity (S-024)
         .route(

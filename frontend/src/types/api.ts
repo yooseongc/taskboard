@@ -59,6 +59,7 @@ export interface TaskDto {
   column_id: string;
   position: number;
   title: string;
+  summary: string | null;
   description: string | null;
   priority: Priority;
   status: TaskStatus;

@@ -1,7 +1,10 @@
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
+// `Deserialize` is consumed by a `#[derive(Deserialize)]` below the
+// `#[cfg(feature = "dev-auth")]` gate, so the import must ride the same gate —
+// otherwise it produces an unused-import warning on the default build profile.
+#[cfg(feature = "dev-auth")]
 use serde::Deserialize;
 use uuid::Uuid;
 

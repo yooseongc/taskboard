@@ -48,8 +48,11 @@
     "taskTitle": "Task title..."
   },
   "task": {
+    "summary": "Summary",
+    "summaryPlaceholder": "One-line summary (optional)",
     "description": "Description",
     "descPlaceholder": "Click to add description (Markdown supported)...",
+    "descEditPlaceholder": "Write in Markdown...",
     "status": "Status",
     "priority": "Priority",
     "dates": "Dates",
@@ -62,9 +65,11 @@
     "assignees": "Assignees",
     "searchPeople": "Search people...",
     "checklists": "Checklists",
+    "addChecklist": "+ Checklist",
     "newChecklist": "New checklist...",
     "addItem": "Add item...",
     "comments": "Comments",
+    "commentsCount": "Comments ({{count}})",
     "writeComment": "Write a comment...",
     "post": "Post",
     "posting": "Posting...",
@@ -80,7 +85,10 @@
     "createTitle": "Create Template",
     "name": "Name",
     "columns": "Columns (comma-separated)",
-    "createFrom": "Create board from \"{{name}}\""
+    "createFrom": "Create board from \"{{name}}\"",
+    "emptyTitle": "No templates yet",
+    "emptyDesc": "Templates let you capture a repeatable board structure once and reuse it. Save column layouts and default labels, then spin up new boards from them.",
+    "emptyAction": "Create your first template"
   },
   "directory": {
     "title": "Directory",
@@ -115,7 +123,11 @@
     "apply": "Apply",
     "language": "Language",
     "langHint": "Language preference is saved.",
-    "about": "About"
+    "about": "About",
+    "tagColors": "Tag Colors",
+    "tagColorsHint": "Pick the color used for each priority and status tag. Choose from 8 pre-defined families that keep contrast in dark mode.",
+    "resetDefaults": "Reset to defaults",
+    "tagColorsReset": "Tag colors reset to defaults."
   },
   "profile": {
     "title": "Profile",
@@ -132,9 +144,66 @@
     "create": "Create",
     "save": "Save",
     "delete": "Delete",
+    "rename": "Rename",
     "search": "Search",
     "loading": "Loading...",
     "error": "An error occurred.",
-    "noData": "No data"
+    "noData": "No data",
+    "close": "Close",
+    "preview": "Preview",
+    "saveFailed": "Failed to save"
+  },
+  "onboarding": {
+    "skip": "Skip",
+    "prev": "Back",
+    "next": "Next",
+    "browseTemplates": "Browse templates",
+    "step1Title": "Welcome to Taskboard 👋",
+    "step1Desc": "A collaboration tool to organize and track your team's work in one place. Here's a quick tour.",
+    "step2Title": "Visualize work with boards",
+    "step2Desc": "Each board renders the same data as Kanban, Table, or Calendar. Configure columns to match your workflow.",
+    "step3Title": "Start fast with templates",
+    "step3Desc": "Sprint board, bug triage, vacation calendar — pre-built templates spin up a board in one click.",
+    "step4Title": "Jump anywhere with Ctrl+K",
+    "step4Desc": "Press Ctrl+K (or Cmd+K) anywhere to open the command palette. Search boards, people, templates, or switch themes instantly."
+  },
+  "tableView": {
+    "searchPlaceholder": "Search tasks...",
+    "allStatuses": "All statuses",
+    "allPriorities": "All priorities",
+    "statusOpen": "Open",
+    "statusInProgress": "In Progress",
+    "statusDone": "Done",
+    "statusArchived": "Archived",
+    "priorityUrgent": "Urgent",
+    "priorityHigh": "High",
+    "priorityMedium": "Medium",
+    "priorityLow": "Low",
+    "count": "{{count}} task(s)",
+    "selectAll": "Select all",
+    "selectedCount": "{{count}} selected",
+    "moveToColumn": "Move to column...",
+    "clearSelection": "Clear selection",
+    "confirmBulkDelete": "Delete {{count}} task(s)?",
+    "columnPlaceholder": "Column...",
+    "colTitle": "Title",
+    "colColumn": "Column",
+    "colStatus": "Status",
+    "colPriority": "Priority",
+    "colDueDate": "Due Date",
+    "colAssignees": "Assignees",
+    "colInfo": "Info",
+    "noTasks": "No tasks found.",
+    "checklistProgress": "Checklist progress"
+  },
+  "templatePreview": {
+    "title": "{{name}} preview",
+    "columns": "Columns ({{count}})",
+    "labels": "Labels ({{count}})",
+    "defaultTasks": "Default tasks ({{count}})",
+    "noColumns": "No columns defined.",
+    "noLabels": "No labels defined.",
+    "noDefaultTasks": "No default tasks.",
+    "useThis": "Use this template"
   }
 }

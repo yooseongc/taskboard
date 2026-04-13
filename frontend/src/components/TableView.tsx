@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { TaskDto, BoardColumn, Priority, TaskStatus } from '../types/api';
 import Badge from './ui/Badge';
 import Button from './ui/Button';
-import { priorityClass } from '../theme/constants';
+import { useTagTheme } from '../theme/constants';
 
 interface TableViewProps {
   tasks: TaskDto[];
@@ -40,6 +41,8 @@ export default function TableView({
   const [newTitle, setNewTitle] = useState('');
   const [newColumnId, setNewColumnId] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const { t } = useTranslation();
+  const { priorityClass, statusClass } = useTagTheme();
 
   const columnMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -51,7 +54,15 @@ export default function TableView({
     let list = [...tasks];
     if (search) {
       const q = search.toLowerCase();
-      list = list.filter((t) => t.title.toLowerCase().includes(q));
+      // Cover title + summary. Description (long-form Markdown) is drawer-only
+      // and excluded from search to keep results aligned with what's visible
+      // in the table row — users wouldn't understand why a card with no
+      // matching cell text appears in results.
+      list = list.filter(
+        (t) =>
+          t.title.toLowerCase().includes(q) ||
+          (t.summary ?? '').toLowerCase().includes(q),
+      );
     }
     if (filterStatus) {
       list = list.filter((t) => t.status === filterStatus);
@@ -100,9 +111,20 @@ export default function TableView({
   };
 
   const SortIcon = ({ col }: { col: SortKey }) => {
-    if (sortKey !== col) return <span className="ml-1 text-gray-300">{'\u2195'}</span>;
+    if (sortKey !== col)
+      return (
+        <span className="ml-1" style={{ color: 'var(--color-text-muted)' }}>
+          {'\u2195'}
+        </span>
+      );
     return <span className="ml-1">{sortDir === 'asc' ? '\u25b2' : '\u25bc'}</span>;
   };
+
+  const inputStyle = {
+    backgroundColor: 'var(--color-surface)',
+    border: '1px solid var(--color-border)',
+    color: 'var(--color-text)',
+  } as const;
 
   const handleAddTask = () => {
     if (!newTitle.trim() || !newColumnId || !onCreateTask) return;
@@ -117,37 +139,42 @@ export default function TableView({
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <input
           type="text"
-          placeholder="Search tasks..."
-          className="border rounded-lg px-3 py-1.5 text-sm w-64 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          placeholder={t('tableView.searchPlaceholder')}
+          className="rounded-lg px-3 py-1.5 text-sm w-64 outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          style={inputStyle}
         />
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="border rounded-lg px-2 py-1.5 text-sm"
+          className="rounded-lg px-2 py-1.5 text-sm"
+          style={inputStyle}
         >
-          <option value="">All statuses</option>
-          <option value="open">Open</option>
-          <option value="in_progress">In Progress</option>
-          <option value="done">Done</option>
-          <option value="archived">Archived</option>
+          <option value="">{t('tableView.allStatuses')}</option>
+          <option value="open">{t('tableView.statusOpen')}</option>
+          <option value="in_progress">{t('tableView.statusInProgress')}</option>
+          <option value="done">{t('tableView.statusDone')}</option>
+          <option value="archived">{t('tableView.statusArchived')}</option>
         </select>
         <select
           value={filterPriority}
           onChange={(e) => setFilterPriority(e.target.value)}
-          className="border rounded-lg px-2 py-1.5 text-sm"
+          className="rounded-lg px-2 py-1.5 text-sm"
+          style={inputStyle}
         >
-          <option value="">All priorities</option>
-          <option value="urgent">Urgent</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
+          <option value="">{t('tableView.allPriorities')}</option>
+          <option value="urgent">{t('tableView.priorityUrgent')}</option>
+          <option value="high">{t('tableView.priorityHigh')}</option>
+          <option value="medium">{t('tableView.priorityMedium')}</option>
+          <option value="low">{t('tableView.priorityLow')}</option>
         </select>
-        <span className="text-xs text-[var(--color-text-muted)]">{sorted.length} task(s)</span>
+        <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          {t('tableView.count', { count: sorted.length })}
+        </span>
         {onCreateTask && (
           <Button size="sm" onClick={() => setAdding(true)} className="ml-auto">
-            + Add Task
+            {t('board.addTask')}
           </Button>
         )}
       </div>
@@ -162,7 +189,7 @@ export default function TableView({
           }}
         >
           <span className="text-sm font-medium" style={{ color: 'var(--color-primary-text)' }}>
-            {selected.size}개 선택됨
+            {t('tableView.selectedCount', { count: selected.size })}
           </span>
           {onBulkMove && (
             <select
@@ -173,10 +200,10 @@ export default function TableView({
                 }
               }}
               defaultValue=""
-              className="text-xs border rounded px-2 py-1"
-              style={{ backgroundColor: 'var(--color-surface)' }}
+              className="text-xs rounded px-2 py-1"
+              style={inputStyle}
             >
-              <option value="">컬럼 이동...</option>
+              <option value="">{t('tableView.moveToColumn')}</option>
               {columns.map((c) => (
                 <option key={c.id} value={c.id}>{c.title}</option>
               ))}
@@ -187,17 +214,17 @@ export default function TableView({
               variant="danger"
               size="sm"
               onClick={() => {
-                if (confirm(`${selected.size}개 태스크를 삭제할까요?`)) {
+                if (confirm(t('tableView.confirmBulkDelete', { count: selected.size }))) {
                   onBulkDelete([...selected]);
                   setSelected(new Set());
                 }
               }}
             >
-              삭제
+              {t('common.delete')}
             </Button>
           )}
           <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
-            선택 해제
+            {t('tableView.clearSelection')}
           </Button>
         </div>
       )}
@@ -207,18 +234,20 @@ export default function TableView({
         <div className="flex gap-2 mb-3 items-center">
           <input
             autoFocus
-            className="border rounded-lg px-3 py-1.5 text-sm flex-1 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            placeholder="Task title..."
+            className="rounded-lg px-3 py-1.5 text-sm flex-1 outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
+            placeholder={t('board.taskTitle')}
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
+            style={inputStyle}
           />
           <select
-            className="border rounded-lg px-2 py-1.5 text-sm"
+            className="rounded-lg px-2 py-1.5 text-sm"
             value={newColumnId}
             onChange={(e) => setNewColumnId(e.target.value)}
+            style={inputStyle}
           >
-            <option value="">Column...</option>
+            <option value="">{t('tableView.columnPlaceholder')}</option>
             {columns.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.title}
@@ -226,24 +255,27 @@ export default function TableView({
             ))}
           </select>
           <Button size="sm" onClick={handleAddTask} disabled={!newTitle.trim() || !newColumnId}>
-            Add
+            {t('common.create')}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>
-            Cancel
+            {t('common.cancel')}
           </Button>
         </div>
       )}
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
+      <div
+        className="overflow-x-auto rounded-lg"
+        style={{ border: '1px solid var(--color-border)' }}
+      >
         <table className="w-full text-sm">
-          <thead className="bg-[var(--color-surface-hover)]">
+          <thead style={{ backgroundColor: 'var(--color-surface-hover)' }}>
             <tr>
               {(onBulkMove || onBulkDelete) && (
                 <th className="px-3 py-2.5 w-8">
                   <input
                     type="checkbox"
-                    aria-label="Select all"
+                    aria-label={t('tableView.selectAll')}
                     checked={sorted.length > 0 && selected.size === sorted.length}
                     ref={(el) => {
                       if (el) el.indeterminate = selected.size > 0 && selected.size < sorted.length;
@@ -257,31 +289,40 @@ export default function TableView({
               )}
               {(
                 [
-                  ['title', 'Title'],
-                  ['column', 'Column'],
-                  ['status', 'Status'],
-                  ['priority', 'Priority'],
-                  ['due_date', 'Due Date'],
+                  ['title', t('tableView.colTitle')],
+                  ['column', t('tableView.colColumn')],
+                  ['status', t('tableView.colStatus')],
+                  ['priority', t('tableView.colPriority')],
+                  ['due_date', t('tableView.colDueDate')],
                 ] as [SortKey, string][]
               ).map(([key, label]) => (
                 <th
                   key={key}
                   onClick={() => handleSort(key)}
-                  className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)] cursor-pointer hover:bg-[var(--color-surface-active)] select-none"
+                  className="px-4 py-2.5 text-left font-medium cursor-pointer hover:bg-[var(--color-surface-active)] select-none"
+                  style={{ color: 'var(--color-text-secondary)' }}
                 >
                   {label}
                   <SortIcon col={key} />
                 </th>
               ))}
-              <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">
-                Assignees
+              <th
+                className="px-4 py-2.5 text-left font-medium"
+                style={{ color: 'var(--color-text-secondary)' }}
+              >
+                {t('tableView.colAssignees')}
               </th>
-              <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)] w-16">
-                Info
+              <th
+                className="px-4 py-2.5 text-left font-medium w-16"
+                style={{ color: 'var(--color-text-secondary)' }}
+              >
+                {t('tableView.colInfo')}
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody
+            className="divide-y"
+            style={{ backgroundColor: 'var(--color-surface)' }}>
             {sorted.map((task) => (
               <tr
                 key={task.id}
@@ -317,25 +358,24 @@ export default function TableView({
                         ))}
                       </div>
                     )}
-                    <span className="font-medium">{task.title}</span>
-                    {task.description && (
-                      <span className="text-xs text-[var(--color-text-muted)] ml-2 truncate">
-                        {task.description.slice(0, 40)}
-                        {task.description.length > 40 ? '...' : ''}
+                    <span className="font-medium" style={{ color: 'var(--color-text)' }}>
+                      {task.title}
+                    </span>
+                    {task.summary && (
+                      <span
+                        className="text-xs ml-2"
+                        style={{ color: 'var(--color-text-secondary)' }}
+                      >
+                        {task.summary}
                       </span>
                     )}
                   </div>
                 </td>
-                <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">
+                <td className="px-4 py-2.5" style={{ color: 'var(--color-text-secondary)' }}>
                   {columnMap.get(task.column_id) ?? '-'}
                 </td>
                 <td className="px-4 py-2.5">
-                  <Badge className={
-                    task.status === 'done' ? 'bg-green-100 text-green-700' :
-                    task.status === 'in_progress' ? 'bg-amber-100 text-amber-700' :
-                    task.status === 'open' ? 'bg-blue-100 text-blue-700' :
-                    'bg-gray-100 text-[var(--color-text-secondary)]'
-                  }>
+                  <Badge className={statusClass(task.status)}>
                     {task.status.replace('_', ' ')}
                   </Badge>
                 </td>
@@ -344,7 +384,10 @@ export default function TableView({
                     {task.priority}
                   </Badge>
                 </td>
-                <td className="px-4 py-2.5 text-[var(--color-text-secondary)] text-xs">
+                <td
+                  className="px-4 py-2.5 text-xs"
+                  style={{ color: 'var(--color-text-secondary)' }}
+                >
                   {task.due_date
                     ? new Date(task.due_date).toLocaleDateString()
                     : '-'}
@@ -354,31 +397,48 @@ export default function TableView({
                     {(task.assignees ?? []).slice(0, 3).map((a) => (
                       <div
                         key={a.id}
-                        className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center border-2 border-white"
+                        className="w-6 h-6 rounded-full text-xs flex items-center justify-center"
+                        style={{
+                          backgroundColor: 'var(--color-primary)',
+                          color: 'var(--color-text-inverse)',
+                          border: '2px solid var(--color-surface)',
+                        }}
                         title={a.name}
                       >
                         {a.name.charAt(0).toUpperCase()}
                       </div>
                     ))}
                     {(task.assignees ?? []).length > 3 && (
-                      <div className="w-6 h-6 rounded-full bg-gray-300 text-[var(--color-text-secondary)] text-xs flex items-center justify-center border-2 border-white">
+                      <div
+                        className="w-6 h-6 rounded-full text-xs flex items-center justify-center"
+                        style={{
+                          backgroundColor: 'var(--color-surface-hover)',
+                          color: 'var(--color-text-secondary)',
+                          border: '2px solid var(--color-surface)',
+                        }}
+                      >
                         +{(task.assignees ?? []).length - 3}
                       </div>
                     )}
                     {(task.assignees ?? []).length === 0 && (
-                      <span className="text-xs text-gray-300">-</span>
+                      <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                        -
+                      </span>
                     )}
                   </div>
                 </td>
-                <td className="px-4 py-2.5 text-xs text-[var(--color-text-muted)]">
+                <td
+                  className="px-4 py-2.5 text-xs"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
                   <div className="flex gap-2">
                     {(task.checklist_summary?.total ?? 0) > 0 && (
-                      <span title="Checklist progress">
+                      <span title={t('tableView.checklistProgress')}>
                         {(task.checklist_summary?.checked ?? 0)}/{(task.checklist_summary?.total ?? 0)}
                       </span>
                     )}
                     {(task.comment_count ?? 0) > 0 && (
-                      <span title="Comments">
+                      <span title={t('task.comments')}>
                         {(task.comment_count ?? 0)}c
                       </span>
                     )}
@@ -390,9 +450,10 @@ export default function TableView({
               <tr>
                 <td
                   colSpan={onBulkMove || onBulkDelete ? 8 : 7}
-                  className="px-4 py-8 text-center text-[var(--color-text-muted)]"
+                  className="px-4 py-8 text-center"
+                  style={{ color: 'var(--color-text-muted)' }}
                 >
-                  No tasks found.
+                  {t('tableView.noTasks')}
                 </td>
               </tr>
             )}

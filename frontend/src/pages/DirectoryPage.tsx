@@ -222,7 +222,13 @@ function DeptMembersView({
             <tr key={m.user_id} className="hover:bg-[var(--color-surface-hover)]">
               <td className="px-4 py-2.5">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                  <div
+                    className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                    style={{
+                      backgroundColor: 'var(--color-primary)',
+                      color: 'var(--color-text-inverse)',
+                    }}
+                  >
                     {m.user_name.charAt(0).toUpperCase()}
                   </div>
                   <span className="font-medium">{m.user_name}</span>
@@ -238,13 +244,19 @@ function DeptMembersView({
                 {m.user?.department_ids
                   ?.filter((did) => did !== m.department_id)
                   .map((did) => (
-                    <span key={did} className="text-xs bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)] px-1.5 py-0.5 rounded mr-1">
-                      {deptMap.get(did) ?? did.slice(0, 8)}
+                    <span key={did} className="inline-flex mr-1 mb-0.5">
+                      <Badge variant="neutral">
+                        {deptMap.get(did) ?? did.slice(0, 8)}
+                      </Badge>
                     </span>
-                  )) ?? <span className="text-xs text-gray-300">-</span>}
+                  )) ?? (
+                    <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                      -
+                    </span>
+                  )}
               </td>
               <td className="px-4 py-2.5">
-                <Badge className={m.user?.active !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
+                <Badge variant={m.user?.active !== false ? 'success' : 'neutral'}>
                   {m.user?.active !== false ? 'Active' : 'Inactive'}
                 </Badge>
               </td>
@@ -283,7 +295,13 @@ function UserTable({ users, deptMap }: { users: User[]; deptMap: Map<string, str
           <tr key={user.id} className="hover:bg-[var(--color-surface-hover)]">
             <td className="px-4 py-2.5">
               <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                <div
+                    className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                    style={{
+                      backgroundColor: 'var(--color-primary)',
+                      color: 'var(--color-text-inverse)',
+                    }}
+                  >
                   {user.name.charAt(0).toUpperCase()}
                 </div>
                 <span className="font-medium">{user.name}</span>
@@ -301,15 +319,19 @@ function UserTable({ users, deptMap }: { users: User[]; deptMap: Map<string, str
               <div className="flex flex-wrap gap-1">
                 {user.department_ids.length > 0
                   ? user.department_ids.map((did) => (
-                      <span key={did} className="text-xs bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)] px-1.5 py-0.5 rounded">
+                      <Badge key={did} variant="neutral">
                         {deptMap.get(did) ?? did.slice(0, 8)}
-                      </span>
+                      </Badge>
                     ))
-                  : <span className="text-xs text-gray-300">-</span>}
+                  : (
+                    <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                      -
+                    </span>
+                  )}
               </div>
             </td>
             <td className="px-4 py-2.5">
-              <Badge className={user.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
+              <Badge variant={user.active ? 'success' : 'neutral'}>
                 {user.active ? 'Active' : 'Inactive'}
               </Badge>
             </td>

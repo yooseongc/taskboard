@@ -69,10 +69,17 @@ pub async fn patch_preferences(
         }
     }
 
+    // Bind unspecified fields as NULL so COALESCE preserves existing values on UPDATE.
+    // For initial INSERT, COALESCE-with-defaults inside the VALUES clause supplies safe seeds.
     let row = sqlx::query_as::<_, UserPreferenceRow>(
         r#"
         INSERT INTO user_preferences (user_id, theme, locale, preferences)
-        VALUES ($1, $2, $3, $4)
+        VALUES (
+            $1,
+            COALESCE($2, 'system'),
+            COALESCE($3, 'ko'),
+            COALESCE($4, '{}'::jsonb)
+        )
         ON CONFLICT (user_id) DO UPDATE
             SET theme = COALESCE($2, user_preferences.theme),
                 locale = COALESCE($3, user_preferences.locale),
@@ -82,9 +89,9 @@ pub async fn patch_preferences(
         "#,
     )
     .bind(user.user_id)
-    .bind(body.theme.as_deref().unwrap_or("system"))
-    .bind(body.locale.as_deref().unwrap_or("ko"))
-    .bind(body.preferences.as_ref().unwrap_or(&serde_json::json!({})))
+    .bind(body.theme.as_deref())
+    .bind(body.locale.as_deref())
+    .bind(body.preferences.as_ref())
     .fetch_one(&state.pool)
     .await?;
 

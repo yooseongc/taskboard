@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import Markdown from 'react-markdown';
 import {
   useTask,
@@ -23,7 +24,7 @@ import { useFocusTrap } from '../hooks/useFocusTrap';
 import { Spinner } from './Spinner';
 import Badge from './ui/Badge';
 import Button from './ui/Button';
-import { priorityClass } from '../theme/constants';
+import { useTagTheme } from '../theme/constants';
 import type { Priority, TaskStatus } from '../types/api';
 
 interface TaskDrawerProps {
@@ -55,9 +56,12 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
   const { data: fieldValuesData } = useTaskFieldValues(taskId);
   const setFieldValue = useSetTaskFieldValue(taskId);
   const addToast = useToastStore((s) => s.addToast);
+  const { priorityClass } = useTagTheme();
+  const { t } = useTranslation();
 
   const [editingTitle, setEditingTitle] = useState(false);
   const [title, setTitle] = useState('');
+  const [summary, setSummary] = useState('');
   const [description, setDescription] = useState('');
   const [editingDesc, setEditingDesc] = useState(false);
   const [commentText, setCommentText] = useState('');
@@ -68,29 +72,28 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
   const [newLabelName, setNewLabelName] = useState('');
   const [newLabelColor, setNewLabelColor] = useState('#2563eb');
 
-  if (isLoading || !task) {
-    return (
-      <DrawerShell onClose={onClose}>
-        <div className="flex-1 flex items-center justify-center"><Spinner /></div>
-      </DrawerShell>
-    );
-  }
+  // NOTE: All hooks (including useMemo below) MUST run on every render — even when
+  // `task` is still loading. Returning early before useMemo would change the hook
+  // call count between renders and trigger React error #310 ("Rendered more hooks
+  // than during the previous render"). Compute defensively, then early-return.
 
   const comments = commentsData?.items ?? [];
   const checklists = checklistsData?.items ?? [];
   const boardLabels = labelsData?.items ?? [];
   const allUsers = usersData?.items ?? [];
-  const taskLabels = task.labels ?? [];
-  const taskAssignees = task.assignees ?? [];
+  const taskLabels = task?.labels ?? [];
+  const taskAssignees = task?.assignees ?? [];
 
-  const save = (fields: Record<string, unknown>) => {
-    patchTask.mutate(
-      { taskId, version: task.version, ...fields } as Parameters<typeof patchTask.mutate>[0],
-      { onError: () => addToast('error', 'Failed to save') },
-    );
-  };
+  // Seed `summary` local state from the server task whenever it arrives or
+  // changes upstream (e.g. a different task opened in the same drawer, or a
+  // successful mutation refetch). Tracking just the string — not the object —
+  // means unrelated mutations (labels, assignees) won't clobber in-flight
+  // typing, and a round-tripped identical value is a no-op re-set.
+  useEffect(() => {
+    setSummary(task?.summary ?? '');
+  }, [task?.summary]);
 
-  // Assignee search
+  // Assignee search — must be declared before any conditional return.
   const filteredUsers = useMemo(() => {
     const assigned = new Set(taskAssignees.map((a) => a.id));
     let list = allUsers.filter((u) => !assigned.has(u.id));
@@ -103,14 +106,36 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
     return list.slice(0, 8);
   }, [allUsers, taskAssignees, assigneeSearch]);
 
+  if (isLoading || !task) {
+    return (
+      <DrawerShell onClose={onClose}>
+        <div className="flex-1 flex items-center justify-center"><Spinner /></div>
+      </DrawerShell>
+    );
+  }
+
+  const save = (fields: Record<string, unknown>) => {
+    patchTask.mutate(
+      { taskId, version: task.version, ...fields } as Parameters<typeof patchTask.mutate>[0],
+      { onError: () => addToast('error', t('common.saveFailed')) },
+    );
+  };
+
   return (
     <DrawerShell onClose={onClose}>
-      {/* Title */}
-      <div className="px-6 pt-5 pb-3">
+      {/* Title + Summary — the two header fields. Title is a long click-to-edit
+          h2; summary is a persistent one-liner (max 256 chars) that renders on
+          cards and table rows. Both save on blur / Enter via the shared
+          optimistic `save()` helper. */}
+      <div className="px-6 pt-5 pb-3 space-y-2">
         {editingTitle ? (
           <input
             autoFocus
-            className="w-full text-xl font-bold border-b-2 border-blue-400 outline-none pb-1"
+            className="w-full text-xl font-bold outline-none pb-1 bg-transparent"
+            style={{
+              color: 'var(--color-text)',
+              borderBottom: '2px solid var(--color-primary)',
+            }}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onBlur={() => {
@@ -127,11 +152,29 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
         ) : (
           <h2
             className="text-xl font-bold cursor-text hover:bg-[var(--color-surface-hover)] rounded px-1 -mx-1"
+            style={{ color: 'var(--color-text)' }}
             onClick={() => { setTitle(task.title); setEditingTitle(true); }}
           >
             {task.title}
           </h2>
         )}
+        <input
+          type="text"
+          maxLength={256}
+          placeholder={t('task.summaryPlaceholder')}
+          className="w-full text-sm outline-none bg-transparent px-1 -mx-1 rounded hover:bg-[var(--color-surface-hover)] focus:bg-[var(--color-surface-hover)]"
+          style={{ color: 'var(--color-text-secondary)' }}
+          value={summary}
+          onChange={(e) => setSummary(e.target.value)}
+          onBlur={() => {
+            const trimmed = summary.trim();
+            const next = trimmed ? trimmed : null;
+            if (next !== (task.summary ?? null)) save({ summary: next });
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          }}
+        />
       </div>
 
       {/* Main content — 2-column layout like Trello */}
@@ -141,34 +184,38 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
           <div className="flex-1 min-w-0 space-y-5">
 
             {/* Description (markdown) */}
-            <Section title="Description">
+            <Section title={t('task.description')}>
               {editingDesc ? (
                 <div>
                   <textarea
                     autoFocus
                     className="w-full border rounded-lg p-3 text-sm min-h-[120px] font-mono focus:ring-2 focus:ring-blue-500 outline-none"
-                    placeholder="Write in Markdown..."
+                    placeholder={t('task.descEditPlaceholder')}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                   />
                   <div className="flex gap-2 mt-2">
                     <Button size="sm" onClick={() => { save({ description: description || null }); setEditingDesc(false); }}>
-                      Save
+                      {t('task.save')}
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setEditingDesc(false)}>
-                      Cancel
+                      {t('task.cancel')}
                     </Button>
                   </div>
                 </div>
               ) : (
                 <div
-                  className="cursor-text hover:bg-[var(--color-surface-hover)] rounded p-2 -m-2 min-h-[40px] prose prose-sm max-w-none"
+                  className="cursor-text hover:bg-[var(--color-surface-hover)] rounded p-2 -m-2 min-h-[40px]"
                   onClick={() => { setDescription(task.description ?? ''); setEditingDesc(true); }}
                 >
                   {task.description ? (
-                    <Markdown>{task.description}</Markdown>
+                    <div className="markdown-body">
+                      <Markdown>{task.description}</Markdown>
+                    </div>
                   ) : (
-                    <p className="text-[var(--color-text-muted)] italic">Click to add description (Markdown supported)...</p>
+                    <p className="italic" style={{ color: 'var(--color-text-muted)' }}>
+                      {t('task.descPlaceholder')}
+                    </p>
                   )}
                 </div>
               )}
@@ -176,7 +223,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
 
             {/* Checklists */}
             {checklists.length > 0 && (
-              <Section title="Checklists">
+              <Section title={t('task.checklists')}>
                 {checklists.map((cl) => {
                   const items = cl.items ?? [];
                   const done = items.filter((i: { checked: boolean }) => i.checked).length;
@@ -221,7 +268,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                       {/* Add item inline */}
                       <div className="mt-1">
                         <input
-                          placeholder="Add item..."
+                          placeholder={t('task.addItem')}
                           className="w-full text-sm border-0 border-b border-transparent hover:border-gray-200 focus:border-blue-400 outline-none py-1 px-1"
                           value={newItemTexts[cl.id] ?? ''}
                           onChange={(e) =>
@@ -247,7 +294,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
             {/* Add checklist */}
             <div className="flex gap-2">
               <input
-                placeholder="New checklist..."
+                placeholder={t('task.newChecklist')}
                 className="flex-1 text-sm border rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"
                 value={newChecklistTitle}
                 onChange={(e) => setNewChecklistTitle(e.target.value)}
@@ -271,16 +318,16 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                   }
                 }}
               >
-                + Checklist
+                {t('task.addChecklist')}
               </Button>
             </div>
 
             {/* Comments */}
-            <Section title={`Comments (${comments.length})`}>
+            <Section title={t('task.commentsCount', { count: comments.length })}>
               <div className="space-y-3">
                 <textarea
                   className="w-full border rounded-lg p-3 text-sm min-h-[60px] focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="Write a comment..."
+                  placeholder={t('task.writeComment')}
                   value={commentText}
                   onChange={(e) => setCommentText(e.target.value)}
                 />
@@ -295,7 +342,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                   }}
                   disabled={!commentText.trim() || createComment.isPending}
                 >
-                  Post
+                  {t('task.post')}
                 </Button>
                 {comments.map((c) => (
                   <div key={c.id} className="flex gap-2.5 py-2">
@@ -318,11 +365,16 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
           {/* Right sidebar — properties */}
           <div className="w-full md:w-48 md:flex-shrink-0 space-y-4 pt-1 md:border-l-0 border-t md:border-t-0 pt-4 md:pt-1" style={{ borderColor: 'var(--color-border)' }}>
             {/* Status */}
-            <Property label="Status">
+            <Property label={t('task.status')}>
               <select
                 value={task.status}
                 onChange={(e) => save({ status: e.target.value })}
-                className="w-full text-sm border rounded px-2 py-1 bg-white"
+                className="w-full text-sm rounded px-2 py-1"
+                style={{
+                  backgroundColor: 'var(--color-surface)',
+                  border: '1px solid var(--color-border)',
+                  color: 'var(--color-text)',
+                }}
               >
                 {statuses.map((s) => (
                   <option key={s} value={s}>{s.replace('_', ' ')}</option>
@@ -331,7 +383,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
             </Property>
 
             {/* Priority */}
-            <Property label="Priority">
+            <Property label={t('task.priority')}>
               <div className="flex flex-wrap gap-1">
                 {priorities.map((p) => (
                   <button
@@ -339,8 +391,8 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                     onClick={() => save({ priority: p })}
                     className={`px-2 py-0.5 rounded text-xs font-medium transition-all ${
                       task.priority === p
-                        ? `${priorityClass(p)} ring-2 ring-offset-1 ring-blue-400`
-                        : 'bg-[var(--color-surface-hover)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]'
+                        ? `${priorityClass(p)} ring-2 ring-offset-1 ring-[var(--color-border-focus)]`
+                        : 'bg-[var(--color-surface-hover)] text-[var(--color-text-muted)] hover:opacity-80'
                     }`}
                   >
                     {p}
@@ -350,23 +402,23 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
             </Property>
 
             {/* Dates — range style */}
-            <Property label="Dates">
+            <Property label={t('task.dates')}>
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-[var(--color-text-muted)] w-8">Start</span>
+                  <span className="text-xs text-[var(--color-text-muted)] w-8">{t('task.start')}</span>
                   <input
                     type="date"
                     value={task.start_date?.split('T')[0] ?? ''}
-                    onChange={(e) => save({ start_date: e.target.value || null })}
+                    onChange={(e) => save({ start_date: dateToIso(e.target.value) })}
                     className="flex-1 text-xs border rounded px-1.5 py-1"
                   />
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-[var(--color-text-muted)] w-8">Due</span>
+                  <span className="text-xs text-[var(--color-text-muted)] w-8">{t('task.due')}</span>
                   <input
                     type="date"
                     value={task.due_date?.split('T')[0] ?? ''}
-                    onChange={(e) => save({ due_date: e.target.value || null })}
+                    onChange={(e) => save({ due_date: dateToIso(e.target.value) })}
                     className="flex-1 text-xs border rounded px-1.5 py-1"
                     min={task.start_date?.split('T')[0] ?? undefined}
                   />
@@ -384,7 +436,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
             </Property>
 
             {/* Labels */}
-            <Property label="Labels">
+            <Property label={t('task.labels')}>
               <div className="space-y-1">
                 {taskLabels.map((l) => (
                   <div key={l.id} className="flex items-center gap-1 group">
@@ -425,7 +477,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                     className="w-6 h-6 p-0 border rounded cursor-pointer"
                   />
                   <input
-                    placeholder="New label"
+                    placeholder={t('task.newLabel')}
                     className="flex-1 text-xs border rounded px-1.5 py-0.5"
                     value={newLabelName}
                     onChange={(e) => setNewLabelName(e.target.value)}
@@ -443,7 +495,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
             </Property>
 
             {/* Assignees — searchable */}
-            <Property label="Assignees">
+            <Property label={t('task.assignees')}>
               <div className="space-y-1">
                 {taskAssignees.map((a) => (
                   <div key={a.id} className="flex items-center gap-1.5 group">
@@ -462,7 +514,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                 {/* Search input */}
                 <div className="relative">
                   <input
-                    placeholder="Search people..."
+                    placeholder={t('task.searchPeople')}
                     className="w-full text-xs border rounded px-2 py-1 focus:ring-1 focus:ring-blue-400 outline-none"
                     value={assigneeSearch}
                     onChange={(e) => { setAssigneeSearch(e.target.value); setShowAssigneeDropdown(true); }}
@@ -470,23 +522,39 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                     onBlur={() => setTimeout(() => setShowAssigneeDropdown(false), 200)}
                   />
                   {showAssigneeDropdown && filteredUsers.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded shadow-lg z-10 max-h-32 overflow-y-auto">
+                    <div
+                      className="absolute top-full left-0 right-0 mt-1 rounded z-10 max-h-32 overflow-y-auto"
+                      style={{
+                        backgroundColor: 'var(--color-surface)',
+                        border: '1px solid var(--color-border)',
+                        boxShadow: 'var(--shadow-md)',
+                      }}
+                    >
                       {filteredUsers.map((u) => (
                         <button
                           key={u.id}
-                          className="w-full text-left px-2 py-1.5 text-xs hover:bg-blue-50 flex items-center gap-1.5"
+                          className="w-full text-left px-2 py-1.5 text-xs flex items-center gap-1.5 hover:bg-[var(--color-surface-hover)]"
                           onMouseDown={(e) => e.preventDefault()}
                           onClick={() => {
                             addAssignee.mutate(u.id);
                             setAssigneeSearch('');
                             setShowAssigneeDropdown(false);
                           }}
+                          style={{ color: 'var(--color-text)' }}
                         >
-                          <div className="w-4 h-4 rounded-full bg-gray-300 text-[8px] flex items-center justify-center">
+                          <div
+                            className="w-4 h-4 rounded-full text-[8px] flex items-center justify-center"
+                            style={{
+                              backgroundColor: 'var(--color-surface-hover)',
+                              color: 'var(--color-text-secondary)',
+                            }}
+                          >
                             {u.name.charAt(0).toUpperCase()}
                           </div>
                           <span>{u.name}</span>
-                          <span className="text-[var(--color-text-muted)] ml-auto">{u.email}</span>
+                          <span className="ml-auto" style={{ color: 'var(--color-text-muted)' }}>
+                            {u.email}
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -517,6 +585,19 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
       </div>
     </DrawerShell>
   );
+}
+
+/**
+ * The `<input type="date">` control emits `YYYY-MM-DD`, but the backend's
+ * `start_date` / `due_date` fields deserialize into `DateTime<Utc>` — which
+ * rejects a bare calendar date. Normalize to RFC 3339 UTC-midnight before
+ * sending; an empty string maps to null so the field can be cleared.
+ */
+function dateToIso(value: string): string | null {
+  if (!value) return null;
+  // `YYYY-MM-DDTHH:mm:ssZ` — anchor at UTC midnight to avoid timezone drift
+  // flipping the displayed date one day off on load.
+  return `${value}T00:00:00Z`;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
