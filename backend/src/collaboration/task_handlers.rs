@@ -789,6 +789,27 @@ pub async fn patch_task(
         row
     };
 
+    // Reverse-sync (enum → custom field). Mirrors set_task_field_value's
+    // forward sync (custom → enum) so the two storage layers stay coherent
+    // regardless of which API surface a caller uses. The frontend no longer
+    // sends `status`/`priority` to PATCH /tasks/:id (it edits via Custom
+    // Fields), but external API consumers may, and we want the property
+    // panel to show the same value in either case.
+    //
+    // Looks up the seeded built-in field by name on the task's board. If a
+    // user deleted or renamed the field, the lookup misses and we silently
+    // skip — the enum write already succeeded so legacy surfaces still work.
+    if let Some(ref new_status) = body.status {
+        if let Some(label) = status_enum_to_label(new_status) {
+            mirror_to_custom_field(&mut tx, row.board_id, id, "Status", label).await?;
+        }
+    }
+    if let Some(ref new_priority) = body.priority {
+        if let Some(label) = priority_enum_to_label(new_priority) {
+            mirror_to_custom_field(&mut tx, row.board_id, id, "Priority", label).await?;
+        }
+    }
+
     // Activity log
     insert_activity(
         &mut tx,
@@ -2036,4 +2057,75 @@ async fn calendar_view(
         scheduled,
         unscheduled,
     }).unwrap())
+}
+
+// ---------------------------------------------------------------------------
+// Reverse sync (enum → custom field) — companion to set_task_field_value's
+// forward sync. Used by patch_task to keep the seeded built-in Status /
+// Priority custom fields in step with the legacy enum columns.
+// ---------------------------------------------------------------------------
+
+/// Map the canonical lower-case status enum value back to the human label
+/// used in the seeded "Status" custom field's options. Returns None for
+/// unknown values (e.g. caller-supplied junk that somehow passed validation),
+/// causing the mirror to silently skip rather than poison the field with an
+/// orphan label.
+fn status_enum_to_label(value: &str) -> Option<&'static str> {
+    match value {
+        "open" => Some("Open"),
+        "in_progress" => Some("In Progress"),
+        "done" => Some("Done"),
+        "archived" => Some("Archived"),
+        _ => None,
+    }
+}
+
+/// Same shape as `status_enum_to_label`, for priority.
+fn priority_enum_to_label(value: &str) -> Option<&'static str> {
+    match value {
+        "urgent" => Some("Urgent"),
+        "high" => Some("High"),
+        "medium" => Some("Medium"),
+        "low" => Some("Low"),
+        _ => None,
+    }
+}
+
+/// UPSERT a label into the task's `task_field_values` row for the named
+/// built-in field on its board. No-op if the board no longer has that
+/// field (user deleted it via BoardSettingsModal, or it was never seeded
+/// for this board).
+async fn mirror_to_custom_field(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    board_id: Uuid,
+    task_id: Uuid,
+    field_name: &str,
+    label: &str,
+) -> Result<(), AppError> {
+    let row: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM board_custom_fields WHERE board_id = $1 AND name = $2",
+    )
+    .bind(board_id)
+    .bind(field_name)
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    if let Some((field_id,)) = row {
+        sqlx::query(
+            r#"
+            INSERT INTO task_field_values (task_id, field_id, value)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (task_id, field_id) DO UPDATE
+                SET value = EXCLUDED.value,
+                    updated_at = now()
+            "#,
+        )
+        .bind(task_id)
+        .bind(field_id)
+        .bind(serde_json::Value::String(label.to_string()))
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    Ok(())
 }
