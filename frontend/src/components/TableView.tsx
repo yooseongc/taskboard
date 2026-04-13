@@ -34,7 +34,11 @@ interface FilterChip {
   fieldId: string;
   operator: string;
   value: string;
+  /** Second value, used by `between` operator (numeric / date range). */
+  value2?: string;
 }
+
+type FilterMode = 'and' | 'or';
 
 type SortKey = 'title' | 'priority' | 'status' | 'due_date' | 'column';
 type SortDir = 'asc' | 'desc';
@@ -50,11 +54,15 @@ const priorityOrder: Record<Priority, number> = {
  * Evaluate a single FilterChip against one task's value for that field.
  * Returns true if the task PASSES (stays in the filtered set).
  *
- * Operator semantics:
- *   - text:     contains (substring, case-insensitive) / equals / empty
- *   - select:   equals (label match) / empty
- *   - checkbox: is_true / is_false / empty
- *   - date/number/url: contains/equals as text fallback (good enough for v1)
+ * Operator semantics by field type:
+ *   - text / url:    contains | equals | starts_with | ends_with | empty
+ *   - number:        equals | gt | lt | gte | lte | between | empty
+ *   - date:          equals | before | after | between | empty
+ *   - select / ms:   equals | empty
+ *   - checkbox:      is_true | is_false | empty
+ *
+ * `between` consumes both `chip.value` (lower bound) and `chip.value2`
+ * (upper bound), inclusive on both ends.
  *
  * Unset value (undefined/null) only matches `empty`; all other operators
  * treat it as a fail so partial data doesn't accidentally satisfy filters.
@@ -75,10 +83,51 @@ function evaluateFilter(
     return false;
   }
 
+  if (field.field_type === 'number') {
+    const v = Number(value);
+    if (!Number.isFinite(v)) return false;
+    const a = Number(chip.value);
+    if (chip.operator === 'between') {
+      const b = Number(chip.value2);
+      if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+      const [lo, hi] = a <= b ? [a, b] : [b, a];
+      return v >= lo && v <= hi;
+    }
+    if (!Number.isFinite(a)) return false;
+    if (chip.operator === 'equals') return v === a;
+    if (chip.operator === 'gt') return v > a;
+    if (chip.operator === 'lt') return v < a;
+    if (chip.operator === 'gte') return v >= a;
+    if (chip.operator === 'lte') return v <= a;
+    return false;
+  }
+
+  if (field.field_type === 'date') {
+    // Date values are ISO strings (`YYYY-MM-DD` or full RFC3339). String
+    // compare on ISO is chronological — same trick used by sorting elsewhere.
+    const v = String(value);
+    if (chip.operator === 'between') {
+      if (!chip.value || !chip.value2) return false;
+      const [lo, hi] =
+        chip.value <= chip.value2
+          ? [chip.value, chip.value2]
+          : [chip.value2, chip.value];
+      return v >= lo && v <= hi;
+    }
+    if (!chip.value) return false;
+    if (chip.operator === 'equals') return v.startsWith(chip.value);
+    if (chip.operator === 'before') return v < chip.value;
+    if (chip.operator === 'after') return v > chip.value;
+    return false;
+  }
+
+  // text / url / select / fallback
   const stringVal = String(value).toLowerCase();
   const needle = chip.value.trim().toLowerCase();
   if (chip.operator === 'equals') return stringVal === needle;
   if (chip.operator === 'contains') return stringVal.includes(needle);
+  if (chip.operator === 'starts_with') return stringVal.startsWith(needle);
+  if (chip.operator === 'ends_with') return stringVal.endsWith(needle);
   return false;
 }
 
@@ -86,7 +135,22 @@ function evaluateFilter(
 function operatorsFor(fieldType: string): string[] {
   if (fieldType === 'checkbox') return ['is_true', 'is_false', 'empty'];
   if (fieldType === 'select' || fieldType === 'multi_select') return ['equals', 'empty'];
-  return ['contains', 'equals', 'empty'];
+  if (fieldType === 'number') return ['equals', 'gt', 'lt', 'gte', 'lte', 'between', 'empty'];
+  if (fieldType === 'date') return ['equals', 'before', 'after', 'between', 'empty'];
+  // text / url
+  return ['contains', 'equals', 'starts_with', 'ends_with', 'empty'];
+}
+
+/** Whether the operator needs the secondary `value2` input (between). */
+function operatorHasRange(op: string): boolean {
+  return op === 'between';
+}
+
+/** HTML input type for the value field given the underlying custom field type. */
+function valueInputType(fieldType: string): 'text' | 'number' | 'date' {
+  if (fieldType === 'number') return 'number';
+  if (fieldType === 'date') return 'date';
+  return 'text';
 }
 
 export default function TableView({
@@ -102,6 +166,7 @@ export default function TableView({
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<FilterChip[]>([]);
+  const [filterMode, setFilterMode] = useState<FilterMode>('and');
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newColumnId, setNewColumnId] = useState('');
@@ -150,18 +215,31 @@ export default function TableView({
           (t.summary ?? '').toLowerCase().includes(q),
       );
     }
-    // Custom filter chips. Each chip applied as AND. Skip incomplete chips
-    // (no field selected) so the user can edit a chip without flickering.
-    for (const chip of filters) {
-      if (!chip.fieldId) continue;
-      const field = customFields.find((f) => f.id === chip.fieldId);
-      if (!field) continue;
-      list = list.filter((task) =>
-        evaluateFilter(chip, field, valuesByTaskField.get(task.id)?.get(field.id)),
-      );
+    // Custom filter chips. AND combines all chips; OR keeps a row that
+    // satisfies at least one chip. Incomplete chips (no field) are skipped
+    // so the user can edit a partially-built chip without rows flickering
+    // out under them.
+    const activeChips = filters.filter((c) => {
+      if (!c.fieldId) return false;
+      return customFields.some((f) => f.id === c.fieldId);
+    });
+    if (activeChips.length > 0) {
+      list = list.filter((task) => {
+        const evaluators = activeChips.map((chip) => {
+          const field = customFields.find((f) => f.id === chip.fieldId)!;
+          return evaluateFilter(
+            chip,
+            field,
+            valuesByTaskField.get(task.id)?.get(field.id),
+          );
+        });
+        return filterMode === 'or'
+          ? evaluators.some(Boolean)
+          : evaluators.every(Boolean);
+      });
     }
     return list;
-  }, [tasks, search, filters, customFields, valuesByTaskField]);
+  }, [tasks, search, filters, filterMode, customFields, valuesByTaskField]);
 
   const sorted = useMemo(() => {
     const list = [...filtered];
@@ -269,18 +347,57 @@ export default function TableView({
           field, operator, or value and the table re-filters live. */}
       {filters.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 mb-4">
-          {filters.map((chip) => (
-            <FilterChipEditor
-              key={chip.id}
-              chip={chip}
-              fields={customFields}
-              onChange={(next) =>
-                setFilters((prev) => prev.map((c) => (c.id === chip.id ? next : c)))
-              }
-              onRemove={() =>
-                setFilters((prev) => prev.filter((c) => c.id !== chip.id))
-              }
-            />
+          {/* AND/OR mode toggle. Visible only when ≥ 2 chips since a single
+              chip's mode is meaningless. Combinator label appears between
+              chips below to make the relation explicit. */}
+          {filters.length >= 2 && (
+            <div
+              className="inline-flex rounded text-xs overflow-hidden"
+              style={{ border: '1px solid var(--color-border)' }}
+            >
+              {(['and', 'or'] as FilterMode[]).map((m) => {
+                const active = filterMode === m;
+                return (
+                  <button
+                    key={m}
+                    onClick={() => setFilterMode(m)}
+                    className="px-2 py-0.5 font-medium uppercase"
+                    style={{
+                      backgroundColor: active
+                        ? 'var(--color-primary)'
+                        : 'var(--color-surface)',
+                      color: active
+                        ? 'var(--color-text-inverse)'
+                        : 'var(--color-text-secondary)',
+                    }}
+                  >
+                    {t(`tableView.mode.${m}`)}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {filters.map((chip, idx) => (
+            <span key={chip.id} className="inline-flex items-center gap-2">
+              {idx > 0 && (
+                <span
+                  className="text-[10px] font-bold uppercase tracking-wider"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  {t(`tableView.mode.${filterMode}`)}
+                </span>
+              )}
+              <FilterChipEditor
+                chip={chip}
+                fields={customFields}
+                onChange={(next) =>
+                  setFilters((prev) => prev.map((c) => (c.id === chip.id ? next : c)))
+                }
+                onRemove={() =>
+                  setFilters((prev) => prev.filter((c) => c.id !== chip.id))
+                }
+              />
+            </span>
           ))}
           <button
             onClick={() => setFilters([])}
@@ -606,6 +723,8 @@ function FilterChipEditor({
     field?.field_type !== 'checkbox' && chip.operator !== 'empty';
   const isSelect =
     field?.field_type === 'select' || field?.field_type === 'multi_select';
+  const showRange = operatorHasRange(chip.operator);
+  const inputType = field ? valueInputType(field.field_type) : 'text';
 
   const inputStyle = {
     backgroundColor: 'var(--color-surface)',
@@ -630,6 +749,7 @@ function FilterChipEditor({
             fieldId: e.target.value,
             operator: nextField ? operatorsFor(nextField.field_type)[0] : 'equals',
             value: '',
+            value2: '',
           });
         }}
         className="text-xs rounded px-1.5 py-0.5"
@@ -641,7 +761,9 @@ function FilterChipEditor({
       </select>
       <select
         value={chip.operator}
-        onChange={(e) => onChange({ ...chip, operator: e.target.value, value: '' })}
+        onChange={(e) =>
+          onChange({ ...chip, operator: e.target.value, value: '', value2: '' })
+        }
         className="text-xs rounded px-1.5 py-0.5"
         style={inputStyle}
       >
@@ -651,8 +773,8 @@ function FilterChipEditor({
           </option>
         ))}
       </select>
-      {showValueInput && (
-        isSelect ? (
+      {showValueInput &&
+        (isSelect ? (
           <select
             value={chip.value}
             onChange={(e) => onChange({ ...chip, value: e.target.value })}
@@ -665,16 +787,35 @@ function FilterChipEditor({
             ))}
           </select>
         ) : (
-          <input
-            type="text"
-            value={chip.value}
-            onChange={(e) => onChange({ ...chip, value: e.target.value })}
-            className="text-xs rounded px-1.5 py-0.5 w-24 outline-none"
-            style={inputStyle}
-            placeholder="…"
-          />
-        )
-      )}
+          <>
+            <input
+              type={inputType}
+              value={chip.value}
+              onChange={(e) => onChange({ ...chip, value: e.target.value })}
+              className="text-xs rounded px-1.5 py-0.5 outline-none"
+              style={{ ...inputStyle, width: inputType === 'date' ? '8rem' : '6rem' }}
+              placeholder="…"
+            />
+            {showRange && (
+              <>
+                <span
+                  className="text-[10px] uppercase font-semibold"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  {t('tableView.and')}
+                </span>
+                <input
+                  type={inputType}
+                  value={chip.value2 ?? ''}
+                  onChange={(e) => onChange({ ...chip, value2: e.target.value })}
+                  className="text-xs rounded px-1.5 py-0.5 outline-none"
+                  style={{ ...inputStyle, width: inputType === 'date' ? '8rem' : '6rem' }}
+                  placeholder="…"
+                />
+              </>
+            )}
+          </>
+        ))}
       <button
         onClick={onRemove}
         aria-label={t('common.delete')}
