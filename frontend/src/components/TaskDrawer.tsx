@@ -126,7 +126,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
           />
         ) : (
           <h2
-            className="text-xl font-bold cursor-text hover:bg-gray-50 rounded px-1 -mx-1"
+            className="text-xl font-bold cursor-text hover:bg-[var(--color-surface-hover)] rounded px-1 -mx-1"
             onClick={() => { setTitle(task.title); setEditingTitle(true); }}
           >
             {task.title}
@@ -162,13 +162,13 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                 </div>
               ) : (
                 <div
-                  className="cursor-text hover:bg-gray-50 rounded p-2 -m-2 min-h-[40px] prose prose-sm max-w-none"
+                  className="cursor-text hover:bg-[var(--color-surface-hover)] rounded p-2 -m-2 min-h-[40px] prose prose-sm max-w-none"
                   onClick={() => { setDescription(task.description ?? ''); setEditingDesc(true); }}
                 >
                   {task.description ? (
                     <Markdown>{task.description}</Markdown>
                   ) : (
-                    <p className="text-gray-400 italic">Click to add description (Markdown supported)...</p>
+                    <p className="text-[var(--color-text-muted)] italic">Click to add description (Markdown supported)...</p>
                   )}
                 </div>
               )}
@@ -185,11 +185,11 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                     <div key={cl.id} className="mb-4">
                       <div className="flex items-center gap-2 mb-2">
                         <h4 className="text-sm font-semibold">{cl.title}</h4>
-                        <span className="text-xs text-gray-400">{done}/{items.length}</span>
+                        <span className="text-xs text-[var(--color-text-muted)]">{done}/{items.length}</span>
                       </div>
                       {/* Progress bar */}
                       {items.length > 0 && (
-                        <div className="h-1.5 bg-gray-100 rounded-full mb-2 overflow-hidden">
+                        <div className="h-1.5 bg-[var(--color-surface-hover)] rounded-full mb-2 overflow-hidden">
                           <div
                             className={`h-full rounded-full transition-all ${pct === 100 ? 'bg-green-500' : 'bg-blue-500'}`}
                             style={{ width: `${pct}%` }}
@@ -199,7 +199,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                       {items.map((item: { id: string; title: string; checked: boolean }) => (
                         <label
                           key={item.id}
-                          className="flex items-center gap-2.5 py-1 px-1 rounded hover:bg-gray-50 cursor-pointer"
+                          className="flex items-center gap-2.5 py-1 px-1 rounded hover:bg-[var(--color-surface-hover)] cursor-pointer"
                         >
                           <input
                             type="checkbox"
@@ -213,7 +213,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                               })
                             }
                           />
-                          <span className={`text-sm ${item.checked ? 'line-through text-gray-400' : ''}`}>
+                          <span className={`text-sm ${item.checked ? 'line-through text-[var(--color-text-muted)]' : ''}`}>
                             {item.title}
                           </span>
                         </label>
@@ -299,15 +299,15 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                 </Button>
                 {comments.map((c) => (
                   <div key={c.id} className="flex gap-2.5 py-2">
-                    <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600 flex-shrink-0">
+                    <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-[var(--color-text-secondary)] flex-shrink-0">
                       {c.author_name.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">{c.author_name}</span>
-                        <span className="text-xs text-gray-400">{new Date(c.created_at).toLocaleString()}</span>
+                        <span className="text-xs text-[var(--color-text-muted)]">{new Date(c.created_at).toLocaleString()}</span>
                       </div>
-                      <p className="text-sm text-gray-600 mt-0.5">{c.body}</p>
+                      <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">{c.body}</p>
                     </div>
                   </div>
                 ))}
@@ -340,7 +340,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                     className={`px-2 py-0.5 rounded text-xs font-medium transition-all ${
                       task.priority === p
                         ? `${priorityClass(p)} ring-2 ring-offset-1 ring-blue-400`
-                        : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
+                        : 'bg-[var(--color-surface-hover)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]'
                     }`}
                   >
                     {p}
@@ -353,7 +353,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
             <Property label="Dates">
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-gray-400 w-8">Start</span>
+                  <span className="text-[10px] text-[var(--color-text-muted)] w-8">Start</span>
                   <input
                     type="date"
                     value={task.start_date?.split('T')[0] ?? ''}
@@ -362,7 +362,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                   />
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-gray-400 w-8">Due</span>
+                  <span className="text-[10px] text-[var(--color-text-muted)] w-8">Due</span>
                   <input
                     type="date"
                     value={task.due_date?.split('T')[0] ?? ''}
@@ -372,7 +372,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                   />
                 </div>
                 {task.start_date && task.due_date && (
-                  <div className="text-[10px] text-gray-400 text-center">
+                  <div className="text-[10px] text-[var(--color-text-muted)] text-center">
                     {Math.ceil(
                       (new Date(task.due_date).getTime() - new Date(task.start_date).getTime()) /
                         (1000 * 60 * 60 * 24),
@@ -486,7 +486,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                             {u.name.charAt(0).toUpperCase()}
                           </div>
                           <span>{u.name}</span>
-                          <span className="text-gray-400 ml-auto">{u.email}</span>
+                          <span className="text-[var(--color-text-muted)] ml-auto">{u.email}</span>
                         </button>
                       ))}
                     </div>
@@ -522,7 +522,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+      <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
         {title}
       </h3>
       {children}
@@ -533,7 +533,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Property({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <span className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
+      <span className="block text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1">
         {label}
       </span>
       {children}
@@ -618,7 +618,7 @@ function CustomFieldInput({
                   onChange(next);
                 }}
                 className={`px-1.5 py-0.5 rounded text-[10px] ${
-                  active ? 'bg-blue-100 text-blue-700' : 'bg-gray-50 text-gray-400'
+                  active ? 'bg-blue-100 text-blue-700' : 'bg-[var(--color-surface-hover)] text-[var(--color-text-muted)]'
                 }`}
               >
                 {opt.label}
@@ -629,7 +629,7 @@ function CustomFieldInput({
       );
     }
     default:
-      return <span className="text-xs text-gray-400">Unsupported</span>;
+      return <span className="text-xs text-[var(--color-text-muted)]">Unsupported</span>;
   }
 }
 

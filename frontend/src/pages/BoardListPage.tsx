@@ -57,7 +57,7 @@ export default function BoardListPage() {
         <div>
           <h1 className="text-2xl font-bold" style={{ color: 'var(--color-text)' }}>{t('boards.title')}</h1>
           {totalBoards > 0 && (
-            <p className="text-sm text-gray-400 mt-0.5">{totalBoards} board(s)</p>
+            <p className="text-sm text-[var(--color-text-muted)] mt-0.5">{totalBoards} board(s)</p>
           )}
         </div>
         {canCreateBoard ? (
@@ -110,7 +110,7 @@ export default function BoardListPage() {
       {/* Grouped by department */}
       {grouped.groups.map((group) => (
         <div key={group.name} className="mb-8">
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+          <h2 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-3">
             {group.name}
           </h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -123,7 +123,7 @@ export default function BoardListPage() {
       {grouped.ungrouped.length > 0 && (
         <div className="mb-8">
           {grouped.groups.length > 0 && (
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+            <h2 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-3">
               Other
             </h2>
           )}
@@ -146,15 +146,15 @@ function BoardCard({ board }: { board: Board }) {
   return (
     <Link
       to={`/boards/${board.id}`}
-      className="block rounded-lg border border-gray-200 bg-white p-5 shadow-sm hover:shadow-md transition-shadow"
+      className="block surface-raised p-5 hover:shadow-md transition-shadow"
     >
       <h3 className="text-base font-semibold">{board.title}</h3>
       {board.description && (
-        <p className="mt-1.5 text-sm text-gray-500 line-clamp-2">
+        <p className="mt-1.5 text-sm text-[var(--color-text-secondary)] line-clamp-2">
           {board.description}
         </p>
       )}
-      <div className="mt-3 text-xs text-gray-400">
+      <div className="mt-3 text-xs text-[var(--color-text-muted)]">
         v{board.version} &middot;{' '}
         {new Date(board.created_at).toLocaleDateString()}
       </div>
@@ -258,7 +258,7 @@ function CreateBoardModal({ onClose }: { onClose: () => void }) {
             ))}
           </select>
           {!departmentId && (
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-[var(--color-text-muted)] mt-1">
               A department is required.
             </p>
           )}

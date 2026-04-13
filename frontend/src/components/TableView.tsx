@@ -9,6 +9,8 @@ interface TableViewProps {
   columns: BoardColumn[];
   onTaskClick: (taskId: string) => void;
   onCreateTask?: (title: string, columnId: string) => void;
+  onBulkMove?: (taskIds: string[], columnId: string) => void;
+  onBulkDelete?: (taskIds: string[]) => void;
 }
 
 type SortKey = 'title' | 'priority' | 'status' | 'due_date' | 'column';
@@ -26,6 +28,8 @@ export default function TableView({
   columns,
   onTaskClick,
   onCreateTask,
+  onBulkMove,
+  onBulkDelete,
 }: TableViewProps) {
   const [sortKey, setSortKey] = useState<SortKey>('title');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
@@ -35,6 +39,7 @@ export default function TableView({
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newColumnId, setNewColumnId] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const columnMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -139,13 +144,63 @@ export default function TableView({
           <option value="medium">Medium</option>
           <option value="low">Low</option>
         </select>
-        <span className="text-xs text-gray-400">{sorted.length} task(s)</span>
+        <span className="text-xs text-[var(--color-text-muted)]">{sorted.length} task(s)</span>
         {onCreateTask && (
           <Button size="sm" onClick={() => setAdding(true)} className="ml-auto">
             + Add Task
           </Button>
         )}
       </div>
+
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div
+          className="flex items-center gap-3 px-4 py-2 mb-3 rounded-lg"
+          style={{
+            backgroundColor: 'var(--color-primary-light)',
+            border: '1px solid var(--color-primary)',
+          }}
+        >
+          <span className="text-sm font-medium" style={{ color: 'var(--color-primary-text)' }}>
+            {selected.size}개 선택됨
+          </span>
+          {onBulkMove && (
+            <select
+              onChange={(e) => {
+                if (e.target.value) {
+                  onBulkMove([...selected], e.target.value);
+                  setSelected(new Set());
+                }
+              }}
+              defaultValue=""
+              className="text-xs border rounded px-2 py-1"
+              style={{ backgroundColor: 'var(--color-surface)' }}
+            >
+              <option value="">컬럼 이동...</option>
+              {columns.map((c) => (
+                <option key={c.id} value={c.id}>{c.title}</option>
+              ))}
+            </select>
+          )}
+          {onBulkDelete && (
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => {
+                if (confirm(`${selected.size}개 태스크를 삭제할까요?`)) {
+                  onBulkDelete([...selected]);
+                  setSelected(new Set());
+                }
+              }}
+            >
+              삭제
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+            선택 해제
+          </Button>
+        </div>
+      )}
 
       {/* Inline add row */}
       {adding && onCreateTask && (
@@ -182,8 +237,24 @@ export default function TableView({
       {/* Table */}
       <div className="overflow-x-auto rounded-lg border border-gray-200">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50">
+          <thead className="bg-[var(--color-surface-hover)]">
             <tr>
+              {(onBulkMove || onBulkDelete) && (
+                <th className="px-3 py-2.5 w-8">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all"
+                    checked={sorted.length > 0 && selected.size === sorted.length}
+                    ref={(el) => {
+                      if (el) el.indeterminate = selected.size > 0 && selected.size < sorted.length;
+                    }}
+                    onChange={(e) => {
+                      if (e.target.checked) setSelected(new Set(sorted.map((t) => t.id)));
+                      else setSelected(new Set());
+                    }}
+                  />
+                </th>
+              )}
               {(
                 [
                   ['title', 'Title'],
@@ -196,16 +267,16 @@ export default function TableView({
                 <th
                   key={key}
                   onClick={() => handleSort(key)}
-                  className="px-4 py-2.5 text-left font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                  className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)] cursor-pointer hover:bg-[var(--color-surface-active)] select-none"
                 >
                   {label}
                   <SortIcon col={key} />
                 </th>
               ))}
-              <th className="px-4 py-2.5 text-left font-medium text-gray-600">
+              <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">
                 Assignees
               </th>
-              <th className="px-4 py-2.5 text-left font-medium text-gray-600 w-16">
+              <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)] w-16">
                 Info
               </th>
             </tr>
@@ -215,8 +286,23 @@ export default function TableView({
               <tr
                 key={task.id}
                 onClick={() => onTaskClick(task.id)}
-                className="hover:bg-blue-50 cursor-pointer"
+                className="hover:bg-[var(--color-surface-active)] cursor-pointer"
               >
+                {(onBulkMove || onBulkDelete) && (
+                  <td className="px-3 py-2.5 w-8" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${task.title}`}
+                      checked={selected.has(task.id)}
+                      onChange={(e) => {
+                        const next = new Set(selected);
+                        if (e.target.checked) next.add(task.id);
+                        else next.delete(task.id);
+                        setSelected(next);
+                      }}
+                    />
+                  </td>
+                )}
                 <td className="px-4 py-2.5">
                   <div>
                     {/* Labels */}
@@ -233,14 +319,14 @@ export default function TableView({
                     )}
                     <span className="font-medium">{task.title}</span>
                     {task.description && (
-                      <span className="text-xs text-gray-400 ml-2 truncate">
+                      <span className="text-xs text-[var(--color-text-muted)] ml-2 truncate">
                         {task.description.slice(0, 40)}
                         {task.description.length > 40 ? '...' : ''}
                       </span>
                     )}
                   </div>
                 </td>
-                <td className="px-4 py-2.5 text-gray-500">
+                <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">
                   {columnMap.get(task.column_id) ?? '-'}
                 </td>
                 <td className="px-4 py-2.5">
@@ -248,7 +334,7 @@ export default function TableView({
                     task.status === 'done' ? 'bg-green-100 text-green-700' :
                     task.status === 'in_progress' ? 'bg-amber-100 text-amber-700' :
                     task.status === 'open' ? 'bg-blue-100 text-blue-700' :
-                    'bg-gray-100 text-gray-500'
+                    'bg-gray-100 text-[var(--color-text-secondary)]'
                   }>
                     {task.status.replace('_', ' ')}
                   </Badge>
@@ -258,7 +344,7 @@ export default function TableView({
                     {task.priority}
                   </Badge>
                 </td>
-                <td className="px-4 py-2.5 text-gray-500 text-xs">
+                <td className="px-4 py-2.5 text-[var(--color-text-secondary)] text-xs">
                   {task.due_date
                     ? new Date(task.due_date).toLocaleDateString()
                     : '-'}
@@ -275,7 +361,7 @@ export default function TableView({
                       </div>
                     ))}
                     {(task.assignees ?? []).length > 3 && (
-                      <div className="w-6 h-6 rounded-full bg-gray-300 text-gray-600 text-xs flex items-center justify-center border-2 border-white">
+                      <div className="w-6 h-6 rounded-full bg-gray-300 text-[var(--color-text-secondary)] text-xs flex items-center justify-center border-2 border-white">
                         +{(task.assignees ?? []).length - 3}
                       </div>
                     )}
@@ -284,7 +370,7 @@ export default function TableView({
                     )}
                   </div>
                 </td>
-                <td className="px-4 py-2.5 text-xs text-gray-400">
+                <td className="px-4 py-2.5 text-xs text-[var(--color-text-muted)]">
                   <div className="flex gap-2">
                     {(task.checklist_summary?.total ?? 0) > 0 && (
                       <span title="Checklist progress">
@@ -303,8 +389,8 @@ export default function TableView({
             {sorted.length === 0 && (
               <tr>
                 <td
-                  colSpan={7}
-                  className="px-4 py-8 text-center text-gray-400"
+                  colSpan={onBulkMove || onBulkDelete ? 8 : 7}
+                  className="px-4 py-8 text-center text-[var(--color-text-muted)]"
                 >
                   No tasks found.
                 </td>

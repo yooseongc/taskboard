@@ -49,14 +49,14 @@ export default function TemplatesPage() {
           return (
             <div
               key={tmpl.id}
-              className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm hover:shadow-md transition-shadow"
+              className="surface-raised p-5 hover:shadow-md transition-shadow"
             >
               <div className="flex items-center gap-2 mb-1.5">
                 <h2 className="text-base font-semibold">{tmpl.name}</h2>
                 <Badge>{tmpl.kind}</Badge>
               </div>
               {tmpl.description && (
-                <p className="text-sm text-gray-500 line-clamp-2 mb-3">
+                <p className="text-sm text-[var(--color-text-secondary)] line-clamp-2 mb-3">
                   {tmpl.description}
                 </p>
               )}
@@ -66,7 +66,7 @@ export default function TemplatesPage() {
                   {columns.map((col, i) => (
                     <span
                       key={i}
-                      className="inline-block bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded"
+                      className="inline-block bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)] text-xs px-2 py-0.5 rounded"
                     >
                       {col}
                     </span>
@@ -94,7 +94,7 @@ export default function TemplatesPage() {
                   </Button>
                 )}
                 {isGlobal && (
-                  <span className="text-xs text-gray-400 self-center ml-auto">
+                  <span className="text-xs text-[var(--color-text-muted)] self-center ml-auto">
                     System template
                   </span>
                 )}
@@ -219,7 +219,7 @@ function UseTemplateModal({
             ))}
           </select>
           {!departmentId && (
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-[var(--color-text-muted)] mt-1">
               A department is required to create a board.
             </p>
           )}

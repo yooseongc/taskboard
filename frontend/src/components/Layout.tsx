@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../stores/authStore';
 import { getLogoutUrl } from '../auth/oidc';
 import { usePermissions } from '../hooks/usePermissions';
 import { ToastContainer } from './Toast';
+import CommandPalette from './CommandPalette';
 
 const navItems = [
   { path: '/', labelKey: 'nav.boards', icon: 'M4 6h16M4 12h16M4 18h16', adminOnly: false },
@@ -30,8 +31,21 @@ const navItems = [
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 768);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const { isSystemAdmin } = usePermissions();
   const { t } = useTranslation();
+
+  // Ctrl+K / Cmd+K opens command palette
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setPaletteOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
@@ -156,6 +170,22 @@ export default function Layout() {
               />
             </svg>
           </button>
+          <button
+            onClick={() => setPaletteOpen(true)}
+            className="ml-auto flex items-center gap-2 px-2.5 py-1 rounded text-xs"
+            style={{
+              backgroundColor: 'var(--color-surface-hover)',
+              color: 'var(--color-text-muted)',
+              border: '1px solid var(--color-border)',
+            }}
+            aria-label="Open command palette"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <span>Search</span>
+            <kbd className="px-1 rounded" style={{ backgroundColor: 'var(--color-bg)' }}>Ctrl+K</kbd>
+          </button>
         </header>
 
         {/* Page content */}
@@ -165,6 +195,7 @@ export default function Layout() {
       </div>
 
       <ToastContainer />
+      {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
     </div>
   );
 }
