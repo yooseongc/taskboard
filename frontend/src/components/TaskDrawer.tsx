@@ -353,7 +353,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
             <Property label="Dates">
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-[var(--color-text-muted)] w-8">Start</span>
+                  <span className="text-xs text-[var(--color-text-muted)] w-8">Start</span>
                   <input
                     type="date"
                     value={task.start_date?.split('T')[0] ?? ''}
@@ -362,7 +362,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                   />
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-[var(--color-text-muted)] w-8">Due</span>
+                  <span className="text-xs text-[var(--color-text-muted)] w-8">Due</span>
                   <input
                     type="date"
                     value={task.due_date?.split('T')[0] ?? ''}
@@ -372,7 +372,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                   />
                 </div>
                 {task.start_date && task.due_date && (
-                  <div className="text-[10px] text-[var(--color-text-muted)] text-center">
+                  <div className="text-xs text-[var(--color-text-muted)] text-center">
                     {Math.ceil(
                       (new Date(task.due_date).getTime() - new Date(task.start_date).getTime()) /
                         (1000 * 60 * 60 * 24),
@@ -447,13 +447,13 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
               <div className="space-y-1">
                 {taskAssignees.map((a) => (
                   <div key={a.id} className="flex items-center gap-1.5 group">
-                    <div className="w-5 h-5 rounded-full bg-blue-500 text-white text-[10px] flex items-center justify-center flex-shrink-0">
+                    <div className="w-5 h-5 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center flex-shrink-0">
                       {a.name.charAt(0).toUpperCase()}
                     </div>
                     <span className="text-xs truncate flex-1">{a.name}</span>
                     <button
                       onClick={() => removeAssignee.mutate(a.id)}
-                      className="text-gray-300 hover:text-red-500 hidden group-hover:block text-[10px]"
+                      className="text-gray-300 hover:text-red-500 hidden group-hover:block text-xs"
                     >
                       x
                     </button>
@@ -533,7 +533,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Property({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <span className="block text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1">
+      <span className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1">
         {label}
       </span>
       {children}
@@ -617,7 +617,7 @@ function CustomFieldInput({
                     : [...selected, opt.label];
                   onChange(next);
                 }}
-                className={`px-1.5 py-0.5 rounded text-[10px] ${
+                className={`px-1.5 py-0.5 rounded text-xs ${
                   active ? 'bg-blue-100 text-blue-700' : 'bg-[var(--color-surface-hover)] text-[var(--color-text-muted)]'
                 }`}
               >

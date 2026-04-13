@@ -6,6 +6,7 @@ import { getLogoutUrl } from '../auth/oidc';
 import { usePermissions } from '../hooks/usePermissions';
 import { ToastContainer } from './Toast';
 import CommandPalette from './CommandPalette';
+import OnboardingTour from './OnboardingTour';
 
 const navItems = [
   { path: '/', labelKey: 'nav.boards', icon: 'M4 6h16M4 12h16M4 18h16', adminOnly: false },
@@ -196,6 +197,7 @@ export default function Layout() {
 
       <ToastContainer />
       {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
+      <OnboardingTour />
     </div>
   );
 }

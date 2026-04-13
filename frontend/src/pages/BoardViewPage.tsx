@@ -508,7 +508,7 @@ function TaskCardContent({ task }: { task: TaskDto }) {
           {labels.map((l) => (
             <span
               key={l.id}
-              className="inline-flex items-center gap-0.5 rounded px-1.5 py-0 text-[10px] font-medium text-white"
+              className="inline-flex items-center gap-0.5 rounded px-1.5 py-0 text-xs font-medium text-white"
               style={{ backgroundColor: l.color }}
             >
               {l.name}
@@ -525,18 +525,18 @@ function TaskCardContent({ task }: { task: TaskDto }) {
       {/* Meta row */}
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <span
-          className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${priorityClass(task.priority)}`}
+          className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold ${priorityClass(task.priority)}`}
         >
           {task.priority.toUpperCase()}
         </span>
         {task.status !== 'open' && (
-          <span className="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)]">
+          <span className="inline-block rounded px-1.5 py-0.5 text-xs font-medium bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)]">
             {task.status.replace('_', ' ')}
           </span>
         )}
         {task.due_date && (
           <span
-            className={`text-[10px] ${isOverdue ? 'text-red-500 font-medium' : 'text-[var(--color-text-muted)]'}`}
+            className={`text-xs ${isOverdue ? 'text-red-500 font-medium' : 'text-[var(--color-text-muted)]'}`}
           >
             {isOverdue ? 'Overdue ' : ''}
             {new Date(task.due_date).toLocaleDateString()}
@@ -548,7 +548,7 @@ function TaskCardContent({ task }: { task: TaskDto }) {
         commentCount > 0 ||
         assignees.length > 0) && (
         <div className="mt-2 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-muted)]">
+          <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
             {checklist.total > 0 && (
               <span className="flex items-center gap-0.5" title="Checklist">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -571,14 +571,14 @@ function TaskCardContent({ task }: { task: TaskDto }) {
               {assignees.slice(0, 3).map((a) => (
                 <div
                   key={a.id}
-                  className="w-6 h-6 rounded-full bg-blue-500 text-white text-[10px] flex items-center justify-center border-2 border-white"
+                  className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center border-2 border-white"
                   title={a.name}
                 >
                   {a.name.charAt(0).toUpperCase()}
                 </div>
               ))}
               {assignees.length > 3 && (
-                <div className="w-6 h-6 rounded-full bg-gray-300 text-[var(--color-text-secondary)] text-[10px] flex items-center justify-center border-2 border-white">
+                <div className="w-6 h-6 rounded-full bg-gray-300 text-[var(--color-text-secondary)] text-xs flex items-center justify-center border-2 border-white">
                   +{assignees.length - 3}
                 </div>
               )}

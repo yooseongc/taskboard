@@ -74,13 +74,13 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto max-w-2xl px-6 py-8">
       <h1 className="text-2xl font-bold mb-8" style={{ color: 'var(--color-text)' }}>
-        Settings
+        {t('settings.title')}
       </h1>
 
       {/* Theme */}
       <section className="surface-raised p-5 mb-6">
         <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--color-text)' }}>
-          Appearance
+          {t('settings.appearance')}
         </h2>
         <div className="grid grid-cols-3 gap-3">
           {themes.map((t) => (
@@ -120,7 +120,7 @@ export default function SettingsPage() {
       {/* Accent Color */}
       <section className="surface-raised p-5 mb-6">
         <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--color-text)' }}>
-          Accent Color
+          {t('settings.accentColor')}
         </h2>
         <div className="flex flex-wrap gap-2 mb-3">
           {presetColors.map((c) => (
@@ -173,7 +173,7 @@ export default function SettingsPage() {
       {/* Language */}
       <section className="surface-raised p-5 mb-6">
         <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--color-text)' }}>
-          Language
+          {t('settings.language')}
         </h2>
         <div className="flex gap-2">
           {locales.map((l) => (
@@ -195,7 +195,7 @@ export default function SettingsPage() {
       {/* About */}
       <section className="surface-raised p-5">
         <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--color-text)' }}>
-          About
+          {t('settings.about')}
         </h2>
         <div className="text-sm space-y-1" style={{ color: 'var(--color-text-secondary)' }}>
           <p>Taskboard v0.1.0</p>

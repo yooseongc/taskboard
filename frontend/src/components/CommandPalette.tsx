@@ -164,7 +164,7 @@ export default function CommandPalette({ onClose }: { onClose: () => void }) {
             )}
             {Object.entries(grouped).map(([group, items]) => (
               <div key={group}>
-                <div className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider"
+                <div className="px-4 pt-3 pb-1 text-xs font-semibold uppercase tracking-wider"
                   style={{ color: 'var(--color-text-muted)' }}>
                   {groupLabels[group as Command['group']]}
                 </div>
@@ -197,7 +197,7 @@ export default function CommandPalette({ onClose }: { onClose: () => void }) {
           </div>
           {/* Footer */}
           <div
-            className="flex items-center justify-between px-4 py-2 text-[10px]"
+            className="flex items-center justify-between px-4 py-2 text-xs"
             style={{ borderTop: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}
           >
             <span>↑↓ 이동 · Enter 실행 · ESC 닫기</span>

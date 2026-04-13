@@ -9,6 +9,13 @@ import App from './App';
 import './i18n';
 import './index.css';
 
+// Runtime a11y checks (dev only)
+if (import.meta.env.DEV) {
+  import('@axe-core/react').then(({ default: axe }) => {
+    axe(React, ReactDOM, 1000);
+  });
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
