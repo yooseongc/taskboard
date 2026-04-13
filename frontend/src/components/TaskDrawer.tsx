@@ -23,19 +23,20 @@ import { useToastStore } from '../stores/toastStore';
 import { useEscapeKey } from '../hooks/useEscapeKey';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { Spinner } from './Spinner';
-import Badge from './ui/Badge';
 import Button from './ui/Button';
-import { useTagTheme } from '../theme/constants';
-import type { Priority, TaskStatus } from '../types/api';
+// NOTE: hardcoded `Priority` / `TaskStatus` enums are no longer consumed by
+// this component — the Custom Fields block at the bottom of the right
+// sidebar renders Status/Priority via the seeded built-in select fields
+// (see migration 0010 + create_board seed). The `tasks.status` / `priority`
+// enum columns still exist on the row, kept in sync by the backend's
+// custom→enum mirror in set_task_field_value, so card badges and table
+// sort continue working without referencing them here.
 
 interface TaskDrawerProps {
   taskId: string;
   boardId: string;
   onClose: () => void;
 }
-
-const priorities: Priority[] = ['low', 'medium', 'high', 'urgent'];
-const statuses: TaskStatus[] = ['open', 'in_progress', 'done', 'archived'];
 
 export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps) {
   const { data: task, isLoading } = useTask(taskId);
@@ -59,7 +60,6 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
   const { data: fieldValuesData } = useTaskFieldValues(taskId);
   const setFieldValue = useSetTaskFieldValue(taskId);
   const addToast = useToastStore((s) => s.addToast);
-  const { priorityClass } = useTagTheme();
   const { t } = useTranslation();
 
   const [editingTitle, setEditingTitle] = useState(false);
@@ -397,42 +397,14 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
               </select>
             </Property>
 
-            {/* Status */}
-            <Property label={t('task.status')}>
-              <select
-                value={task.status}
-                onChange={(e) => save({ status: e.target.value })}
-                className="w-full text-sm rounded px-2 py-1"
-                style={{
-                  backgroundColor: 'var(--color-surface)',
-                  border: '1px solid var(--color-border)',
-                  color: 'var(--color-text)',
-                }}
-              >
-                {statuses.map((s) => (
-                  <option key={s} value={s}>{s.replace('_', ' ')}</option>
-                ))}
-              </select>
-            </Property>
-
-            {/* Priority */}
-            <Property label={t('task.priority')}>
-              <div className="flex flex-wrap gap-1">
-                {priorities.map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => save({ priority: p })}
-                    className={`px-2 py-0.5 rounded text-xs font-medium transition-all ${
-                      task.priority === p
-                        ? `${priorityClass(p)} ring-2 ring-offset-1 ring-[var(--color-border-focus)]`
-                        : 'bg-[var(--color-surface-hover)] text-[var(--color-text-muted)] hover:opacity-80'
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
-            </Property>
+            {/* NOTE: Status and Priority are now rendered by the Custom
+                Fields block below. They were seeded as built-in `select`
+                fields by migration 0010 / create_board, so the Custom Fields
+                renderer at the bottom of this sidebar covers them with the
+                same option semantics + 8-family color tokens.
+                Backend mirror-writes these custom field changes back into
+                `tasks.status` / `tasks.priority` so card badges, table sort,
+                and search continue to work without code changes elsewhere. */}
 
             {/* Dates — range style */}
             <Property label={t('task.dates')}>

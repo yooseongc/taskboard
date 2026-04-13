@@ -203,6 +203,8 @@ pub async fn set_task_field_value(
     let authz_board_id = crate::authz::check::fetch_task_board_id(&state.pool, task_id).await?;
     check_board_permission(&state.pool, &user, authz_board_id, Action::Update, ResourceType::Task).await?;
 
+    let mut tx = state.pool.begin().await?;
+
     let row = sqlx::query_as::<_, TaskFieldValueRow>(
         r#"
         INSERT INTO task_field_values (task_id, field_id, value)
@@ -216,8 +218,70 @@ pub async fn set_task_field_value(
     .bind(task_id)
     .bind(field_id)
     .bind(&body.value)
-    .fetch_one(&state.pool)
+    .fetch_one(&mut *tx)
     .await?;
 
+    // Compatibility shim: when the field being written is the seeded built-in
+    // "Status" or "Priority" custom field, mirror the value back into the
+    // legacy `tasks.status` / `tasks.priority` enum columns. Cards, table-view
+    // sort, and saved board search still consume the enum columns; without
+    // this sync those surfaces would render stale data after the user edits
+    // the property via Custom Fields UI. The sync is a one-way write
+    // (custom → enum). Unrecognized labels (e.g. user-renamed options) are
+    // silently skipped, leaving the enum at its last known value rather than
+    // poisoning it with NULL or rejected values.
+    let field_name: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM board_custom_fields WHERE id = $1 AND board_id = $2",
+    )
+    .bind(field_id)
+    .bind(authz_board_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    if let Some((name,)) = field_name {
+        let label = body.value.as_str();
+        match (name.as_str(), label) {
+            ("Status", Some("Open")) => sync_status(&mut tx, task_id, "open").await?,
+            ("Status", Some("In Progress")) => sync_status(&mut tx, task_id, "in_progress").await?,
+            ("Status", Some("Done")) => sync_status(&mut tx, task_id, "done").await?,
+            ("Status", Some("Archived")) => sync_status(&mut tx, task_id, "archived").await?,
+            ("Priority", Some("Urgent")) => sync_priority(&mut tx, task_id, "urgent").await?,
+            ("Priority", Some("High")) => sync_priority(&mut tx, task_id, "high").await?,
+            ("Priority", Some("Medium")) => sync_priority(&mut tx, task_id, "medium").await?,
+            ("Priority", Some("Low")) => sync_priority(&mut tx, task_id, "low").await?,
+            _ => { /* not a tracked built-in or option label changed — skip */ }
+        }
+    }
+
+    tx.commit().await?;
+
     Ok(Json(row))
+}
+
+/// Mirror a Status custom-field write onto the legacy `tasks.status` enum.
+async fn sync_status(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    task_id: Uuid,
+    enum_value: &str,
+) -> Result<(), AppError> {
+    sqlx::query("UPDATE tasks SET status = $1, updated_at = now() WHERE id = $2 AND deleted_at IS NULL")
+        .bind(enum_value)
+        .bind(task_id)
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+
+/// Mirror a Priority custom-field write onto the legacy `tasks.priority` enum.
+async fn sync_priority(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    task_id: Uuid,
+    enum_value: &str,
+) -> Result<(), AppError> {
+    sqlx::query("UPDATE tasks SET priority = $1, updated_at = now() WHERE id = $2 AND deleted_at IS NULL")
+        .bind(enum_value)
+        .bind(task_id)
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
 }
