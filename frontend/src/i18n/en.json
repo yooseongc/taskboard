@@ -120,6 +120,7 @@
     "systemDesc": "Follow OS setting",
     "currentMode": "Currently: {{mode}} mode",
     "accentColor": "Accent Color",
+    "accentUpdated": "Accent color updated.",
     "apply": "Apply",
     "language": "Language",
     "langHint": "Language preference is saved.",

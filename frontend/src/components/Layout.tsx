@@ -8,6 +8,7 @@ import { ToastContainer } from './Toast';
 import CommandPalette from './CommandPalette';
 import OnboardingTour from './OnboardingTour';
 import TagColorSync from './TagColorSync';
+import AccentColorSync from './AccentColorSync';
 
 const navItems = [
   { path: '/', labelKey: 'nav.boards', icon: 'M4 6h16M4 12h16M4 18h16', adminOnly: false },
@@ -200,6 +201,7 @@ export default function Layout() {
       {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
       <OnboardingTour />
       <TagColorSync />
+      <AccentColorSync />
     </div>
   );
 }

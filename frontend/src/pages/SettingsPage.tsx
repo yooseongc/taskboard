@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePreferences, usePatchPreferences } from '../api/preferences';
 import { useTheme } from '../theme/ThemeProvider';
@@ -55,20 +55,11 @@ export default function SettingsPage() {
   const currentPrimary = (data?.preferences as Record<string, unknown> | undefined)
     ?.primaryColor as string | undefined;
 
-  // Restore the user's saved accent color on first prefs load so it survives a refresh.
-  useEffect(() => {
-    if (currentPrimary) {
-      document.documentElement.style.setProperty('--color-primary', currentPrimary);
-      document.documentElement.style.setProperty(
-        '--color-primary-hover',
-        adjustBrightness(currentPrimary, -15),
-      );
-      document.documentElement.style.setProperty(
-        '--color-primary-light',
-        adjustBrightness(currentPrimary, 80),
-      );
-    }
-  }, [currentPrimary]);
+  // Restoration of the saved accent color on page load lives in
+  // <AccentColorSync />, mounted inside Layout. That placement ensures the
+  // color sticks across route changes and hard refreshes — previously this
+  // effect lived here, so users had to "enter Settings" to see their color
+  // re-apply, which felt like a bug.
 
   if (isLoading) return <Spinner />;
 
@@ -137,6 +128,8 @@ export default function SettingsPage() {
   };
 
   const handlePrimaryColor = (color: string) => {
+    // Apply immediately to the DOM so the user sees the change without
+    // waiting on the network round-trip.
     document.documentElement.style.setProperty('--color-primary', color);
     document.documentElement.style.setProperty(
       '--color-primary-hover',
@@ -146,9 +139,18 @@ export default function SettingsPage() {
       '--color-primary-light',
       adjustBrightness(color, 80),
     );
+    // IMPORTANT: merge with the existing preferences bag. Sending just
+    // `{ primaryColor: color }` would cause the backend's COALESCE to
+    // replace the entire JSONB object, wiping `onboarding_completed`,
+    // `priorityColors`, `statusColors`, and any future sibling keys.
     patchPrefs.mutate(
-      { preferences: { primaryColor: color } },
-      { onSuccess: () => addToast('success', 'Accent color updated') },
+      {
+        preferences: {
+          ...(data?.preferences ?? {}),
+          primaryColor: color,
+        },
+      },
+      { onSuccess: () => addToast('success', t('settings.accentUpdated')) },
     );
   };
 

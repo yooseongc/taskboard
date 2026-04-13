@@ -120,6 +120,7 @@
     "systemDesc": "OS 설정을 따름",
     "currentMode": "현재: {{mode}} 모드",
     "accentColor": "강조 색상",
+    "accentUpdated": "강조 색상이 변경되었습니다.",
     "apply": "적용",
     "language": "언어",
     "langHint": "언어 설정이 저장됩니다.",
