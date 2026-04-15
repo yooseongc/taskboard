@@ -111,6 +111,7 @@ export function usePatchBoardView(boardId: string) {
       config?: Record<string, unknown>;
       shared?: boolean;
       position?: number;
+      view_type?: ViewType;
     }) =>
       apiFetch<BoardView>(`/api/boards/${boardId}/views/${viewId}`, {
         method: 'PATCH',

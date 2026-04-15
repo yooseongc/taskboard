@@ -131,13 +131,22 @@ pub async fn patch_board_view(
             .await?;
     }
 
+    if let Some(ref t) = body.view_type {
+        if !matches!(t.as_str(), "board" | "table" | "calendar") {
+            return Err(AppError::InvalidInput(
+                "view_type must be board|table|calendar".into(),
+            ));
+        }
+    }
+
     let row = sqlx::query_as::<_, BoardViewRow>(
         r#"
         UPDATE board_views
-        SET name     = COALESCE($3, name),
-            config   = COALESCE($4, config),
-            shared   = COALESCE($5, shared),
-            position = COALESCE($6, position),
+        SET name      = COALESCE($3, name),
+            config    = COALESCE($4, config),
+            shared    = COALESCE($5, shared),
+            position  = COALESCE($6, position),
+            view_type = COALESCE($7, view_type),
             updated_at = now()
         WHERE id = $1 AND board_id = $2
         RETURNING *
@@ -149,6 +158,7 @@ pub async fn patch_board_view(
     .bind(body.config)
     .bind(body.shared)
     .bind(body.position)
+    .bind(body.view_type.as_deref())
     .fetch_one(&state.pool)
     .await?;
 

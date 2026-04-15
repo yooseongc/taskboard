@@ -144,16 +144,23 @@ export function useMoveTask(boardId: string) {
     },
     /**
      * Optimistic UI move: change column_id/position in cache so the card
-     * doesn't snap back during the network round-trip. Do NOT bump
-     * `version` here — the mutationFn reads the cached version, and a
-     * bumped value would be sent to the server as if it were current.
+     * doesn't snap back during the network round-trip.
+     *
+     * Order matters: we apply `setQueryData` BEFORE awaiting
+     * `cancelQueries`. @hello-pangea/dnd ends its drop animation
+     * synchronously after `onDragEnd` returns and expects the React tree
+     * to already reflect the move; if we await first, the optimistic
+     * cache update lands one microtask later and the library briefly
+     * renders the card in its source location, producing the visible
+     * "second drag needed to see first drag" stall. Cancelling the
+     * pending refetch afterwards is still safe — there is no inflight
+     * refetch on a freshly-stable list anyway.
+     *
+     * Do NOT bump `version` here — the mutationFn reads the cached
+     * version, and a bumped value would be sent as if it were current.
      */
     onMutate: async ({ taskId, column_id, position }) => {
       const taskKey = ['task', taskId] as const;
-      await Promise.all([
-        qc.cancelQueries({ queryKey: listKey }),
-        qc.cancelQueries({ queryKey: taskKey }),
-      ]);
       const previousList = qc.getQueryData<PaginatedResponse<TaskDto>>(listKey);
       const previousTask = qc.getQueryData<TaskDto>(taskKey);
       if (previousList) {
@@ -171,6 +178,10 @@ export function useMoveTask(boardId: string) {
           position,
         });
       }
+      await Promise.all([
+        qc.cancelQueries({ queryKey: listKey }),
+        qc.cancelQueries({ queryKey: taskKey }),
+      ]);
       return { previousList, previousTask, taskKey };
     },
     onError: (_err, _vars, ctx) => {
@@ -179,13 +190,12 @@ export function useMoveTask(boardId: string) {
         qc.setQueryData(ctx.taskKey, ctx.previousTask);
     },
     /**
-     * Normalise cache with the server's returned task — this writes the
-     * authoritative new `version` that the next serialized mutation
-     * will read. We also invalidate the list so the query subscribers
-     * re-render even if the optimistic state in onMutate happened to
-     * produce a referentially-equal list (which can stall DnD visuals
-     * to the next mutation — symptom: "second drag is needed to see
-     * the first drag's result").
+     * Replace the cached task with the server's authoritative copy —
+     * this writes the new `version` that the next serialized mutation
+     * will read. We deliberately do NOT invalidate the list here: a
+     * refetch can race with a queued second drag and momentarily
+     * overwrite the next optimistic state. The cache is already
+     * authoritative after this update.
      */
     onSuccess: (updated) => {
       qc.setQueryData<PaginatedResponse<TaskDto>>(listKey, (old) =>
@@ -194,9 +204,6 @@ export function useMoveTask(boardId: string) {
           : old,
       );
       qc.setQueryData<TaskDto>(['task', updated.id], updated);
-    },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: listKey });
     },
   });
 }

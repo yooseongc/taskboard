@@ -22,6 +22,7 @@ import {
   type TaskFieldValue,
 } from '../api/customFields';
 import { groupTasks, type GroupContext } from '../lib/groupBy';
+import ViewToolbar from './ViewToolbar';
 
 export interface TableViewState {
   sortKey: SortKey;
@@ -49,8 +50,10 @@ interface TableViewProps {
   onStateChange?: (state: TableViewState) => void;
   /** Grouping spec. Defaults to `{ type: 'none' }`. */
   groupBy?: GroupByKey;
+  onGroupByChange?: (g: GroupByKey) => void;
   /** Row density. Defaults to `normal`. */
   density?: ViewDensity;
+  onDensityChange?: (d: ViewDensity) => void;
 }
 
 /**
@@ -196,7 +199,9 @@ export default function TableView({
   defaultConfig,
   onStateChange,
   groupBy = { type: 'none' },
+  onGroupByChange,
   density = 'normal',
+  onDensityChange,
 }: TableViewProps) {
   const [sortKey, setSortKey] = useState<SortKey>(defaultConfig?.sortKey ?? 'title');
   const [sortDir, setSortDir] = useState<SortDir>(defaultConfig?.sortDir ?? 'asc');
@@ -540,91 +545,111 @@ export default function TableView({
     </tr>
   );
 
+  const filterAddDisabled = customFields.length === 0;
+
   return (
     <div className="p-4">
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-3 mb-3">
-        <input
-          type="text"
-          placeholder={t('tableView.searchPlaceholder')}
-          className="rounded-lg px-3 py-1.5 text-sm w-64 outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={inputStyle}
-        />
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => {
-            const firstField = customFields[0];
-            if (!firstField) return;
-            setFilters([
-              ...filters,
-              {
-                id: crypto.randomUUID(),
-                fieldId: firstField.id,
-                operator: operatorsFor(firstField.field_type)[0],
-                value: '',
-              },
-            ]);
-          }}
-          disabled={customFields.length === 0}
-        >
-          + {t('tableView.addFilter')}
-        </Button>
-        <div className="relative">
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => setPropertiesOpen((v) => !v)}
-          >
-            Properties
-          </Button>
-          {propertiesOpen && (
-            <div
-              className="absolute left-0 top-full mt-1 z-20 rounded-lg py-1 shadow-lg min-w-[180px]"
-              style={{
-                backgroundColor: 'var(--color-surface)',
-                border: '1px solid var(--color-border)',
+      {/* Single unified toolbar: Search · Group · +Filter · Properties ·
+          count · Density · +New. All view-scoped controls live in the
+          same row so users don't have to scan two stripes for the
+          related actions. */}
+      <ViewToolbar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder={t('tableView.searchPlaceholder')}
+        groupBy={groupBy}
+        onGroupByChange={onGroupByChange}
+        groupByOptions={[
+          'none',
+          'column',
+          'status',
+          'priority',
+          'assignee',
+          'label',
+          'custom_field',
+        ]}
+        customFields={customFields.filter((f) => !f.id.startsWith('__builtin:'))}
+        density={density}
+        onDensityChange={onDensityChange}
+        leftExtras={
+          <>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                const firstField = customFields[0];
+                if (!firstField) return;
+                setFilters([
+                  ...filters,
+                  {
+                    id: crypto.randomUUID(),
+                    fieldId: firstField.id,
+                    operator: operatorsFor(firstField.field_type)[0],
+                    value: '',
+                  },
+                ]);
               }}
-              onMouseLeave={() => setPropertiesOpen(false)}
+              disabled={filterAddDisabled}
             >
-              {ALL_COLUMN_IDS.map((colId) => {
-                const hidden = hiddenColumns.has(colId);
-                return (
-                  <label
-                    key={colId}
-                    className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-[var(--color-surface-hover)]"
-                    style={{ color: 'var(--color-text)' }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={!hidden}
-                      onChange={() =>
-                        setHiddenColumns((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(colId)) next.delete(colId);
-                          else next.add(colId);
-                          return next;
-                        })
-                      }
-                    />
-                    <span className="capitalize">{colId.replace('_', ' ')}</span>
-                  </label>
-                );
-              })}
+              + {t('tableView.addFilter')}
+            </Button>
+            <div className="relative">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setPropertiesOpen((v) => !v)}
+              >
+                Properties
+              </Button>
+              {propertiesOpen && (
+                <div
+                  className="absolute left-0 top-full mt-1 z-20 rounded-lg py-1 shadow-lg min-w-[180px]"
+                  style={{
+                    backgroundColor: 'var(--color-surface)',
+                    border: '1px solid var(--color-border)',
+                  }}
+                  onMouseLeave={() => setPropertiesOpen(false)}
+                >
+                  {ALL_COLUMN_IDS.map((colId) => {
+                    const hidden = hiddenColumns.has(colId);
+                    return (
+                      <label
+                        key={colId}
+                        className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-[var(--color-surface-hover)]"
+                        style={{ color: 'var(--color-text)' }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!hidden}
+                          onChange={() =>
+                            setHiddenColumns((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(colId)) next.delete(colId);
+                              else next.add(colId);
+                              return next;
+                            })
+                          }
+                        />
+                        <span className="capitalize">{colId.replace('_', ' ')}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-          {t('tableView.count', { count: sorted.length })}
-        </span>
-        {onCreateTask && (
-          <Button size="sm" onClick={() => setAdding(true)} className="ml-auto">
-            {t('board.addTask')}
-          </Button>
-        )}
-      </div>
+            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              {t('tableView.count', { count: sorted.length })}
+            </span>
+          </>
+        }
+        rightExtras={
+          onCreateTask ? (
+            <Button size="sm" onClick={() => setAdding(true)}>
+              {t('board.addTask')}
+            </Button>
+          ) : null
+        }
+      />
 
       {/* Active filter chips. Each chip is editable in place — change the
           field, operator, or value and the table re-filters live. */}

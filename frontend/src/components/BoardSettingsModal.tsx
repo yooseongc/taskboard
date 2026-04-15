@@ -82,6 +82,12 @@ export default function BoardSettingsModal({ boardId, onClose }: BoardSettingsMo
   const [activeTab, setActiveTab] = useState<'fields' | 'members'>('fields');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Inline "Add field" form state. When `pendingType` is set, the form
+  // is open below the type buttons; user types a name, hits Enter or
+  // "Add" to create. Replaces the previous `window.prompt()` flow,
+  // which jarred users with a native browser dialog.
+  const [pendingType, setPendingType] = useState<string | null>(null);
+  const [pendingName, setPendingName] = useState('');
 
   const fields = data?.items ?? [];
 
@@ -109,20 +115,28 @@ export default function BoardSettingsModal({ boardId, onClose }: BoardSettingsMo
   };
 
   const handleAddField = (fieldType: string) => {
-    const name = window.prompt(t('boardSettings.fieldNamePrompt'));
-    if (!name?.trim()) return;
+    // Open the inline form for this type. Pre-fills nothing so the user
+    // sees the placeholder. Submitted by pressing Enter or clicking Add.
+    setPendingType(fieldType);
+    setPendingName('');
+  };
+
+  const submitPendingField = () => {
+    if (!pendingType || !pendingName.trim()) return;
     createField.mutate(
       {
-        name: name.trim(),
-        field_type: fieldType,
-        // For select-style types, seed one starter option so the field is
-        // immediately usable; otherwise leave options empty.
+        name: pendingName.trim(),
+        field_type: pendingType,
         options:
-          fieldType === 'select' || fieldType === 'multi_select'
+          pendingType === 'select' || pendingType === 'multi_select'
             ? [{ label: 'Option 1', color: 'neutral' }]
             : undefined,
       },
       {
+        onSuccess: () => {
+          setPendingType(null);
+          setPendingName('');
+        },
         onError: (e) => {
           const msg = e instanceof Error ? e.message : t('common.error');
           addToast('error', msg);
@@ -277,6 +291,58 @@ export default function BoardSettingsModal({ boardId, onClose }: BoardSettingsMo
                     + {t(`boardSettings.type.${type}`)}
                   </Button>
                 ))}
+              </div>
+            )}
+            {pendingType && (
+              <div
+                className="flex items-center gap-2 mt-2 p-2 rounded-lg"
+                style={{
+                  backgroundColor: 'var(--color-surface-hover)',
+                  border: '1px solid var(--color-border)',
+                }}
+              >
+                <span
+                  className="text-xs uppercase font-semibold"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  {t(`boardSettings.type.${pendingType}`)}
+                </span>
+                <input
+                  autoFocus
+                  placeholder={t('boardSettings.fieldNamePrompt')}
+                  value={pendingName}
+                  onChange={(e) => setPendingName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') submitPendingField();
+                    if (e.key === 'Escape') {
+                      setPendingType(null);
+                      setPendingName('');
+                    }
+                  }}
+                  className="flex-1 text-sm rounded px-2 py-1 outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
+                  style={{
+                    backgroundColor: 'var(--color-surface)',
+                    border: '1px solid var(--color-border)',
+                    color: 'var(--color-text)',
+                  }}
+                />
+                <Button
+                  size="sm"
+                  onClick={submitPendingField}
+                  disabled={!pendingName.trim() || createField.isPending}
+                >
+                  {t('common.create')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setPendingType(null);
+                    setPendingName('');
+                  }}
+                >
+                  {t('common.cancel')}
+                </Button>
               </div>
             )}
           </div>

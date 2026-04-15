@@ -109,6 +109,7 @@ export default function BoardViewPage() {
   const [addingView, setAddingView] = useState(false);
   const [newViewName, setNewViewName] = useState('');
   const [newViewType, setNewViewType] = useState<ViewType>('board');
+  const [tabMenuId, setTabMenuId] = useState<string | null>(null);
 
   // Apply a saved view's config: switches the renderer to its view_type
   // and loads each view-type's persisted state (filter/sort/groupBy/density).
@@ -146,13 +147,16 @@ export default function BoardViewPage() {
   };
 
   // Default selection: when the board's view list arrives and nothing
-  // is selected yet, pick the first view as the active tab.
+  // is selected yet, pick the first view as the active tab. Skipped
+  // when Activity is the active tab so clicking Activity (which sets
+  // selectedViewId=null on purpose) doesn't bounce back to a view.
   useEffect(() => {
     if (selectedViewId !== null) return;
+    if (activeView === 'activity') return;
     const first = boardViewsData?.items?.[0];
     if (first) applyView(first);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boardViewsData, selectedViewId]);
+  }, [boardViewsData, selectedViewId, activeView]);
 
   // Deep-link `?view=<viewId>` — apply the matching view (overrides the
   // default). Param is cleared after consumption so later tab clicks
@@ -555,6 +559,31 @@ export default function BoardViewPage() {
     });
   };
 
+  const handleRenameView = (view: BoardView) => {
+    const next = prompt('Rename view', view.name);
+    if (next === null) return;
+    const trimmed = next.trim();
+    if (!trimmed || trimmed === view.name) return;
+    patchBoardView.mutate(
+      { viewId: view.id, name: trimmed },
+      { onError: () => addToast('error', t('common.saveFailed')) },
+    );
+  };
+
+  const handleChangeViewType = (view: BoardView, type: ViewType) => {
+    if (view.view_type === type) return;
+    patchBoardView.mutate(
+      { viewId: view.id, view_type: type },
+      {
+        onSuccess: (updated) => {
+          // Re-apply so renderer + state line up with the new type.
+          if (selectedViewId === view.id) applyView(updated);
+        },
+        onError: () => addToast('error', t('common.saveFailed')),
+      },
+    );
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -619,15 +648,90 @@ export default function BoardViewPage() {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleDeleteView(view);
+                  setTabMenuId(tabMenuId === view.id ? null : view.id);
                 }}
-                aria-label={`Delete view ${view.name}`}
-                title={t('common.delete')}
+                aria-label={`View options for ${view.name}`}
+                title="View options"
                 className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 hover:opacity-100 text-xs px-1 rounded"
                 style={{ color: 'var(--color-text-muted)' }}
               >
-                ✕
+                ⋯
               </button>
+              {tabMenuId === view.id && (
+                <div
+                  className="absolute left-0 top-full mt-1 z-30 rounded-lg py-1 shadow-lg min-w-[180px]"
+                  style={{
+                    backgroundColor: 'var(--color-surface)',
+                    border: '1px solid var(--color-border)',
+                  }}
+                  onMouseLeave={() => setTabMenuId(null)}
+                >
+                  <button
+                    onClick={() => {
+                      setTabMenuId(null);
+                      handleRenameView(view);
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-sm hover:bg-[var(--color-surface-hover)]"
+                    style={{ color: 'var(--color-text)' }}
+                  >
+                    Rename
+                  </button>
+                  <div
+                    className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  >
+                    Change type
+                  </div>
+                  {(['board', 'table', 'calendar'] as ViewType[]).map((tt) => (
+                    <button
+                      key={tt}
+                      onClick={() => {
+                        setTabMenuId(null);
+                        handleChangeViewType(view, tt);
+                      }}
+                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-[var(--color-surface-hover)] flex items-center justify-between"
+                      style={{
+                        color: 'var(--color-text)',
+                        opacity: tt === view.view_type ? 0.5 : 1,
+                      }}
+                      disabled={tt === view.view_type}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span aria-hidden>{viewTypeIcon(tt)}</span>
+                        <span className="capitalize">{tt === 'board' ? 'Kanban' : tt}</span>
+                      </span>
+                      {tt === view.view_type && <span>✓</span>}
+                    </button>
+                  ))}
+                  <div
+                    className="border-t my-1"
+                    style={{ borderColor: 'var(--color-border)' }}
+                  />
+                  <button
+                    onClick={() => {
+                      setTabMenuId(null);
+                      patchBoardView.mutate({
+                        viewId: view.id,
+                        shared: !view.shared,
+                      });
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-sm hover:bg-[var(--color-surface-hover)]"
+                    style={{ color: 'var(--color-text)' }}
+                  >
+                    {view.shared ? 'Unshare' : 'Share with board'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTabMenuId(null);
+                      handleDeleteView(view);
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-sm hover:bg-[var(--color-danger-light)]"
+                    style={{ color: 'var(--color-danger)' }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -901,27 +1005,6 @@ export default function BoardViewPage() {
 
       {activeView === 'table' && (
         <div className="flex flex-col flex-1 overflow-hidden">
-          <div
-            className="px-4"
-            style={{ borderBottom: '1px solid var(--color-border)' }}
-          >
-            <ViewToolbar
-              groupBy={tableGroupBy}
-              onGroupByChange={setTableGroupBy}
-              groupByOptions={[
-                'none',
-                'column',
-                'status',
-                'priority',
-                'assignee',
-                'label',
-                'custom_field',
-              ]}
-              customFields={fieldsData?.items ?? []}
-              density={tableDensity}
-              onDensityChange={setTableDensity}
-            />
-          </div>
           <div className="flex-1 overflow-auto">
             <TableView
               key={tableKey}
@@ -932,7 +1015,9 @@ export default function BoardViewPage() {
               defaultConfig={tableConfig}
               onStateChange={setTableConfig}
               groupBy={tableGroupBy}
+              onGroupByChange={setTableGroupBy}
               density={tableDensity}
+              onDensityChange={setTableDensity}
               onCreateTask={(title, columnId) =>
                 createTask.mutate({ title, column_id: columnId })
               }
@@ -1489,7 +1574,7 @@ function KanbanColumn({
                     ref={provided.innerRef}
                     {...provided.draggableProps}
                     {...provided.dragHandleProps}
-                    className="rounded-lg p-3 transition-shadow cursor-pointer"
+                    className="rounded-lg p-3 transition-shadow cursor-pointer select-none"
                     style={{
                       backgroundColor: 'var(--color-surface)',
                       color: 'var(--color-text)',
@@ -1629,7 +1714,7 @@ function GroupLane({
                     ref={provided.innerRef}
                     {...provided.draggableProps}
                     {...provided.dragHandleProps}
-                    className="rounded-lg p-3 transition-shadow cursor-pointer"
+                    className="rounded-lg p-3 transition-shadow cursor-pointer select-none"
                     style={{
                       backgroundColor: 'var(--color-surface)',
                       color: 'var(--color-text)',

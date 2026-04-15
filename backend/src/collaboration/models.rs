@@ -683,6 +683,7 @@ pub struct PatchBoardViewRequest {
     pub config: Option<serde_json::Value>,
     pub shared: Option<bool>,
     pub position: Option<f64>,
+    pub view_type: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
