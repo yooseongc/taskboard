@@ -27,12 +27,25 @@ export type TagVariant =
   | 'accent';
 
 /**
- * Class composition for a given variant. Kept as a Tailwind arbitrary-value
- * string so consumers can drop it straight into a `className`, and so the
- * CSS custom property is the single source of truth for the palette.
+ * Class composition for a given variant. Must be a static lookup rather
+ * than a template literal — Tailwind's JIT can only pick up class strings
+ * that appear verbatim in source, so `bg-[var(--tag-${variant}-bg)]`
+ * silently produces no CSS rule and badges render transparent. Keep all
+ * eight variants spelled out literally here.
  */
+const TAG_CLASSES: Record<TagVariant, string> = {
+  neutral:  'bg-[var(--tag-neutral-bg)] text-[var(--tag-neutral-text)]',
+  info:     'bg-[var(--tag-info-bg)] text-[var(--tag-info-text)]',
+  success:  'bg-[var(--tag-success-bg)] text-[var(--tag-success-text)]',
+  warning:  'bg-[var(--tag-warning-bg)] text-[var(--tag-warning-text)]',
+  orange:   'bg-[var(--tag-orange-bg)] text-[var(--tag-orange-text)]',
+  danger:   'bg-[var(--tag-danger-bg)] text-[var(--tag-danger-text)]',
+  critical: 'bg-[var(--tag-critical-bg)] text-[var(--tag-critical-text)]',
+  accent:   'bg-[var(--tag-accent-bg)] text-[var(--tag-accent-text)]',
+};
+
 export function tagClass(variant: TagVariant): string {
-  return `bg-[var(--tag-${variant}-bg)] text-[var(--tag-${variant}-text)]`;
+  return TAG_CLASSES[variant];
 }
 
 // ---------------------------------------------------------------------------

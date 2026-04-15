@@ -181,7 +181,11 @@ export function useMoveTask(boardId: string) {
     /**
      * Normalise cache with the server's returned task — this writes the
      * authoritative new `version` that the next serialized mutation
-     * will read.
+     * will read. We also invalidate the list so the query subscribers
+     * re-render even if the optimistic state in onMutate happened to
+     * produce a referentially-equal list (which can stall DnD visuals
+     * to the next mutation — symptom: "second drag is needed to see
+     * the first drag's result").
      */
     onSuccess: (updated) => {
       qc.setQueryData<PaginatedResponse<TaskDto>>(listKey, (old) =>
@@ -190,6 +194,9 @@ export function useMoveTask(boardId: string) {
           : old,
       );
       qc.setQueryData<TaskDto>(['task', updated.id], updated);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: listKey });
     },
   });
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type {
   TaskDto,
@@ -28,7 +28,12 @@ export interface TableViewState {
   sortDir: SortDir;
   filters: FilterChip[];
   filterMode: FilterMode;
+  hiddenColumns?: string[];
+  columnWidths?: Record<string, number>;
 }
+
+const ALL_COLUMN_IDS = ['title', 'column', 'status', 'priority', 'due_date', 'assignees', 'info'] as const;
+type ColumnId = (typeof ALL_COLUMN_IDS)[number];
 
 interface TableViewProps {
   boardId: string;
@@ -198,17 +203,31 @@ export default function TableView({
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<FilterChip[]>(defaultConfig?.filters ?? []);
   const [filterMode, setFilterMode] = useState<FilterMode>(defaultConfig?.filterMode ?? 'and');
-
-  // Report state changes to parent so BoardViewPage can snapshot for SavedViewBar.
-  useEffect(() => {
-    onStateChange?.({ sortKey, sortDir, filters, filterMode });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortKey, sortDir, filters, filterMode]);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newColumnId, setNewColumnId] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [hiddenColumns, setHiddenColumns] = useState<Set<ColumnId>>(
+    new Set((defaultConfig?.hiddenColumns ?? []) as ColumnId[]),
+  );
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(
+    defaultConfig?.columnWidths ?? {},
+  );
+  const [propertiesOpen, setPropertiesOpen] = useState(false);
+
+  // Report state changes to parent so BoardViewPage can snapshot for SavedViewBar.
+  useEffect(() => {
+    onStateChange?.({
+      sortKey,
+      sortDir,
+      filters,
+      filterMode,
+      hiddenColumns: Array.from(hiddenColumns),
+      columnWidths,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortKey, sortDir, filters, filterMode, hiddenColumns, columnWidths]);
   const { t } = useTranslation();
   const { priorityClass, statusClass } = useTagTheme();
 
@@ -217,7 +236,63 @@ export default function TableView({
   // let us evaluate filters client-side without N task-level requests.
   const { data: fieldsData } = useBoardCustomFields(boardId);
   const { data: fieldValuesData } = useBoardFieldValues(boardId);
-  const customFields = fieldsData?.items ?? [];
+  const realFields = fieldsData?.items ?? [];
+
+  // Built-in task columns are promoted to pseudo custom fields so they
+  // appear in the Filter builder alongside user-defined fields. Synthetic
+  // IDs are prefixed with `__builtin:` so the evaluator can dispatch them
+  // to a per-field extractor without colliding with real UUIDs.
+  const builtInFields: CustomField[] = useMemo(() => {
+    const statusOpts = [
+      { label: 'open' },
+      { label: 'in_progress' },
+      { label: 'done' },
+      { label: 'archived' },
+    ];
+    const priorityOpts = [
+      { label: 'urgent' },
+      { label: 'high' },
+      { label: 'medium' },
+      { label: 'low' },
+    ];
+    const columnOpts = columns.map((c) => ({ label: c.id }));
+    return [
+      { id: '__builtin:title', board_id: boardId, name: 'Title', field_type: 'text', options: [], position: -100, required: false, show_on_card: false, created_at: '' },
+      { id: '__builtin:status', board_id: boardId, name: 'Status (built-in)', field_type: 'select', options: statusOpts, position: -99, required: false, show_on_card: false, created_at: '' },
+      { id: '__builtin:priority', board_id: boardId, name: 'Priority (built-in)', field_type: 'select', options: priorityOpts, position: -98, required: false, show_on_card: false, created_at: '' },
+      { id: '__builtin:due_date', board_id: boardId, name: 'Due date', field_type: 'date', options: [], position: -97, required: false, show_on_card: false, created_at: '' },
+      { id: '__builtin:start_date', board_id: boardId, name: 'Start date', field_type: 'date', options: [], position: -96, required: false, show_on_card: false, created_at: '' },
+      { id: '__builtin:column', board_id: boardId, name: 'Column', field_type: 'select', options: columnOpts, position: -95, required: false, show_on_card: false, created_at: '' },
+    ];
+  }, [boardId, columns]);
+
+  const customFields: CustomField[] = useMemo(
+    () => [...builtInFields, ...realFields],
+    [builtInFields, realFields],
+  );
+
+  /** Extract value for a built-in pseudo-field from a task. Returns the
+   * raw primitive so it can flow into the same evaluateFilter as custom
+   * field values — date fields stay strings, select fields stay strings.
+   */
+  const builtInValue = (task: TaskDto, fieldId: string): unknown => {
+    switch (fieldId) {
+      case '__builtin:title':
+        return task.title;
+      case '__builtin:status':
+        return task.status;
+      case '__builtin:priority':
+        return task.priority;
+      case '__builtin:due_date':
+        return task.due_date ?? null;
+      case '__builtin:start_date':
+        return task.start_date ?? null;
+      case '__builtin:column':
+        return task.column_id;
+      default:
+        return undefined;
+    }
+  };
   // Index field values by task_id → field_id → value for O(1) lookup during
   // the filter pass below.
   const valuesByTaskField = useMemo(() => {
@@ -265,11 +340,10 @@ export default function TableView({
       list = list.filter((task) => {
         const evaluators = activeChips.map((chip) => {
           const field = customFields.find((f) => f.id === chip.fieldId)!;
-          return evaluateFilter(
-            chip,
-            field,
-            valuesByTaskField.get(task.id)?.get(field.id),
-          );
+          const value = field.id.startsWith('__builtin:')
+            ? builtInValue(task, field.id)
+            : valuesByTaskField.get(task.id)?.get(field.id);
+          return evaluateFilter(chip, field, value);
         });
         return filterMode === 'or'
           ? evaluators.some(Boolean)
@@ -392,61 +466,77 @@ export default function TableView({
           />
         </td>
       )}
-      <td className={`px-4 ${rowPad}`}>
-        <div>
-          {(task.labels ?? []).length > 0 && (
-            <div className="flex gap-1 mb-0.5">
-              {(task.labels ?? []).map((l) => (
-                <span
-                  key={l.id}
-                  className="inline-block h-1.5 w-6 rounded-full"
-                  style={{ backgroundColor: l.color }}
-                />
-              ))}
-            </div>
-          )}
-          <span
-            className="font-medium"
-            style={{ color: 'var(--color-text)' }}
-          >
-            {task.title}
-          </span>
-          {density !== 'compact' && task.summary && (
+      {!hiddenColumns.has('title') && (
+        <td className={`px-4 ${rowPad}`}>
+          <div>
+            {(task.labels ?? []).length > 0 && (
+              <div className="flex gap-1 mb-0.5">
+                {(task.labels ?? []).map((l) => (
+                  <span
+                    key={l.id}
+                    className="inline-block h-1.5 w-6 rounded-full"
+                    style={{ backgroundColor: l.color }}
+                  />
+                ))}
+              </div>
+            )}
             <span
-              className="text-xs ml-2"
-              style={{ color: 'var(--color-text-secondary)' }}
+              className="font-medium"
+              style={{ color: 'var(--color-text)' }}
             >
-              {task.summary}
+              {task.title}
             </span>
-          )}
-        </div>
-      </td>
-      <td
-        className={`px-4 ${rowPad}`}
-        style={{ color: 'var(--color-text-secondary)' }}
-      >
-        {columnMap.get(task.column_id) ?? '-'}
-      </td>
-      <td className={`px-4 ${rowPad}`}>
-        <Badge className={statusClass(task.status)}>
-          {task.status.replace('_', ' ')}
-        </Badge>
-      </td>
-      <td className={`px-4 ${rowPad}`}>
-        <Badge className={priorityClass(task.priority)}>{task.priority}</Badge>
-      </td>
-      <td
-        className={`px-4 text-xs ${rowPad}`}
-        style={{ color: 'var(--color-text-secondary)' }}
-      >
-        {task.due_date ? new Date(task.due_date).toLocaleDateString() : '-'}
-      </td>
-      <td className={`px-4 ${rowPad}`}>
-        <AvatarStack users={task.assignees ?? []} max={3} size="md" />
-      </td>
-      <td className={`px-4 ${rowPad}`}>
-        <TaskMetaBadges task={task} />
-      </td>
+            {density !== 'compact' && task.summary && (
+              <span
+                className="text-xs ml-2"
+                style={{ color: 'var(--color-text-secondary)' }}
+              >
+                {task.summary}
+              </span>
+            )}
+          </div>
+        </td>
+      )}
+      {!hiddenColumns.has('column') && (
+        <td
+          className={`px-4 ${rowPad}`}
+          style={{ color: 'var(--color-text-secondary)' }}
+        >
+          {columnMap.get(task.column_id) ?? '-'}
+        </td>
+      )}
+      {!hiddenColumns.has('status') && (
+        <td className={`px-4 ${rowPad}`}>
+          <Badge className={statusClass(task.status)}>
+            {task.status.replace('_', ' ')}
+          </Badge>
+        </td>
+      )}
+      {!hiddenColumns.has('priority') && (
+        <td className={`px-4 ${rowPad}`}>
+          <Badge className={priorityClass(task.priority)}>
+            {task.priority}
+          </Badge>
+        </td>
+      )}
+      {!hiddenColumns.has('due_date') && (
+        <td
+          className={`px-4 text-xs ${rowPad}`}
+          style={{ color: 'var(--color-text-secondary)' }}
+        >
+          {task.due_date ? new Date(task.due_date).toLocaleDateString() : '-'}
+        </td>
+      )}
+      {!hiddenColumns.has('assignees') && (
+        <td className={`px-4 ${rowPad}`}>
+          <AvatarStack users={task.assignees ?? []} max={3} size="md" />
+        </td>
+      )}
+      {!hiddenColumns.has('info') && (
+        <td className={`px-4 ${rowPad}`}>
+          <TaskMetaBadges task={task} />
+        </td>
+      )}
     </tr>
   );
 
@@ -482,6 +572,50 @@ export default function TableView({
         >
           + {t('tableView.addFilter')}
         </Button>
+        <div className="relative">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setPropertiesOpen((v) => !v)}
+          >
+            Properties
+          </Button>
+          {propertiesOpen && (
+            <div
+              className="absolute left-0 top-full mt-1 z-20 rounded-lg py-1 shadow-lg min-w-[180px]"
+              style={{
+                backgroundColor: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+              }}
+              onMouseLeave={() => setPropertiesOpen(false)}
+            >
+              {ALL_COLUMN_IDS.map((colId) => {
+                const hidden = hiddenColumns.has(colId);
+                return (
+                  <label
+                    key={colId}
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-[var(--color-surface-hover)]"
+                    style={{ color: 'var(--color-text)' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!hidden}
+                      onChange={() =>
+                        setHiddenColumns((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(colId)) next.delete(colId);
+                          else next.add(colId);
+                          return next;
+                        })
+                      }
+                    />
+                    <span className="capitalize">{colId.replace('_', ' ')}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
         <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
           {t('tableView.count', { count: sorted.length })}
         </span>
@@ -674,29 +808,65 @@ export default function TableView({
                   ['priority', t('tableView.colPriority')],
                   ['due_date', t('tableView.colDueDate')],
                 ] as [SortKey, string][]
-              ).map(([key, label]) => (
+              )
+                .filter(([key]) => !hiddenColumns.has(key as ColumnId))
+                .map(([key, label]) => (
+                  <th
+                    key={key}
+                    onClick={() => handleSort(key)}
+                    className="px-4 py-2.5 text-left font-medium cursor-pointer hover:bg-[var(--color-surface-active)] select-none relative group"
+                    style={{
+                      color: 'var(--color-text-secondary)',
+                      width: columnWidths[key],
+                      minWidth: columnWidths[key],
+                    }}
+                  >
+                    {label}
+                    <SortIcon col={key} />
+                    <ColumnResizeHandle
+                      columnKey={key}
+                      onResize={(w) =>
+                        setColumnWidths((prev) => ({ ...prev, [key]: w }))
+                      }
+                    />
+                  </th>
+                ))}
+              {!hiddenColumns.has('assignees') && (
                 <th
-                  key={key}
-                  onClick={() => handleSort(key)}
-                  className="px-4 py-2.5 text-left font-medium cursor-pointer hover:bg-[var(--color-surface-active)] select-none"
-                  style={{ color: 'var(--color-text-secondary)' }}
+                  className="px-4 py-2.5 text-left font-medium relative group"
+                  style={{
+                    color: 'var(--color-text-secondary)',
+                    width: columnWidths['assignees'],
+                    minWidth: columnWidths['assignees'],
+                  }}
                 >
-                  {label}
-                  <SortIcon col={key} />
+                  {t('tableView.colAssignees')}
+                  <ColumnResizeHandle
+                    columnKey="assignees"
+                    onResize={(w) =>
+                      setColumnWidths((prev) => ({ ...prev, assignees: w }))
+                    }
+                  />
                 </th>
-              ))}
-              <th
-                className="px-4 py-2.5 text-left font-medium"
-                style={{ color: 'var(--color-text-secondary)' }}
-              >
-                {t('tableView.colAssignees')}
-              </th>
-              <th
-                className="px-4 py-2.5 text-left font-medium w-16"
-                style={{ color: 'var(--color-text-secondary)' }}
-              >
-                {t('tableView.colInfo')}
-              </th>
+              )}
+              {!hiddenColumns.has('info') && (
+                <th
+                  className="px-4 py-2.5 text-left font-medium w-16 relative group"
+                  style={{
+                    color: 'var(--color-text-secondary)',
+                    width: columnWidths['info'],
+                    minWidth: columnWidths['info'],
+                  }}
+                >
+                  {t('tableView.colInfo')}
+                  <ColumnResizeHandle
+                    columnKey="info"
+                    onResize={(w) =>
+                      setColumnWidths((prev) => ({ ...prev, info: w }))
+                    }
+                  />
+                </th>
+              )}
             </tr>
           </thead>
           <tbody
@@ -725,7 +895,7 @@ export default function TableView({
                       }
                     >
                       <td
-                        colSpan={onBulkMove || onBulkDelete ? 8 : 7}
+                        colSpan={(onBulkMove || onBulkDelete ? 1 : 0) + (7 - hiddenColumns.size)}
                         className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider"
                         style={{ color: 'var(--color-text-secondary)' }}
                       >
@@ -760,7 +930,7 @@ export default function TableView({
               (!grouped && sorted.length === 0)) && (
               <tr>
                 <td
-                  colSpan={onBulkMove || onBulkDelete ? 8 : 7}
+                  colSpan={(onBulkMove || onBulkDelete ? 1 : 0) + (7 - hiddenColumns.size)}
                   className="px-4 py-8 text-center"
                   style={{ color: 'var(--color-text-muted)' }}
                 >
@@ -906,5 +1076,56 @@ function FilterChipEditor({
         ✕
       </button>
     </div>
+  );
+}
+
+/**
+ * Drag-to-resize grip on the right edge of a <th>. Stops propagation so
+ * the click doesn't trigger the column's sort handler. Tracks the
+ * initial pointer position + the column's current width on pointerdown
+ * and updates width live on pointermove, ending on pointerup.
+ */
+function ColumnResizeHandle({
+  columnKey,
+  onResize,
+}: {
+  columnKey: string;
+  onResize: (width: number) => void;
+}) {
+  const startRef = useRef<{ x: number; width: number; th: HTMLElement } | null>(null);
+
+  const onPointerDown = (e: React.PointerEvent<HTMLSpanElement>) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const th = e.currentTarget.parentElement as HTMLElement | null;
+    if (!th) return;
+    startRef.current = { x: e.clientX, width: th.offsetWidth, th };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLSpanElement>) => {
+    if (!startRef.current) return;
+    const delta = e.clientX - startRef.current.x;
+    const next = Math.max(60, startRef.current.width + delta);
+    onResize(next);
+  };
+
+  const onPointerUp = (e: React.PointerEvent<HTMLSpanElement>) => {
+    if (!startRef.current) return;
+    startRef.current = null;
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+  };
+
+  return (
+    <span
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onClick={(e) => e.stopPropagation()}
+      aria-hidden="true"
+      className="absolute top-0 right-0 h-full w-1 cursor-col-resize opacity-0 group-hover:opacity-100"
+      style={{ backgroundColor: 'var(--color-primary)' }}
+      title={`Resize ${columnKey}`}
+    />
   );
 }

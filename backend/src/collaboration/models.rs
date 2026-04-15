@@ -684,3 +684,108 @@ pub struct PatchBoardViewRequest {
     pub shared: Option<bool>,
     pub position: Option<f64>,
 }
+
+// ---------------------------------------------------------------------------
+// API contract tests
+// ---------------------------------------------------------------------------
+//
+// These are pure `serde_json` round-trip checks to catch the class of bug
+// where a request payload's field name silently drifts from the UI's wire
+// contract — e.g. backend accepts `text` but the frontend sends `title`,
+// and both sides compile fine while every checklist-item add 422s at
+// runtime. Each test deserialises a JSON body modelled on the frontend's
+// actual API call and asserts the backend accepts it. Renaming a field
+// now forces both sides to move together.
+#[cfg(test)]
+mod contract_tests {
+    use super::*;
+
+    #[test]
+    fn checklist_item_add_accepts_title_key() {
+        let payload = serde_json::json!({ "title": "buy milk", "checked": false });
+        let req: AddChecklistItemRequest = serde_json::from_value(payload)
+            .expect("AddChecklistItemRequest must accept `title` (not `text`)");
+        assert_eq!(req.title, "buy milk");
+        assert_eq!(req.checked, Some(false));
+    }
+
+    #[test]
+    fn checklist_item_patch_accepts_title_and_checked_partial() {
+        let only_title = serde_json::json!({ "title": "renamed" });
+        let r1: PatchChecklistItemRequest = serde_json::from_value(only_title)
+            .expect("PatchChecklistItemRequest accepts title-only");
+        assert_eq!(r1.title.as_deref(), Some("renamed"));
+        assert_eq!(r1.checked, None);
+
+        let only_checked = serde_json::json!({ "checked": true });
+        let r2: PatchChecklistItemRequest = serde_json::from_value(only_checked)
+            .expect("PatchChecklistItemRequest accepts checked-only");
+        assert_eq!(r2.title, None);
+        assert_eq!(r2.checked, Some(true));
+    }
+
+    #[test]
+    fn create_checklist_accepts_title() {
+        let payload = serde_json::json!({ "title": "Acceptance Criteria" });
+        let req: CreateChecklistRequest =
+            serde_json::from_value(payload).expect("CreateChecklistRequest accepts title");
+        assert_eq!(req.title, "Acceptance Criteria");
+    }
+
+    #[test]
+    fn custom_field_create_accepts_all_handler_whitelist_types() {
+        // Mirrors the handler's `valid_types` array. If a new type is
+        // added to the handler but the DB CHECK constraint isn't widened
+        // (as happened with progress/email/phone/person pre-0014), this
+        // test still passes at serde level — but it pins the on-the-wire
+        // shape so the front-end and back-end can rely on it.
+        for field_type in [
+            "text",
+            "number",
+            "progress",
+            "select",
+            "multi_select",
+            "date",
+            "checkbox",
+            "url",
+            "email",
+            "phone",
+            "person",
+        ] {
+            let payload = serde_json::json!({
+                "name": "My field",
+                "field_type": field_type,
+            });
+            let req: CreateCustomFieldRequest = serde_json::from_value(payload)
+                .unwrap_or_else(|e| panic!("CreateCustomFieldRequest rejected {field_type}: {e}"));
+            assert_eq!(req.field_type, field_type);
+        }
+    }
+
+    #[test]
+    fn move_task_request_uses_flat_payload() {
+        let payload = serde_json::json!({
+            "column_id": "019d8226-9499-7ec3-8aa7-9186d5513929",
+            "position": 512.5,
+            "version": 43
+        });
+        let req: MoveTaskRequest = serde_json::from_value(payload)
+            .expect("MoveTaskRequest accepts frontend payload");
+        assert!((req.position - 512.5_f64).abs() < f64::EPSILON);
+        assert_eq!(req.version, Some(43));
+    }
+
+    #[test]
+    fn create_custom_field_optional_fields_default_sanely() {
+        // Inline `+ Add a property` popover in TaskModal sends only
+        // `name` + `field_type`. All other fields must default.
+        let payload = serde_json::json!({
+            "name": "Estimate",
+            "field_type": "number"
+        });
+        let req: CreateCustomFieldRequest =
+            serde_json::from_value(payload).expect("Optional fields must default");
+        assert_eq!(req.name, "Estimate");
+        assert_eq!(req.field_type, "number");
+    }
+}

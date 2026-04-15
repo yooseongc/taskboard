@@ -66,6 +66,42 @@ async fn seed_status_priority_fields(
     Ok(())
 }
 
+/// Seed the three default saved views a new board starts with —
+/// Kanban, Table, Calendar. Each is owned by the creator and marked
+/// shared so other board members see them immediately. Configs are
+/// empty objects so the default UI behaviour kicks in until the user
+/// customizes and saves.
+async fn seed_default_views(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    board_id: Uuid,
+    owner_id: Uuid,
+) -> Result<(), AppError> {
+    for (i, (name, view_type)) in [
+        ("Kanban", "board"),
+        ("Table", "table"),
+        ("Calendar", "calendar"),
+    ]
+    .iter()
+    .enumerate()
+    {
+        sqlx::query(
+            r#"
+            INSERT INTO board_views (id, board_id, name, view_type, config, owner_id, shared, position)
+            VALUES ($1, $2, $3, $4, '{}'::jsonb, $5, TRUE, $6)
+            "#,
+        )
+        .bind(uuid7::now_v7())
+        .bind(board_id)
+        .bind(name)
+        .bind(view_type)
+        .bind(owner_id)
+        .bind(i as f64 * 1024.0)
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
+}
+
 fn validate_board_role(role: &str) -> Result<(), AppError> {
     match role {
         "BoardAdmin" | "BoardMember" | "BoardViewer" => Ok(()),
@@ -200,6 +236,7 @@ pub async fn create_board(
     // 8-family tag palette tokens (see theme/constants.ts) so `tagClass()`
     // can render them directly without a mapping layer.
     seed_status_priority_fields(&mut tx, board_id).await?;
+    seed_default_views(&mut tx, board_id, user.user_id).await?;
 
     // Activity log
     insert_activity(

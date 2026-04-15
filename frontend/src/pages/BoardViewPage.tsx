@@ -232,20 +232,45 @@ export default function BoardViewPage() {
     const task = rawTasks.find((t) => t.id === draggableId);
     if (!task) return;
 
-    // Column-grouped DnD — existing behaviour: move task between columns
-    // with optimistic-concurrency version.
+    // Column-grouped DnD — move task between columns with midpoint
+    // position. We compute the target position from neighbours in the
+    // destination column so cards don't accidentally collapse onto the
+    // same integer position (the old behaviour sent destination.index
+    // raw, which worked once but produced duplicate positions once a
+    // second card landed at the same index, breaking card ordering).
     if (groupBy.type === 'column') {
+      const destTasks = rawTasks
+        .filter(
+          (t) => t.column_id === destination.droppableId && t.id !== draggableId,
+        )
+        .sort((a, b) => a.position - b.position);
+      const idx = Math.max(0, Math.min(destination.index, destTasks.length));
+      const prev = idx > 0 ? destTasks[idx - 1].position : undefined;
+      const next = idx < destTasks.length ? destTasks[idx].position : undefined;
+      let newPosition: number;
+      if (prev === undefined && next === undefined) {
+        newPosition = 1024;
+      } else if (prev === undefined) {
+        newPosition = (next as number) - 1024;
+      } else if (next === undefined) {
+        newPosition = (prev as number) + 1024;
+      } else {
+        newPosition = (prev + next) / 2;
+      }
       const payload = {
         taskId: draggableId,
         column_id: destination.droppableId,
-        position: destination.index,
+        position: newPosition,
         version: task.version,
       };
       moveTask.mutate(payload, {
-        onError: () =>
-          addToast('error', 'Failed to move task', {
+        onError: (err) => {
+          console.error('[board DnD] move failed', err);
+          const msg = err instanceof Error ? err.message : 'Failed to move task';
+          addToast('error', msg, {
             action: { label: 'Retry', onClick: () => moveTask.mutate(payload) },
-          }),
+          });
+        },
       });
       return;
     }

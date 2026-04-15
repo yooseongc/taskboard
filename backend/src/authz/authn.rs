@@ -52,6 +52,19 @@ impl GlobalRole {
             .max_by_key(|r| r.privilege_level())
             .unwrap_or(Self::Viewer)
     }
+
+    /// Parse a role from its S-025 string form, returning `None` for
+    /// unknown values. Used by legacy tests; production flow deserializes
+    /// via serde. Keep in sync with the enum variants above.
+    pub fn from_str_opt(s: &str) -> Option<Self> {
+        match s {
+            "SystemAdmin" => Some(Self::SystemAdmin),
+            "DepartmentAdmin" => Some(Self::DepartmentAdmin),
+            "Member" => Some(Self::Member),
+            "Viewer" => Some(Self::Viewer),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for GlobalRole {
