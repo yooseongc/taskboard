@@ -36,11 +36,17 @@ import TaskModal from '../components/TaskModal';
 import TableView from '../components/TableView';
 import CalendarView, { type CalendarDateField } from '../components/CalendarView';
 import BoardSettingsModal from '../components/BoardSettingsModal';
-import SavedViewBar from '../components/SavedViewBar';
 import ViewToolbar from '../components/ViewToolbar';
 import AvatarStack from '../components/AvatarStack';
 import TaskMetaBadges from '../components/TaskMetaBadges';
-import { useBoardViews } from '../api/views';
+import {
+  useBoardViews,
+  useCreateBoardView,
+  usePatchBoardView,
+  useDeleteBoardView,
+  type BoardView,
+  type ViewType,
+} from '../api/views';
 import type { BoardViewConfig, TableViewConfig } from '../api/views';
 import type { TableViewState } from '../components/TableView';
 import { useToastStore } from '../stores/toastStore';
@@ -88,21 +94,27 @@ export default function BoardViewPage() {
   const addToast = useToastStore((s) => s.addToast);
 
   const [activeView, setActiveView] = useState<ViewTab>('board');
+  // selectedViewId: which saved view's tab is active. `null` means
+  // "Activity" (the only non-view tab) or the implicit default before
+  // any view loads. The view list is fetched separately and the first
+  // matching view becomes the default tab on mount.
+  const [selectedViewId, setSelectedViewId] = useState<string | null>(null);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const deepLinkedViewId = searchParams.get('view');
   const { data: boardViewsData } = useBoardViews(id!);
+  const createBoardView = useCreateBoardView(id!);
+  const patchBoardView = usePatchBoardView(id!);
+  const deleteBoardView = useDeleteBoardView(id!);
+  const [addingView, setAddingView] = useState(false);
+  const [newViewName, setNewViewName] = useState('');
+  const [newViewType, setNewViewType] = useState<ViewType>('board');
 
-  // Deep-link: ?view=<viewId> — switch to the matching view-type tab and
-  // load the saved config. Runs whenever the query param or the fetched
-  // view list changes. Cleared after applying so subsequent tab changes
-  // don't keep re-triggering.
-  useEffect(() => {
-    if (!deepLinkedViewId) return;
-    const view = (boardViewsData?.items ?? []).find(
-      (v) => v.id === deepLinkedViewId,
-    );
-    if (!view) return;
+  // Apply a saved view's config: switches the renderer to its view_type
+  // and loads each view-type's persisted state (filter/sort/groupBy/density).
+  // Pulled out of the deep-link effect so the tab-click flow can reuse it.
+  const applyView = (view: BoardView) => {
+    setSelectedViewId(view.id);
     if (view.view_type === 'board') {
       setActiveView('board');
       const c = (view.config ?? {}) as BoardViewConfig & {
@@ -115,7 +127,7 @@ export default function BoardViewPage() {
       if (c.density) setDensity(c.density);
     } else if (view.view_type === 'table') {
       setActiveView('table');
-      const c = view.config as TableViewConfig & {
+      const c = (view.config ?? {}) as TableViewConfig & {
         groupBy?: GroupByKey;
         density?: ViewDensity;
       };
@@ -131,8 +143,27 @@ export default function BoardViewPage() {
     } else if (view.view_type === 'calendar') {
       setActiveView('calendar');
     }
-    // Drop the query param once applied so a later tab switch doesn't
-    // snap the user back to the deep-linked view.
+  };
+
+  // Default selection: when the board's view list arrives and nothing
+  // is selected yet, pick the first view as the active tab.
+  useEffect(() => {
+    if (selectedViewId !== null) return;
+    const first = boardViewsData?.items?.[0];
+    if (first) applyView(first);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardViewsData, selectedViewId]);
+
+  // Deep-link `?view=<viewId>` — apply the matching view (overrides the
+  // default). Param is cleared after consumption so later tab clicks
+  // don't get snapped back.
+  useEffect(() => {
+    if (!deepLinkedViewId) return;
+    const view = (boardViewsData?.items ?? []).find(
+      (v) => v.id === deepLinkedViewId,
+    );
+    if (!view) return;
+    applyView(view);
     const next = new URLSearchParams(searchParams);
     next.delete('view');
     setSearchParams(next, { replace: true });
@@ -165,6 +196,58 @@ export default function BoardViewPage() {
   const [calendarGroupBy, setCalendarGroupBy] = useState<GroupByKey>({
     type: 'none',
   });
+
+  // Debounced auto-save: when the active view's local config changes,
+  // PATCH the selected view so the change persists without an explicit
+  // "Save" click. 600ms debounce batches typing into a single PATCH;
+  // switching views cancels any in-flight save. MUST stay above the
+  // boardLoading early-return so the hook count stays stable across
+  // renders (React error #310).
+  useEffect(() => {
+    if (!selectedViewId) return;
+    const view = (boardViewsData?.items ?? []).find(
+      (v) => v.id === selectedViewId,
+    );
+    if (!view) return;
+    let nextConfig: Record<string, unknown> | null = null;
+    if (view.view_type === 'board') {
+      nextConfig = {
+        search: boardSearch,
+        priority: filterPriority,
+        groupBy,
+        density,
+      };
+    } else if (view.view_type === 'table') {
+      nextConfig = {
+        ...tableConfig,
+        groupBy: tableGroupBy,
+        density: tableDensity,
+      };
+    } else if (view.view_type === 'calendar') {
+      nextConfig = {
+        dateField: calendarDateField.id,
+        groupBy: calendarGroupBy,
+      };
+    }
+    if (nextConfig === null) return;
+    const cfg = nextConfig;
+    const handle = setTimeout(() => {
+      patchBoardView.mutate({ viewId: view.id, config: cfg });
+    }, 600);
+    return () => clearTimeout(handle);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selectedViewId,
+    boardSearch,
+    filterPriority,
+    groupBy,
+    density,
+    tableConfig,
+    tableGroupBy,
+    tableDensity,
+    calendarDateField,
+    calendarGroupBy,
+  ]);
 
   if (boardLoading) return <Spinner />;
   if (!board) {
@@ -427,12 +510,50 @@ export default function BoardViewPage() {
     );
   };
 
-  const viewTabs: { key: ViewTab }[] = [
-    { key: 'board' },
-    { key: 'table' },
-    { key: 'calendar' },
-    { key: 'activity' },
-  ];
+  const boardViews: BoardView[] = boardViewsData?.items ?? [];
+
+  const viewTypeIcon = (type: ViewType): string => {
+    switch (type) {
+      case 'board':
+        return '▦';
+      case 'table':
+        return '☰';
+      case 'calendar':
+        return '📅';
+    }
+  };
+
+  const handleCreateView = () => {
+    const name = newViewName.trim();
+    if (!name) return;
+    createBoardView.mutate(
+      { name, view_type: newViewType, config: {}, shared: false },
+      {
+        onSuccess: (created) => {
+          setAddingView(false);
+          setNewViewName('');
+          setNewViewType('board');
+          applyView(created);
+        },
+        onError: () => addToast('error', t('common.saveFailed')),
+      },
+    );
+  };
+
+  const handleDeleteView = (view: BoardView) => {
+    if (!confirm(`Delete view "${view.name}"?`)) return;
+    deleteBoardView.mutate(view.id, {
+      onSuccess: () => {
+        // Pick another view as active if we just deleted the selected one.
+        if (selectedViewId === view.id) {
+          const next = boardViews.find((v) => v.id !== view.id);
+          if (next) applyView(next);
+          else setSelectedViewId(null);
+        }
+      },
+      onError: () => addToast('error', t('common.saveFailed')),
+    });
+  };
 
   return (
     <div className="h-full flex flex-col">
@@ -463,57 +584,152 @@ export default function BoardViewPage() {
         </div>
       </div>
 
-      {/* View Tabs */}
+      {/* View Tabs — each tab is a saved board_view (Kanban/Table/Calendar
+          + user-created variants). Activity is the only non-view tab and
+          always sits at the end. Selecting a tab applies that view's
+          config; "+ View" appends a new view of the chosen type. */}
       <div
-        className="flex gap-1 px-6 py-1.5"
+        className="flex items-center gap-1 px-6 py-1.5 overflow-x-auto"
         style={{
           backgroundColor: 'var(--color-surface)',
           borderBottom: '1px solid var(--color-border)',
         }}
       >
-        {viewTabs.map((tab) => {
-          const active = activeView === tab.key;
+        {boardViews.map((view) => {
+          const active = selectedViewId === view.id && activeView !== 'activity';
           return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveView(tab.key)}
-              className="rounded-md px-3 py-1 text-sm font-medium"
-              style={{
-                backgroundColor: active ? 'var(--color-primary-light)' : 'transparent',
-                color: active ? 'var(--color-primary-text)' : 'var(--color-text-secondary)',
-              }}
-            >
-              {t(`board.${tab.key}`)}
-            </button>
+            <div key={view.id} className="relative group flex-shrink-0">
+              <button
+                onClick={() => applyView(view)}
+                className="rounded-md pl-2.5 pr-7 py-1 text-sm font-medium flex items-center gap-1.5"
+                style={{
+                  backgroundColor: active ? 'var(--color-primary-light)' : 'transparent',
+                  color: active ? 'var(--color-primary-text)' : 'var(--color-text-secondary)',
+                }}
+                title={`${view.view_type} · ${view.name}`}
+              >
+                <span aria-hidden className="text-xs opacity-70">
+                  {viewTypeIcon(view.view_type)}
+                </span>
+                <span>{view.name}</span>
+                {view.shared && (
+                  <span aria-hidden className="text-xs opacity-50">🔗</span>
+                )}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteView(view);
+                }}
+                aria-label={`Delete view ${view.name}`}
+                title={t('common.delete')}
+                className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 hover:opacity-100 text-xs px-1 rounded"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                ✕
+              </button>
+            </div>
           );
         })}
-      </div>
 
-      {/* Saved Views bar — Round C. Board toolbar state (search +
-          priority) is what we persist for the Board view. Selecting a
-          saved view replays those two pieces of state. */}
-      {activeView === 'board' && (
-        <SavedViewBar
-          boardId={id!}
-          viewType="board"
-          currentConfig={{
-            search: boardSearch,
-            priority: filterPriority,
-            groupBy,
-            density,
+        {/* + View popover */}
+        <div className="relative flex-shrink-0">
+          {addingView ? (
+            <div
+              className="absolute left-0 top-full mt-1 z-20 rounded-lg p-3 shadow-lg w-64"
+              style={{
+                backgroundColor: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+              }}
+            >
+              <div
+                className="text-xs font-semibold mb-2 uppercase tracking-wider"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                New view
+              </div>
+              <input
+                autoFocus
+                placeholder="View name"
+                value={newViewName}
+                onChange={(e) => setNewViewName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleCreateView()}
+                className="w-full text-sm rounded px-2 py-1.5 mb-2 outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
+                style={{
+                  backgroundColor: 'var(--color-bg)',
+                  border: '1px solid var(--color-border)',
+                  color: 'var(--color-text)',
+                }}
+              />
+              <select
+                value={newViewType}
+                onChange={(e) => setNewViewType(e.target.value as ViewType)}
+                className="w-full text-sm rounded px-2 py-1.5 mb-2 outline-none"
+                style={{
+                  backgroundColor: 'var(--color-bg)',
+                  border: '1px solid var(--color-border)',
+                  color: 'var(--color-text)',
+                }}
+              >
+                <option value="board">▦ Kanban</option>
+                <option value="table">☰ Table</option>
+                <option value="calendar">📅 Calendar</option>
+              </select>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCreateView}
+                  disabled={!newViewName.trim() || createBoardView.isPending}
+                  className="px-3 py-1 text-xs rounded font-medium"
+                  style={{
+                    backgroundColor: 'var(--color-primary)',
+                    color: 'var(--color-text-inverse)',
+                    opacity: newViewName.trim() ? 1 : 0.5,
+                  }}
+                >
+                  {t('common.create')}
+                </button>
+                <button
+                  onClick={() => {
+                    setAddingView(false);
+                    setNewViewName('');
+                  }}
+                  className="px-2 py-1 text-xs"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  {t('common.cancel')}
+                </button>
+              </div>
+            </div>
+          ) : null}
+          <button
+            onClick={() => setAddingView(true)}
+            className="rounded-md px-2 py-1 text-sm"
+            style={{ color: 'var(--color-text-muted)' }}
+            title="New view"
+          >
+            +
+          </button>
+        </div>
+
+        {/* Activity tab — always last, special-case (no view config). */}
+        <button
+          onClick={() => {
+            setActiveView('activity');
+            setSelectedViewId(null);
           }}
-          onLoadConfig={(cfg) => {
-            const c = cfg as BoardViewConfig & {
-              groupBy?: GroupByKey;
-              density?: ViewDensity;
-            };
-            setBoardSearch(c.search ?? '');
-            setFilterPriority(c.priority ?? '');
-            if (c.groupBy) setGroupBy(c.groupBy);
-            if (c.density) setDensity(c.density);
+          className="ml-auto rounded-md px-3 py-1 text-sm font-medium flex-shrink-0"
+          style={{
+            backgroundColor:
+              activeView === 'activity' ? 'var(--color-primary-light)' : 'transparent',
+            color:
+              activeView === 'activity'
+                ? 'var(--color-primary-text)'
+                : 'var(--color-text-secondary)',
           }}
-        />
-      )}
+        >
+          {t('board.activity')}
+        </button>
+      </div>
 
       {/* Board toolbar (search/group-by/density + priority filter) */}
       {activeView === 'board' && (
@@ -685,34 +901,6 @@ export default function BoardViewPage() {
 
       {activeView === 'table' && (
         <div className="flex flex-col flex-1 overflow-hidden">
-          <SavedViewBar
-            boardId={id!}
-            viewType="table"
-            currentConfig={
-              {
-                ...tableConfig,
-                groupBy: tableGroupBy,
-                density: tableDensity,
-              } as unknown as Record<string, unknown>
-            }
-            onLoadConfig={(cfg) => {
-              const c = cfg as TableViewConfig & {
-                groupBy?: GroupByKey;
-                density?: ViewDensity;
-              };
-              const next: TableViewState = {
-                sortKey: (c.sortKey as TableViewState['sortKey']) ?? 'title',
-                sortDir: (c.sortDir as TableViewState['sortDir']) ?? 'asc',
-                filters: (c.filters as TableViewState['filters']) ?? [],
-                filterMode:
-                  (c.filterMode as TableViewState['filterMode']) ?? 'and',
-              };
-              setTableConfig(next);
-              if (c.groupBy) setTableGroupBy(c.groupBy);
-              if (c.density) setTableDensity(c.density);
-              setTableKey((k) => k + 1);
-            }}
-          />
           <div
             className="px-4"
             style={{ borderBottom: '1px solid var(--color-border)' }}
