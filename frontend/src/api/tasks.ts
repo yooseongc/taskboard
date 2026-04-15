@@ -211,6 +211,34 @@ export function useCreateComment(taskId: string) {
   });
 }
 
+export function usePatchComment(taskId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ commentId, body }: { commentId: string; body: string }) =>
+      apiFetch<Comment>(`/api/tasks/${taskId}/comments/${commentId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ body }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task', taskId, 'comments'] });
+    },
+  });
+}
+
+export function useDeleteComment(taskId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (commentId: string) =>
+      apiFetch<void>(`/api/tasks/${taskId}/comments/${commentId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task', taskId, 'comments'] });
+      qc.invalidateQueries({ queryKey: ['task', taskId] });
+    },
+  });
+}
+
 export function useAddLabel(taskId: string, boardId: string) {
   const qc = useQueryClient();
   return useMutation({

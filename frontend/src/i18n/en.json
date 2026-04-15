@@ -43,6 +43,7 @@
     "board": "Board",
     "table": "Table",
     "calendar": "Calendar",
+    "activity": "Activity",
     "addColumn": "+ Add column",
     "addTask": "+ Add task",
     "columnTitle": "Column title...",
@@ -76,7 +77,8 @@
     "post": "Post",
     "posting": "Posting...",
     "save": "Save",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "deleteCommentConfirm": "Delete this comment?"
   },
   "templates": {
     "title": "Templates",

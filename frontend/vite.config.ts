@@ -22,6 +22,8 @@ export default defineConfig({
           query: ['@tanstack/react-query'],
           dnd: ['@hello-pangea/dnd'],
           state: ['zustand'],
+          calendar: ['react-big-calendar', 'date-fns'],
+          markdown: ['react-markdown'],
         },
       },
     },

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TaskDto, BoardColumn, Priority, TaskStatus } from '../types/api';
 import Badge from './ui/Badge';
@@ -11,6 +11,13 @@ import {
   type TaskFieldValue,
 } from '../api/customFields';
 
+export interface TableViewState {
+  sortKey: SortKey;
+  sortDir: SortDir;
+  filters: FilterChip[];
+  filterMode: FilterMode;
+}
+
 interface TableViewProps {
   boardId: string;
   tasks: TaskDto[];
@@ -19,6 +26,10 @@ interface TableViewProps {
   onCreateTask?: (title: string, columnId: string) => void;
   onBulkMove?: (taskIds: string[], columnId: string) => void;
   onBulkDelete?: (taskIds: string[]) => void;
+  /** Seed initial sort/filter state (e.g. from a loaded saved view). */
+  defaultConfig?: Partial<TableViewState>;
+  /** Called whenever sort/filter state changes — lets parent snapshot for SavedViewBar. */
+  onStateChange?: (state: TableViewState) => void;
 }
 
 /**
@@ -161,12 +172,20 @@ export default function TableView({
   onCreateTask,
   onBulkMove,
   onBulkDelete,
+  defaultConfig,
+  onStateChange,
 }: TableViewProps) {
-  const [sortKey, setSortKey] = useState<SortKey>('title');
-  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [sortKey, setSortKey] = useState<SortKey>(defaultConfig?.sortKey ?? 'title');
+  const [sortDir, setSortDir] = useState<SortDir>(defaultConfig?.sortDir ?? 'asc');
   const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState<FilterChip[]>([]);
-  const [filterMode, setFilterMode] = useState<FilterMode>('and');
+  const [filters, setFilters] = useState<FilterChip[]>(defaultConfig?.filters ?? []);
+  const [filterMode, setFilterMode] = useState<FilterMode>(defaultConfig?.filterMode ?? 'and');
+
+  // Report state changes to parent so BoardViewPage can snapshot for SavedViewBar.
+  useEffect(() => {
+    onStateChange?.({ sortKey, sortDir, filters, filterMode });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortKey, sortDir, filters, filterMode]);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newColumnId, setNewColumnId] = useState('');

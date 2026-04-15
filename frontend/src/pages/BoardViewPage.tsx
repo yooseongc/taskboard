@@ -12,6 +12,7 @@ import {
   useBoard,
   useBoardColumns,
   useBoardTasks,
+  useBoardActivity,
   useCreateColumn,
   usePatchColumn,
   useDeleteColumn,
@@ -29,20 +30,22 @@ import TableView from '../components/TableView';
 import CalendarView, { type CalendarDateField } from '../components/CalendarView';
 import BoardSettingsModal from '../components/BoardSettingsModal';
 import SavedViewBar from '../components/SavedViewBar';
-import type { BoardViewConfig } from '../api/views';
+import type { BoardViewConfig, TableViewConfig } from '../api/views';
+import type { TableViewState } from '../components/TableView';
 import { useToastStore } from '../stores/toastStore';
 import Breadcrumbs from '../components/ui/Breadcrumbs';
 import { useTagTheme } from '../theme/constants';
 import { tagClass, type TagVariant } from '../theme/constants';
 import type { TaskDto, BoardColumn } from '../types/api';
 
-type ViewTab = 'board' | 'table' | 'calendar';
+type ViewTab = 'board' | 'table' | 'calendar' | 'activity';
 
 export default function BoardViewPage() {
   const { id } = useParams<{ id: string }>();
   const { data: board, isLoading: boardLoading } = useBoard(id!);
   const { data: columnsData } = useBoardColumns(id!);
   const { data: tasksData } = useBoardTasks(id!);
+  const { data: activityData } = useBoardActivity(id!);
   // Board View needs the set of fields flagged "Show on card" plus
   // every task's field values so we can render per-task pills without
   // firing N requests. Both queries are cheap (board-scoped, paginated
@@ -60,6 +63,16 @@ export default function BoardViewPage() {
 
   const [activeView, setActiveView] = useState<ViewTab>('board');
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  // Table View — track current sort/filter state for SavedViewBar snapshot.
+  // tableKey is bumped when loading a saved view to remount TableView with new defaultConfig.
+  const [activityTaskFilter, setActivityTaskFilter] = useState<string>('');
+  const [tableConfig, setTableConfig] = useState<TableViewState>({
+    sortKey: 'title',
+    sortDir: 'asc',
+    filters: [],
+    filterMode: 'and',
+  });
+  const [tableKey, setTableKey] = useState(0);
   const [calendarDateField, setCalendarDateField] = useState<CalendarDateField>({
     id: 'due_date',
     label: 'Due Date',
@@ -210,6 +223,7 @@ export default function BoardViewPage() {
     { key: 'board' },
     { key: 'table' },
     { key: 'calendar' },
+    { key: 'activity' },
   ];
 
   return (
@@ -423,30 +437,53 @@ export default function BoardViewPage() {
       )}
 
       {activeView === 'table' && (
-        <TableView
-          boardId={id!}
-          tasks={tasks}
-          columns={columns}
-          onTaskClick={setOpenTaskId}
-          onCreateTask={(title, columnId) =>
-            createTask.mutate({ title, column_id: columnId })
-          }
-          onBulkMove={(taskIds, columnId) => {
-            taskIds.forEach((tid, i) => {
-              const task = rawTasks.find((t) => t.id === tid);
-              if (!task) return;
-              moveTask.mutate({
-                taskId: tid,
-                column_id: columnId,
-                position: i,
-                version: task.version,
-              });
-            });
-          }}
-          onBulkDelete={(taskIds) => {
-            taskIds.forEach((tid) => deleteTask.mutate(tid));
-          }}
-        />
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <SavedViewBar
+            boardId={id!}
+            viewType="table"
+            currentConfig={tableConfig as unknown as Record<string, unknown>}
+            onLoadConfig={(cfg) => {
+              const c = cfg as TableViewConfig;
+              const next: TableViewState = {
+                sortKey: (c.sortKey as TableViewState['sortKey']) ?? 'title',
+                sortDir: (c.sortDir as TableViewState['sortDir']) ?? 'asc',
+                filters: (c.filters as TableViewState['filters']) ?? [],
+                filterMode: (c.filterMode as TableViewState['filterMode']) ?? 'and',
+              };
+              setTableConfig(next);
+              setTableKey((k) => k + 1);
+            }}
+          />
+          <div className="flex-1 overflow-auto">
+            <TableView
+              key={tableKey}
+              boardId={id!}
+              tasks={tasks}
+              columns={columns}
+              onTaskClick={setOpenTaskId}
+              defaultConfig={tableConfig}
+              onStateChange={setTableConfig}
+              onCreateTask={(title, columnId) =>
+                createTask.mutate({ title, column_id: columnId })
+              }
+              onBulkMove={(taskIds, columnId) => {
+                taskIds.forEach((tid, i) => {
+                  const task = rawTasks.find((t) => t.id === tid);
+                  if (!task) return;
+                  moveTask.mutate({
+                    taskId: tid,
+                    column_id: columnId,
+                    position: i,
+                    version: task.version,
+                  });
+                });
+              }}
+              onBulkDelete={(taskIds) => {
+                taskIds.forEach((tid) => deleteTask.mutate(tid));
+              }}
+            />
+          </div>
+        </div>
       )}
 
       {activeView === 'calendar' && (
@@ -486,6 +523,85 @@ export default function BoardViewPage() {
               dateField={calendarDateField}
               customFieldValues={customFieldValues}
             />
+          </div>
+        </div>
+      )}
+
+      {activeView === 'activity' && (
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-2xl mx-auto px-6 py-5">
+            <div className="flex items-center gap-3 mb-4">
+              <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+                {t('board.activity')}
+              </h2>
+              {/* Task filter dropdown — client-side since we have all 50 entries */}
+              <select
+                value={activityTaskFilter}
+                onChange={(e) => setActivityTaskFilter(e.target.value)}
+                className="ml-auto text-xs rounded px-2 py-1"
+                style={{
+                  backgroundColor: 'var(--color-bg)',
+                  border: '1px solid var(--color-border)',
+                  color: 'var(--color-text)',
+                }}
+              >
+                <option value="">All tasks</option>
+                {rawTasks
+                  .filter((t) =>
+                    (activityData?.items ?? []).some((e) => e.task_id === t.id),
+                  )
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>{t.title}</option>
+                  ))}
+              </select>
+            </div>
+            {(activityData?.items ?? []).length === 0 && (
+              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                No activity yet.
+              </p>
+            )}
+            <div className="space-y-3">
+              {(activityData?.items ?? [])
+                .filter((e) => !activityTaskFilter || e.task_id === activityTaskFilter)
+                .map((entry) => {
+                  const taskTitle = entry.task_id
+                    ? rawTasks.find((t) => t.id === entry.task_id)?.title
+                    : undefined;
+                  return (
+                    <div key={entry.id} className="flex gap-3 items-start">
+                      <div
+                        className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5"
+                        style={{ backgroundColor: 'var(--color-surface-hover)', color: 'var(--color-text-secondary)' }}
+                      >
+                        {entry.actor_name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm" style={{ color: 'var(--color-text)' }}>
+                          <span className="font-medium">{entry.actor_name}</span>{' '}
+                          <span style={{ color: 'var(--color-text-secondary)' }}>
+                            {activityActionLabel(entry.action)}
+                          </span>
+                          {taskTitle && (
+                            <>
+                              {' '}
+                              <button
+                                className="text-xs underline"
+                                style={{ color: 'var(--color-primary)' }}
+                                onClick={() => setOpenTaskId(entry.task_id!)}
+                              >
+                                {taskTitle}
+                              </button>
+                            </>
+                          )}
+                        </p>
+                        <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                          {new Date(entry.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
           </div>
         </div>
       )}
@@ -593,6 +709,36 @@ function renderCardFieldValue(
       return <span className="truncate max-w-[160px]">{s}</span>;
     }
   }
+}
+
+/** Convert a backend activity action string to a human-readable label. */
+function activityActionLabel(action: string): string {
+  const labels: Record<string, string> = {
+    'task.created': 'created a task',
+    'task.updated': 'updated a task',
+    'task.moved_column': 'moved a task to another column',
+    'task.reordered': 'reordered a task',
+    'task.deleted': 'deleted a task',
+    'task.label_added': 'added a label',
+    'task.label_removed': 'removed a label',
+    'task.assignee_added': 'added an assignee',
+    'task.assignee_removed': 'removed an assignee',
+    'task.checklist_item_toggled': 'toggled a checklist item',
+    'task.commented': 'posted a comment',
+    'task.comment_edited': 'edited a comment',
+    'board.created': 'created this board',
+    'board.updated': 'updated the board',
+    'board.member_added': 'added a member',
+    'board.member_removed': 'removed a member',
+    'column.created': 'added a column',
+    'column.updated': 'updated a column',
+    'column.deleted': 'deleted a column',
+    'column.reordered': 'reordered columns',
+    'template.created': 'created a template',
+    'template.updated': 'updated a template',
+    'template.used': 'used a template',
+  };
+  return labels[action] ?? action;
 }
 
 /**

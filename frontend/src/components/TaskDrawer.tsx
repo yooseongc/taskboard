@@ -8,6 +8,8 @@ import {
   usePatchTask,
   useMoveTask,
   useCreateComment,
+  usePatchComment,
+  useDeleteComment,
   useCreateChecklist,
   useAddChecklistItem,
   usePatchChecklistItem,
@@ -48,6 +50,8 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
   const patchTask = usePatchTask(boardId);
   const moveTask = useMoveTask(boardId);
   const createComment = useCreateComment(taskId);
+  const patchComment = usePatchComment(taskId);
+  const deleteComment = useDeleteComment(taskId);
   const createChecklist = useCreateChecklist(taskId);
   const addChecklistItem = useAddChecklistItem(taskId);
   const patchChecklistItem = usePatchChecklistItem(taskId);
@@ -68,6 +72,8 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
   const [description, setDescription] = useState('');
   const [editingDesc, setEditingDesc] = useState(false);
   const [commentText, setCommentText] = useState('');
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
   const [newChecklistTitle, setNewChecklistTitle] = useState('');
   const [newItemTexts, setNewItemTexts] = useState<Record<string, string>>({});
   const [assigneeSearch, setAssigneeSearch] = useState('');
@@ -349,7 +355,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                   {t('task.post')}
                 </Button>
                 {comments.map((c) => (
-                  <div key={c.id} className="flex gap-2.5 py-2">
+                  <div key={c.id} className="flex gap-2.5 py-2 group">
                     <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-[var(--color-text-secondary)] flex-shrink-0">
                       {c.author_name.charAt(0).toUpperCase()}
                     </div>
@@ -357,8 +363,63 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">{c.author_name}</span>
                         <span className="text-xs text-[var(--color-text-muted)]">{new Date(c.created_at).toLocaleString()}</span>
+                        {c.edited_at && (
+                          <span className="text-xs italic text-[var(--color-text-muted)]">(edited)</span>
+                        )}
+                        <div className="ml-auto hidden group-hover:flex gap-1">
+                          <button
+                            onClick={() => { setEditingCommentId(c.id); setEditingCommentText(c.body); }}
+                            className="text-xs px-1.5 py-0.5 rounded hover:bg-[var(--color-surface-hover)]"
+                            style={{ color: 'var(--color-text-muted)' }}
+                            title={t('common.edit')}
+                          >
+                            ✏
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(t('task.deleteCommentConfirm'))) {
+                                deleteComment.mutate(c.id);
+                              }
+                            }}
+                            className="text-xs px-1.5 py-0.5 rounded hover:bg-[var(--color-surface-hover)]"
+                            style={{ color: 'var(--color-text-muted)' }}
+                            title={t('common.delete')}
+                          >
+                            🗑
+                          </button>
+                        </div>
                       </div>
-                      <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">{c.body}</p>
+                      {editingCommentId === c.id ? (
+                        <div className="mt-1">
+                          <textarea
+                            autoFocus
+                            className="w-full border rounded-lg p-2 text-sm min-h-[60px] focus:ring-2 focus:ring-blue-500 outline-none"
+                            value={editingCommentText}
+                            onChange={(e) => setEditingCommentText(e.target.value)}
+                          />
+                          <div className="flex gap-2 mt-1">
+                            <Button
+                              size="sm"
+                              disabled={!editingCommentText.trim() || patchComment.isPending}
+                              onClick={() => {
+                                patchComment.mutate(
+                                  { commentId: c.id, body: editingCommentText },
+                                  { onSuccess: () => setEditingCommentId(null) },
+                                );
+                              }}
+                            >
+                              {t('task.save')}
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEditingCommentId(null)}>
+                              {t('task.cancel')}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-sm text-[var(--color-text-secondary)] mt-0.5 markdown-body prose prose-sm max-w-none">
+                          <Markdown>{c.body}</Markdown>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

@@ -43,6 +43,7 @@
     "board": "보드",
     "table": "테이블",
     "calendar": "캘린더",
+    "activity": "활동",
     "addColumn": "+ 컬럼 추가",
     "addTask": "+ 태스크 추가",
     "columnTitle": "컬럼 제목...",
@@ -76,7 +77,8 @@
     "post": "게시",
     "posting": "게시 중...",
     "save": "저장",
-    "cancel": "취소"
+    "cancel": "취소",
+    "deleteCommentConfirm": "이 댓글을 삭제하시겠습니까?"
   },
   "templates": {
     "title": "템플릿",
