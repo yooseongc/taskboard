@@ -6,11 +6,11 @@
 // priority or a SystemAdmin role resolve to" — so renaming a role or
 // re-tuning the palette touches at most one file.
 //
-// Priority and status mappings are *user-configurable* and live in
-// `stores/tagColorStore.ts`. Role and active/inactive remain fixed for
-// security/semantic reasons.
-
-import { useTagColorStore } from '../stores/tagColorStore';
+// Priority/status mappings come from the board's seeded "Status" and
+// "Priority" custom-field options (board_custom_fields), which are
+// editable per-board in BoardSettings. The hardcoded maps below are
+// the fallback when the field/options haven't loaded yet, matching the
+// migration 0010 seed exactly so first-paint never flashes a wrong color.
 
 /**
  * 8 semantic families, see STYLE_GUIDE.md § Tag Palette for visual reference.
@@ -72,17 +72,28 @@ const ROLE_VARIANT: Record<string, TagVariant> = {
   Viewer: 'neutral',
 };
 
+/** Default priority enum → variant. Mirrors migration 0010's seed. */
+const DEFAULT_PRIORITY: Record<string, TagVariant> = {
+  urgent: 'critical',
+  high: 'orange',
+  medium: 'warning',
+  low: 'success',
+};
+
+/** Default status enum → variant. Mirrors migration 0010's seed. */
+const DEFAULT_STATUS: Record<string, TagVariant> = {
+  open: 'info',
+  in_progress: 'warning',
+  done: 'success',
+  archived: 'neutral',
+};
+
 export function priorityClass(priority: string): string {
-  // Non-reactive fallback. Reads the current store snapshot at call time so
-  // raster consumers (CalendarView style getters, etc.) still honor user
-  // customization even though they won't re-render without tree invalidation.
-  const map = useTagColorStore.getState().priorityMap;
-  return tagClass(map[priority] ?? 'neutral');
+  return tagClass(DEFAULT_PRIORITY[priority] ?? 'neutral');
 }
 
 export function statusClass(status: string): string {
-  const map = useTagColorStore.getState().statusMap;
-  return tagClass(map[status] ?? 'neutral');
+  return tagClass(DEFAULT_STATUS[status] ?? 'neutral');
 }
 
 export function roleClass(role: string): string {
@@ -94,16 +105,16 @@ export function activeClass(active: boolean): string {
 }
 
 /**
- * Reactive variant of the domain resolvers. Use from React components that
- * render priority/status chips so the UI live-updates when the user tweaks
- * their color assignments in Settings.
+ * React-hook variant kept for backward compat. Now returns the static
+ * resolvers since per-user tag color preferences were removed in favor
+ * of board-level Custom Field option colors (single source of truth).
+ * Callers that wanted live updates from Settings simply re-render on
+ * any other state change — there's nothing to subscribe to here.
  */
 export function useTagTheme() {
-  const priorityMap = useTagColorStore((s) => s.priorityMap);
-  const statusMap = useTagColorStore((s) => s.statusMap);
   return {
-    priorityClass: (p: string) => tagClass(priorityMap[p] ?? 'neutral'),
-    statusClass: (s: string) => tagClass(statusMap[s] ?? 'neutral'),
+    priorityClass,
+    statusClass,
     roleClass,
     activeClass,
   };

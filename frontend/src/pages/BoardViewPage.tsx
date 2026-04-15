@@ -1574,12 +1574,26 @@ function KanbanColumn({
                     ref={provided.innerRef}
                     {...provided.draggableProps}
                     {...provided.dragHandleProps}
-                    className="rounded-lg p-3 transition-shadow cursor-pointer select-none"
+                    className="rounded-lg p-3 cursor-pointer select-none"
                     style={{
+                      // MUST spread library-provided style first — it
+                      // contains the transform that follows the cursor
+                      // during drag. Our overrides go after to layer in
+                      // the lifted-card tilt + shadow without losing the
+                      // translate.
+                      ...provided.draggableProps.style,
                       backgroundColor: 'var(--color-surface)',
                       color: 'var(--color-text)',
                       border: `1px solid ${snapshot.isDragging ? 'var(--color-primary)' : 'var(--color-border)'}`,
-                      boxShadow: snapshot.isDragging ? 'var(--shadow-lg)' : 'var(--shadow-sm)',
+                      boxShadow: snapshot.isDragging
+                        ? '0 14px 32px rgba(0,0,0,0.22), 0 4px 10px rgba(0,0,0,0.14)'
+                        : 'var(--shadow-sm)',
+                      transform: snapshot.isDragging
+                        ? `${provided.draggableProps.style?.transform ?? ''} rotate(2.5deg) scale(1.03)`
+                        : provided.draggableProps.style?.transform,
+                      transition: snapshot.isDragging
+                        ? undefined
+                        : 'box-shadow 200ms ease, border-color 200ms ease, transform 220ms cubic-bezier(0.2, 0.9, 0.3, 1)',
                     }}
                     onClick={() => onTaskClick(task.id)}
                   >

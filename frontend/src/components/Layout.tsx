@@ -10,7 +10,6 @@ import { useBoardViews, type ViewType } from '../api/views';
 import { ToastContainer } from './Toast';
 import CommandPalette from './CommandPalette';
 import OnboardingTour from './OnboardingTour';
-import TagColorSync from './TagColorSync';
 import AccentColorSync from './AccentColorSync';
 
 const navItems = [
@@ -278,7 +277,6 @@ export default function Layout() {
       <ToastContainer />
       {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
       <OnboardingTour />
-      <TagColorSync />
       <AccentColorSync />
     </div>
   );
