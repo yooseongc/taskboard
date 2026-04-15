@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import {
   DragDropContext,
   Droppable,
@@ -40,6 +40,7 @@ import SavedViewBar from '../components/SavedViewBar';
 import ViewToolbar from '../components/ViewToolbar';
 import AvatarStack from '../components/AvatarStack';
 import TaskMetaBadges from '../components/TaskMetaBadges';
+import { useBoardViews } from '../api/views';
 import type { BoardViewConfig, TableViewConfig } from '../api/views';
 import type { TableViewState } from '../components/TableView';
 import { useToastStore } from '../stores/toastStore';
@@ -88,6 +89,55 @@ export default function BoardViewPage() {
 
   const [activeView, setActiveView] = useState<ViewTab>('board');
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkedViewId = searchParams.get('view');
+  const { data: boardViewsData } = useBoardViews(id!);
+
+  // Deep-link: ?view=<viewId> — switch to the matching view-type tab and
+  // load the saved config. Runs whenever the query param or the fetched
+  // view list changes. Cleared after applying so subsequent tab changes
+  // don't keep re-triggering.
+  useEffect(() => {
+    if (!deepLinkedViewId) return;
+    const view = (boardViewsData?.items ?? []).find(
+      (v) => v.id === deepLinkedViewId,
+    );
+    if (!view) return;
+    if (view.view_type === 'board') {
+      setActiveView('board');
+      const c = (view.config ?? {}) as BoardViewConfig & {
+        groupBy?: GroupByKey;
+        density?: ViewDensity;
+      };
+      setBoardSearch(c.search ?? '');
+      setFilterPriority(c.priority ?? '');
+      if (c.groupBy) setGroupBy(c.groupBy);
+      if (c.density) setDensity(c.density);
+    } else if (view.view_type === 'table') {
+      setActiveView('table');
+      const c = view.config as TableViewConfig & {
+        groupBy?: GroupByKey;
+        density?: ViewDensity;
+      };
+      setTableConfig({
+        sortKey: (c.sortKey as TableViewState['sortKey']) ?? 'title',
+        sortDir: (c.sortDir as TableViewState['sortDir']) ?? 'asc',
+        filters: (c.filters as TableViewState['filters']) ?? [],
+        filterMode: (c.filterMode as TableViewState['filterMode']) ?? 'and',
+      });
+      if (c.groupBy) setTableGroupBy(c.groupBy);
+      if (c.density) setTableDensity(c.density);
+      setTableKey((k) => k + 1);
+    } else if (view.view_type === 'calendar') {
+      setActiveView('calendar');
+    }
+    // Drop the query param once applied so a later tab switch doesn't
+    // snap the user back to the deep-linked view.
+    const next = new URLSearchParams(searchParams);
+    next.delete('view');
+    setSearchParams(next, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkedViewId, boardViewsData]);
   // Table View — track current sort/filter state for SavedViewBar snapshot.
   // tableKey is bumped when loading a saved view to remount TableView with new defaultConfig.
   const [activityTaskFilter, setActivityTaskFilter] = useState<string>('');

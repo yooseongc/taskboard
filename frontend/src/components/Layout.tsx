@@ -6,6 +6,7 @@ import { getLogoutUrl } from '../auth/oidc';
 import { usePermissions } from '../hooks/usePermissions';
 import { useBoards } from '../api/boards';
 import { useDepartments } from '../api/departments';
+import { useBoardViews, type ViewType } from '../api/views';
 import { ToastContainer } from './Toast';
 import CommandPalette from './CommandPalette';
 import OnboardingTour from './OnboardingTour';
@@ -292,21 +293,112 @@ function BoardNavLink({
   title: string;
   active: boolean;
 }) {
+  // Expand automatically when the board is currently open; otherwise the
+  // user can toggle the chevron. Keeping this as local state (rather than
+  // URL-driven) avoids touching BoardViewPage's tab logic.
+  const [expanded, setExpanded] = useState(active);
+  useEffect(() => {
+    if (active) setExpanded(true);
+  }, [active]);
+
   return (
-    <Link
-      to={`/boards/${boardId}`}
-      className="flex items-center gap-2 pl-8 pr-4 py-1.5 text-sm truncate"
-      title={title}
-      style={{
-        backgroundColor: active ? 'var(--color-sidebar-hover)' : undefined,
-        color: active ? 'var(--color-sidebar-text-active)' : 'var(--color-sidebar-text)',
-      }}
-    >
-      <span
-        className="w-2 h-2 rounded-sm flex-shrink-0"
-        style={{ backgroundColor: active ? 'var(--color-primary)' : 'currentColor', opacity: active ? 1 : 0.4 }}
-      />
-      <span className="truncate">{title}</span>
-    </Link>
+    <div>
+      <div
+        className="flex items-center gap-1 pl-3 pr-3 py-1.5 text-sm group"
+        style={{
+          backgroundColor: active ? 'var(--color-sidebar-hover)' : undefined,
+          color: active ? 'var(--color-sidebar-text-active)' : 'var(--color-sidebar-text)',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex-shrink-0 p-0.5 opacity-60 hover:opacity-100"
+          aria-label={expanded ? 'Collapse views' : 'Expand views'}
+        >
+          <svg
+            className={`w-3 h-3 transition-transform ${expanded ? 'rotate-90' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+        <Link
+          to={`/boards/${boardId}`}
+          className="flex items-center gap-2 flex-1 min-w-0 truncate"
+          title={title}
+          style={{ color: 'inherit' }}
+        >
+          <span
+            className="w-2 h-2 rounded-sm flex-shrink-0"
+            style={{
+              backgroundColor: active ? 'var(--color-primary)' : 'currentColor',
+              opacity: active ? 1 : 0.4,
+            }}
+          />
+          <span className="truncate">{title}</span>
+        </Link>
+      </div>
+      {expanded && <BoardViewList boardId={boardId} />}
+    </div>
   );
+}
+
+/**
+ * Loads and renders the saved views for a board as sidebar sub-items.
+ * Each entry deep-links to `/boards/:id?view=:viewId`; BoardViewPage
+ * reads that query param on mount to pre-select the view type + load
+ * its config. Fetch is cheap (board-scoped, already warm after the
+ * board page visits it) and react-query caches the response.
+ */
+function BoardViewList({ boardId }: { boardId: string }) {
+  const { data } = useBoardViews(boardId);
+  const location = useLocation();
+  const views = data?.items ?? [];
+  const query = new URLSearchParams(location.search);
+  const activeViewId = query.get('view') ?? '';
+
+  if (views.length === 0) return null;
+
+  return (
+    <div className="mt-0.5 mb-1">
+      {views.map((v) => {
+        const isActive =
+          location.pathname === `/boards/${boardId}` && activeViewId === v.id;
+        return (
+          <Link
+            key={v.id}
+            to={`/boards/${boardId}?view=${v.id}`}
+            className="flex items-center gap-2 pl-12 pr-4 py-1 text-xs truncate"
+            title={v.name}
+            style={{
+              color: isActive
+                ? 'var(--color-sidebar-text-active)'
+                : 'var(--color-sidebar-text)',
+              opacity: isActive ? 1 : 0.75,
+              backgroundColor: isActive ? 'var(--color-sidebar-hover)' : undefined,
+            }}
+          >
+            <span className="flex-shrink-0" aria-hidden>
+              {viewTypeIcon(v.view_type)}
+            </span>
+            <span className="truncate">{v.name}</span>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+function viewTypeIcon(type: ViewType): string {
+  switch (type) {
+    case 'board':
+      return '▦';
+    case 'table':
+      return '☰';
+    case 'calendar':
+      return '📅';
+  }
 }
