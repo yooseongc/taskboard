@@ -43,7 +43,7 @@ pub async fn create_custom_field(
 ) -> Result<impl IntoResponse, AppError> {
     check_board_permission(&state.pool, &user, board_id, Action::Update, ResourceType::Board).await?;
 
-    let valid_types = ["text", "number", "select", "multi_select", "date", "checkbox", "url"];
+    let valid_types = ["text", "number", "select", "multi_select", "date", "checkbox", "url", "email", "phone", "person"];
     if !valid_types.contains(&body.field_type.as_str()) {
         return Err(AppError::InvalidInput(format!(
             "field_type must be one of: {}",
@@ -54,8 +54,8 @@ pub async fn create_custom_field(
     let id = uuid7::now_v7();
     let row = sqlx::query_as::<_, CustomFieldRow>(
         r#"
-        INSERT INTO board_custom_fields (id, board_id, name, field_type, options, required)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO board_custom_fields (id, board_id, name, field_type, options, required, show_on_card)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING *
         "#,
     )
@@ -65,6 +65,7 @@ pub async fn create_custom_field(
     .bind(&body.field_type)
     .bind(body.options.as_ref().unwrap_or(&serde_json::json!([])))
     .bind(body.required.unwrap_or(false))
+    .bind(body.show_on_card.unwrap_or(false))
     .fetch_one(&state.pool)
     .await
     .map_err(|e| {
@@ -97,7 +98,8 @@ pub async fn patch_custom_field(
         SET name = COALESCE($3, name),
             options = COALESCE($4, options),
             position = COALESCE($5, position),
-            required = COALESCE($6, required)
+            required = COALESCE($6, required),
+            show_on_card = COALESCE($7, show_on_card)
         WHERE id = $1 AND board_id = $2
         RETURNING *
         "#,
@@ -108,6 +110,7 @@ pub async fn patch_custom_field(
     .bind(body.options)
     .bind(body.position)
     .bind(body.required)
+    .bind(body.show_on_card)
     .fetch_optional(&state.pool)
     .await?
     .ok_or_else(|| AppError::NotFound("Custom field".into()))?;

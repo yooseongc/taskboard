@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, Link } from 'react-router-dom';
@@ -16,14 +17,23 @@ import {
   useDeleteColumn,
 } from '../api/boards';
 import { useCreateTask, useMoveTask, useDeleteTask } from '../api/tasks';
+import {
+  useBoardCustomFields,
+  useBoardFieldValues,
+  type CustomField,
+  type TaskFieldValue,
+} from '../api/customFields';
 import { Spinner } from '../components/Spinner';
 import TaskDrawer from '../components/TaskDrawer';
 import TableView from '../components/TableView';
-import CalendarView from '../components/CalendarView';
+import CalendarView, { type CalendarDateField } from '../components/CalendarView';
 import BoardSettingsModal from '../components/BoardSettingsModal';
+import SavedViewBar from '../components/SavedViewBar';
+import type { BoardViewConfig } from '../api/views';
 import { useToastStore } from '../stores/toastStore';
 import Breadcrumbs from '../components/ui/Breadcrumbs';
 import { useTagTheme } from '../theme/constants';
+import { tagClass, type TagVariant } from '../theme/constants';
 import type { TaskDto, BoardColumn } from '../types/api';
 
 type ViewTab = 'board' | 'table' | 'calendar';
@@ -33,6 +43,12 @@ export default function BoardViewPage() {
   const { data: board, isLoading: boardLoading } = useBoard(id!);
   const { data: columnsData } = useBoardColumns(id!);
   const { data: tasksData } = useBoardTasks(id!);
+  // Board View needs the set of fields flagged "Show on card" plus
+  // every task's field values so we can render per-task pills without
+  // firing N requests. Both queries are cheap (board-scoped, paginated
+  // up to "small" limits) and cached via react-query.
+  const { data: fieldsData } = useBoardCustomFields(id!);
+  const { data: fieldValuesData } = useBoardFieldValues(id!);
   const { t } = useTranslation();
   const moveTask = useMoveTask(id!);
   const deleteTask = useDeleteTask(id!);
@@ -44,6 +60,11 @@ export default function BoardViewPage() {
 
   const [activeView, setActiveView] = useState<ViewTab>('board');
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [calendarDateField, setCalendarDateField] = useState<CalendarDateField>({
+    id: 'due_date',
+    label: 'Due Date',
+    kind: 'builtin',
+  });
   const [newColTitle, setNewColTitle] = useState('');
   const [addingColumn, setAddingColumn] = useState(false);
   const [boardSearch, setBoardSearch] = useState('');
@@ -77,6 +98,37 @@ export default function BoardViewPage() {
 
   const columns = columnsData?.items ?? [];
   const rawTasks = tasksData?.items ?? [];
+  // "Show on card" field defs sorted by user-chosen position so pill
+  // order on the card matches the order in Board Settings.
+  const cardFields: CustomField[] = (fieldsData?.items ?? [])
+    .filter((f) => f.show_on_card)
+    .slice()
+    .sort((a, b) => a.position - b.position);
+  // Bucket values by task for O(1) lookup when rendering each card.
+  const valuesByTask = new Map<string, TaskFieldValue[]>();
+  for (const v of fieldValuesData?.items ?? []) {
+    const arr = valuesByTask.get(v.task_id) ?? [];
+    arr.push(v);
+    valuesByTask.set(v.task_id, arr);
+  }
+
+  // Flat map of task_id:field_id → raw value string for CalendarView custom date fields.
+  const customFieldValues = new Map<string, string>();
+  for (const v of fieldValuesData?.items ?? []) {
+    if (v.value !== null && v.value !== undefined) {
+      customFieldValues.set(`${v.task_id}:${v.field_id}`, String(v.value));
+    }
+  }
+
+  // Date field options for the calendar source picker:
+  // two builtins + any custom fields of type "date".
+  const dateFieldOptions: CalendarDateField[] = [
+    { id: 'start_date', label: 'Start Date', kind: 'builtin' },
+    { id: 'due_date', label: 'Due Date', kind: 'builtin' },
+    ...(fieldsData?.items ?? [])
+      .filter((f) => f.field_type === 'date')
+      .map((f): CalendarDateField => ({ id: f.id, label: f.name, kind: 'custom' })),
+  ];
 
   // Apply board-level search/filter (only affects board view)
   const tasks = rawTasks.filter((t) => {
@@ -120,10 +172,17 @@ export default function BoardViewPage() {
     )
       return;
 
+    // Server requires the current task version for optimistic concurrency.
+    // We source it from the raw (unfiltered) list so the lookup survives
+    // board-level search/filter state.
+    const task = rawTasks.find((t) => t.id === draggableId);
+    if (!task) return;
+
     const payload = {
       taskId: draggableId,
       column_id: destination.droppableId,
       position: destination.index,
+      version: task.version,
     };
     moveTask.mutate(payload, {
       onError: () =>
@@ -208,6 +267,22 @@ export default function BoardViewPage() {
         })}
       </div>
 
+      {/* Saved Views bar — Round C. Board toolbar state (search +
+          priority) is what we persist for the Board view. Selecting a
+          saved view replays those two pieces of state. */}
+      {activeView === 'board' && (
+        <SavedViewBar
+          boardId={id!}
+          viewType="board"
+          currentConfig={{ search: boardSearch, priority: filterPriority }}
+          onLoadConfig={(cfg) => {
+            const c = cfg as BoardViewConfig;
+            setBoardSearch(c.search ?? '');
+            setFilterPriority(c.priority ?? '');
+          }}
+        />
+      )}
+
       {/* Board toolbar (search/filter) */}
       {activeView === 'board' && (
         <div
@@ -265,11 +340,20 @@ export default function BoardViewPage() {
                   column={column}
                   tasks={tasksByColumn.get(column.id) ?? []}
                   boardId={id!}
+                  cardFields={cardFields}
+                  valuesByTask={valuesByTask}
                   onTaskClick={setOpenTaskId}
                   onRenameColumn={(title) =>
                     patchColumn.mutate({
                       columnId: column.id,
                       title,
+                      version: column.version,
+                    })
+                  }
+                  onRecolorColumn={(color) =>
+                    patchColumn.mutate({
+                      columnId: column.id,
+                      color,
                       version: column.version,
                     })
                   }
@@ -348,9 +432,16 @@ export default function BoardViewPage() {
             createTask.mutate({ title, column_id: columnId })
           }
           onBulkMove={(taskIds, columnId) => {
-            taskIds.forEach((tid, i) =>
-              moveTask.mutate({ taskId: tid, column_id: columnId, position: i }),
-            );
+            taskIds.forEach((tid, i) => {
+              const task = rawTasks.find((t) => t.id === tid);
+              if (!task) return;
+              moveTask.mutate({
+                taskId: tid,
+                column_id: columnId,
+                position: i,
+                version: task.version,
+              });
+            });
           }}
           onBulkDelete={(taskIds) => {
             taskIds.forEach((tid) => deleteTask.mutate(tid));
@@ -359,8 +450,43 @@ export default function BoardViewPage() {
       )}
 
       {activeView === 'calendar' && (
-        <div className="flex-1">
-          <CalendarView tasks={tasks} onTaskClick={setOpenTaskId} />
+        <div className="flex flex-col flex-1 overflow-hidden">
+          {/* Date field source picker */}
+          <div
+            className="flex items-center gap-2 px-6 py-2 flex-shrink-0"
+            style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface)' }}
+          >
+            <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+              Date field:
+            </span>
+            <select
+              value={calendarDateField.id}
+              onChange={(e) => {
+                const opt = dateFieldOptions.find((o) => o.id === e.target.value);
+                if (opt) setCalendarDateField(opt);
+              }}
+              className="text-sm rounded px-2 py-1"
+              style={{
+                backgroundColor: 'var(--color-bg)',
+                border: '1px solid var(--color-border)',
+                color: 'var(--color-text)',
+              }}
+            >
+              {dateFieldOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex-1 overflow-auto">
+            <CalendarView
+              tasks={tasks}
+              onTaskClick={setOpenTaskId}
+              dateField={calendarDateField}
+              customFieldValues={customFieldValues}
+            />
+          </div>
         </div>
       )}
 
@@ -384,20 +510,133 @@ export default function BoardViewPage() {
   );
 }
 
+/**
+ * Render a single custom-field value as a compact fragment for the
+ * kanban card. Returns `null` when the value is empty/unset so the
+ * card can skip rendering that pill entirely instead of showing an
+ * empty "Name:" label.
+ *
+ * The renderer intentionally lives here (not in TableView's cell
+ * renderer) because kanban cards have a different space budget and
+ * formatting preference: dates compact, long strings truncated, and
+ * multi_select shown as comma-joined tag names rather than separate
+ * badges.
+ */
+function renderCardFieldValue(
+  field: CustomField,
+  value: unknown,
+): ReactNode {
+  if (value === null || value === undefined || value === '') return null;
+  switch (field.field_type) {
+    case 'checkbox':
+      return (
+        <span>{value ? '✓' : '✗'}</span>
+      );
+    case 'date': {
+      const d = typeof value === 'string' ? new Date(value) : null;
+      if (!d || Number.isNaN(d.getTime())) return null;
+      return <span>{d.toLocaleDateString()}</span>;
+    }
+    case 'number':
+      return <span>{String(value)}</span>;
+    case 'url': {
+      const s = String(value);
+      if (!s) return null;
+      // Readable trim: drop scheme + trailing slash for display, keep
+      // full URL in title attribute (set by the wrapping pill).
+      return <span className="truncate max-w-[120px]">{s.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span>;
+    }
+    case 'select': {
+      const opt = (field.options ?? []).find((o) => o.label === value);
+      const color = opt?.color ?? 'neutral';
+      // `color` can be either a palette key (TagVariant) or a raw hex.
+      // For raw hex we paint a 2px swatch + label; for palette keys we
+      // fall back to the existing tagClass utility.
+      if (color.startsWith('#')) {
+        return (
+          <span className="inline-flex items-center gap-1">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+            {String(value)}
+          </span>
+        );
+      }
+      return (
+        <span className={`rounded px-1 ${tagClass(color as TagVariant)}`}>
+          {String(value)}
+        </span>
+      );
+    }
+    case 'multi_select': {
+      if (!Array.isArray(value) || value.length === 0) return null;
+      return <span className="truncate max-w-[160px]">{value.join(', ')}</span>;
+    }
+    case 'email':
+      return (
+        <span className="truncate max-w-[160px]" title={String(value)}>
+          {String(value)}
+        </span>
+      );
+    case 'phone':
+      return <span>{String(value)}</span>;
+    case 'person':
+      // value is a user ID — show the ID abbreviated; full resolution
+      // needs a user list which isn't passed here, so just show it.
+      return (
+        <span className="truncate max-w-[100px] font-mono text-[10px]" title={String(value)}>
+          @{String(value).slice(0, 8)}
+        </span>
+      );
+    case 'text':
+    default: {
+      const s = String(value);
+      if (!s) return null;
+      return <span className="truncate max-w-[160px]">{s}</span>;
+    }
+  }
+}
+
+/**
+ * Preset palette for one-click column recolor. Users who need a custom
+ * hex can still submit any `#rrggbb` via the color input (native
+ * `<input type="color">`). Preset values are chosen to stay readable on
+ * both the light and dark surface tokens — high enough lightness to not
+ * drown card text, but distinct enough to tell columns apart.
+ */
+const COLUMN_COLOR_PRESETS: Array<{ label: string; value: string | null }> = [
+  { label: 'Default', value: null },
+  { label: 'Blue', value: '#3b82f6' },
+  { label: 'Indigo', value: '#6366f1' },
+  { label: 'Purple', value: '#8b5cf6' },
+  { label: 'Pink', value: '#ec4899' },
+  { label: 'Rose', value: '#f43f5e' },
+  { label: 'Orange', value: '#f97316' },
+  { label: 'Amber', value: '#f59e0b' },
+  { label: 'Lime', value: '#84cc16' },
+  { label: 'Green', value: '#22c55e' },
+  { label: 'Teal', value: '#14b8a6' },
+  { label: 'Cyan', value: '#06b6d4' },
+];
+
 function KanbanColumn({
   column,
   tasks,
   boardId: _boardId,
+  cardFields,
+  valuesByTask,
   onTaskClick,
   onRenameColumn,
+  onRecolorColumn,
   onDeleteColumn,
   onCreateTask,
 }: {
   column: BoardColumn;
   tasks: TaskDto[];
   boardId: string;
+  cardFields: CustomField[];
+  valuesByTask: Map<string, TaskFieldValue[]>;
   onTaskClick: (id: string) => void;
   onRenameColumn: (title: string) => void;
+  onRecolorColumn: (color: string | null) => void;
   onDeleteColumn: () => void;
   onCreateTask: (title: string) => void;
 }) {
@@ -407,6 +646,7 @@ function KanbanColumn({
   const [adding, setAdding] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [showMenu, setShowMenu] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
 
   const handleRename = () => {
     if (title.trim() && title !== column.title) {
@@ -424,10 +664,20 @@ function KanbanColumn({
 
   return (
     <div className="flex flex-col w-64 md:w-72 flex-shrink-0">
-      {/* Column Header */}
+      {/* Column Header. When `column.color` is set, we paint a 3px
+          accent strip at the top and tint the header background with
+          a low-opacity version of the accent so the column is visually
+          distinct without impairing text contrast. */}
       <div
         className="flex items-center justify-between rounded-t-lg px-3 py-2"
-        style={{ backgroundColor: 'var(--color-surface-hover)' }}
+        style={{
+          backgroundColor: column.color
+            ? `color-mix(in srgb, ${column.color} 18%, var(--color-surface-hover))`
+            : 'var(--color-surface-hover)',
+          borderTop: column.color
+            ? `3px solid ${column.color}`
+            : '3px solid transparent',
+        }}
       >
         {editing ? (
           <input
@@ -461,7 +711,7 @@ function KanbanColumn({
             </button>
             {showMenu && (
               <div
-                className="absolute right-0 top-6 rounded py-1 z-10 w-32"
+                className="absolute right-0 top-6 rounded py-1 z-10 w-44"
                 style={{
                   backgroundColor: 'var(--color-surface)',
                   border: '1px solid var(--color-border)',
@@ -480,6 +730,24 @@ function KanbanColumn({
                 </button>
                 <button
                   onClick={() => {
+                    setShowColorPicker(true);
+                    setShowMenu(false);
+                  }}
+                  className="flex w-full items-center justify-between px-3 py-1.5 text-sm hover:bg-[var(--color-surface-hover)]"
+                  style={{ color: 'var(--color-text)' }}
+                >
+                  <span>{t('board.columnColor', 'Color')}</span>
+                  <span
+                    className="inline-block h-3 w-3 rounded-full"
+                    style={{
+                      backgroundColor: column.color ?? 'transparent',
+                      border: '1px solid var(--color-border)',
+                    }}
+                    aria-hidden
+                  />
+                </button>
+                <button
+                  onClick={() => {
                     onDeleteColumn();
                     setShowMenu(false);
                   }}
@@ -488,6 +756,67 @@ function KanbanColumn({
                 >
                   {t('common.delete')}
                 </button>
+              </div>
+            )}
+            {showColorPicker && (
+              <div
+                className="absolute right-0 top-6 rounded py-2 px-3 z-20 w-56"
+                style={{
+                  backgroundColor: 'var(--color-surface)',
+                  border: '1px solid var(--color-border)',
+                  boxShadow: 'var(--shadow-md)',
+                }}
+              >
+                <div className="text-xs mb-2" style={{ color: 'var(--color-text-muted)' }}>
+                  {t('board.columnColor', 'Color')}
+                </div>
+                <div className="grid grid-cols-6 gap-1.5 mb-2">
+                  {COLUMN_COLOR_PRESETS.map((preset) => {
+                    const active = (column.color ?? null) === preset.value;
+                    return (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => {
+                          onRecolorColumn(preset.value);
+                          setShowColorPicker(false);
+                        }}
+                        title={preset.label}
+                        aria-label={preset.label}
+                        className="h-6 w-6 rounded-full flex items-center justify-center"
+                        style={{
+                          backgroundColor: preset.value ?? 'transparent',
+                          border: preset.value
+                            ? active
+                              ? '2px solid var(--color-text)'
+                              : '1px solid var(--color-border)'
+                            : '1px dashed var(--color-border)',
+                        }}
+                      >
+                        {!preset.value && (
+                          <span
+                            className="text-[10px]"
+                            style={{ color: 'var(--color-text-muted)' }}
+                            aria-hidden
+                          >
+                            ∅
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                <label className="flex items-center gap-2 text-xs">
+                  <span style={{ color: 'var(--color-text-muted)' }}>
+                    {t('board.columnColorCustom', 'Custom')}
+                  </span>
+                  <input
+                    type="color"
+                    value={column.color ?? '#888888'}
+                    onChange={(e) => onRecolorColumn(e.target.value)}
+                    className="h-6 w-10 cursor-pointer rounded"
+                  />
+                </label>
               </div>
             )}
           </div>
@@ -523,7 +852,11 @@ function KanbanColumn({
                     }}
                     onClick={() => onTaskClick(task.id)}
                   >
-                    <TaskCardContent task={task} />
+                    <TaskCardContent
+                      task={task}
+                      cardFields={cardFields}
+                      fieldValues={valuesByTask.get(task.id) ?? []}
+                    />
                   </div>
                 )}
               </Draggable>
@@ -587,8 +920,18 @@ function KanbanColumn({
   );
 }
 
-function TaskCardContent({ task }: { task: TaskDto }) {
+function TaskCardContent({
+  task,
+  cardFields,
+  fieldValues,
+}: {
+  task: TaskDto;
+  cardFields: CustomField[];
+  fieldValues: TaskFieldValue[];
+}) {
   const { priorityClass, statusClass } = useTagTheme();
+  // Index field-values by field id for O(1) lookup inside the map below.
+  const valueByField = new Map(fieldValues.map((v) => [v.field_id, v.value]));
   const labels = task.labels ?? [];
   const assignees = task.assignees ?? [];
   const checklist = task.checklist_summary ?? { total: 0, checked: 0 };
@@ -649,6 +992,38 @@ function TaskCardContent({ task }: { task: TaskDto }) {
           </span>
         )}
       </div>
+      {/* Custom field pills — only for fields the user flagged "Show on
+          card" in Board Settings. We deliberately skip fields that have
+          no value set on this task (renderCardFieldValue returns null)
+          so the card doesn't fill up with empty slots. */}
+      {cardFields.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          {cardFields.map((field) => {
+            const rendered = renderCardFieldValue(field, valueByField.get(field.id));
+            if (!rendered) return null;
+            return (
+              <span
+                key={field.id}
+                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs"
+                style={{
+                  backgroundColor: 'var(--color-surface-hover)',
+                  color: 'var(--color-text-secondary)',
+                  border: '1px solid var(--color-border)',
+                }}
+                title={field.name}
+              >
+                <span
+                  className="font-medium"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  {field.name}:
+                </span>
+                {rendered}
+              </span>
+            );
+          })}
+        </div>
+      )}
       {/* Bottom row: checklist, comments, assignees */}
       {(checklist.total > 0 ||
         commentCount > 0 ||

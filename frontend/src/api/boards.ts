@@ -4,6 +4,7 @@ import type {
   PaginatedResponse,
   Board,
   BoardColumn,
+  BoardMember,
   TaskDto,
   Label,
   ActivityLogEntry,
@@ -132,7 +133,7 @@ export function useDeleteBoard() {
 export function useCreateColumn(boardId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { title: string; position?: number }) =>
+    mutationFn: (body: { title: string; position?: number; color?: string }) =>
       apiFetch<BoardColumn>(`/api/boards/${boardId}/columns`, {
         method: 'POST',
         body: JSON.stringify(body),
@@ -154,6 +155,12 @@ export function usePatchColumn(boardId: string) {
       title?: string;
       position?: number;
       version: number;
+      /**
+       * Tri-state: omit the field to leave color untouched, pass `null`
+       * to clear the accent (revert to theme default), pass a `#rrggbb`
+       * string to set it.
+       */
+      color?: string | null;
     }) =>
       apiFetch<BoardColumn>(`/api/boards/${boardId}/columns/${columnId}`, {
         method: 'PATCH',
@@ -175,6 +182,58 @@ export function useDeleteColumn(boardId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['board', boardId, 'columns'] });
       qc.invalidateQueries({ queryKey: ['board', boardId, 'tasks'] });
+    },
+  });
+}
+
+// --- Board Member Management ---
+
+export function useBoardMembers(boardId: string) {
+  return useQuery({
+    queryKey: ['board', boardId, 'members'],
+    queryFn: () =>
+      apiFetch<PaginatedResponse<BoardMember>>(`/api/boards/${boardId}/members?limit=100`),
+    enabled: !!boardId,
+  });
+}
+
+export function useAddBoardMember(boardId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { user_id: string; role_in_board: string }) =>
+      apiFetch<BoardMember>(`/api/boards/${boardId}/members`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['board', boardId, 'members'] });
+    },
+  });
+}
+
+export function usePatchBoardMember(boardId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, role_in_board }: { userId: string; role_in_board: string }) =>
+      apiFetch<BoardMember>(`/api/boards/${boardId}/members/${userId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role_in_board }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['board', boardId, 'members'] });
+    },
+  });
+}
+
+export function useRemoveBoardMember(boardId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) =>
+      apiFetch<void>(`/api/boards/${boardId}/members/${userId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['board', boardId, 'members'] });
     },
   });
 }

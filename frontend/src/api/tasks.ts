@@ -79,8 +79,15 @@ export function usePatchTask(boardId: string) {
         body: JSON.stringify(body),
       }),
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ['board', boardId, 'tasks'] });
-      qc.invalidateQueries({ queryKey: ['task', data.id] });
+      // Immediately patch the in-memory board task list so the board reflects
+      // the change without waiting for a background refetch.
+      const listKey = ['board', boardId, 'tasks', 'by_column'] as const;
+      qc.setQueryData<PaginatedResponse<TaskDto>>(listKey, (old) =>
+        old
+          ? { ...old, items: old.items.map((t) => (t.id === data.id ? data : t)) }
+          : old,
+      );
+      qc.setQueryData<TaskDto>(['task', data.id], data);
     },
   });
 }
@@ -98,22 +105,91 @@ export function useDeleteTask(boardId: string) {
 
 export function useMoveTask(boardId: string) {
   const qc = useQueryClient();
+  const listKey = ['board', boardId, 'tasks', 'by_column'] as const;
   return useMutation({
+    /**
+     * Serialize every move mutation. Without scope, a second rapid drag
+     * fires before the first's onSuccess has normalised the version in
+     * cache — the second then reads a stale version and 409s. Scope
+     * makes TanStack Query queue the second mutation until the first
+     * fully settles (mutationFn + onSuccess).
+     */
+    scope: { id: 'task-move' },
     mutationFn: ({
       taskId,
       column_id,
       position,
+      version,
     }: {
       taskId: string;
       column_id: string;
       position: number;
-    }) =>
-      apiFetch<TaskDto>(`/api/tasks/${taskId}/move`, {
+      /**
+       * Fallback version if nothing is cached. Under normal flow we
+       * read the latest version from cache just before the fetch, so
+       * serialized consecutive mutations each see the authoritative
+       * value left behind by the previous mutation's onSuccess.
+       */
+      version: number;
+    }) => {
+      const cached =
+        qc.getQueryData<PaginatedResponse<TaskDto>>(listKey)?.items.find(
+          (t) => t.id === taskId,
+        ) ?? qc.getQueryData<TaskDto>(['task', taskId]);
+      const effectiveVersion = cached?.version ?? version;
+      return apiFetch<TaskDto>(`/api/tasks/${taskId}/move`, {
         method: 'PATCH',
-        body: JSON.stringify({ column_id, position }),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['board', boardId, 'tasks'] });
+        body: JSON.stringify({ column_id, position, version: effectiveVersion }),
+      });
+    },
+    /**
+     * Optimistic UI move: change column_id/position in cache so the card
+     * doesn't snap back during the network round-trip. Do NOT bump
+     * `version` here — the mutationFn reads the cached version, and a
+     * bumped value would be sent to the server as if it were current.
+     */
+    onMutate: async ({ taskId, column_id, position }) => {
+      const taskKey = ['task', taskId] as const;
+      await Promise.all([
+        qc.cancelQueries({ queryKey: listKey }),
+        qc.cancelQueries({ queryKey: taskKey }),
+      ]);
+      const previousList = qc.getQueryData<PaginatedResponse<TaskDto>>(listKey);
+      const previousTask = qc.getQueryData<TaskDto>(taskKey);
+      if (previousList) {
+        qc.setQueryData<PaginatedResponse<TaskDto>>(listKey, {
+          ...previousList,
+          items: previousList.items.map((t) =>
+            t.id === taskId ? { ...t, column_id, position } : t,
+          ),
+        });
+      }
+      if (previousTask) {
+        qc.setQueryData<TaskDto>(taskKey, {
+          ...previousTask,
+          column_id,
+          position,
+        });
+      }
+      return { previousList, previousTask, taskKey };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previousList) qc.setQueryData(listKey, ctx.previousList);
+      if (ctx?.previousTask && ctx.taskKey)
+        qc.setQueryData(ctx.taskKey, ctx.previousTask);
+    },
+    /**
+     * Normalise cache with the server's returned task — this writes the
+     * authoritative new `version` that the next serialized mutation
+     * will read.
+     */
+    onSuccess: (updated) => {
+      qc.setQueryData<PaginatedResponse<TaskDto>>(listKey, (old) =>
+        old
+          ? { ...old, items: old.items.map((t) => (t.id === updated.id ? updated : t)) }
+          : old,
+      );
+      qc.setQueryData<TaskDto>(['task', updated.id], updated);
     },
   });
 }

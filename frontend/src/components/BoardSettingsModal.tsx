@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   DragDropContext,
@@ -14,6 +14,13 @@ import {
   useDeleteCustomField,
   type CustomField,
 } from '../api/customFields';
+import {
+  useBoardMembers,
+  useAddBoardMember,
+  usePatchBoardMember,
+  useRemoveBoardMember,
+} from '../api/boards';
+import { useUsers } from '../api/users';
 import { useToastStore } from '../stores/toastStore';
 import { tagClass, type TagVariant } from '../theme/constants';
 import Modal from './ui/Modal';
@@ -42,7 +49,7 @@ import { Spinner } from './Spinner';
  */
 
 const PRIMARY_TYPES = ['text', 'checkbox'] as const;
-const ADVANCED_TYPES = ['select', 'multi_select', 'date', 'number', 'url'] as const;
+const ADVANCED_TYPES = ['select', 'multi_select', 'date', 'number', 'url', 'email', 'phone', 'person'] as const;
 const TAG_VARIANTS: TagVariant[] = [
   'neutral',
   'info',
@@ -72,6 +79,7 @@ export default function BoardSettingsModal({ boardId, onClose }: BoardSettingsMo
   const deleteField = useDeleteCustomField(boardId);
   const addToast = useToastStore((s) => s.addToast);
 
+  const [activeTab, setActiveTab] = useState<'fields' | 'members'>('fields');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -141,7 +149,32 @@ export default function BoardSettingsModal({ boardId, onClose }: BoardSettingsMo
         </Button>
       }
     >
-      <div className="space-y-5">
+      {/* Tab bar */}
+      <div
+        className="flex gap-1 mb-5 border-b"
+        style={{ borderColor: 'var(--color-border)' }}
+      >
+        {(['fields', 'members'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+              activeTab === tab
+                ? 'border-[var(--color-primary)]'
+                : 'border-transparent hover:border-[var(--color-border)]'
+            }`}
+            style={{
+              color: activeTab === tab ? 'var(--color-primary)' : 'var(--color-text-muted)',
+            }}
+          >
+            {tab === 'fields' ? t('boardSettings.fields') : t('boardSettings.members')}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'members' && <MembersPanel boardId={boardId} />}
+
+      <div className={activeTab === 'fields' ? 'space-y-5' : 'hidden'}>
         <section>
           <div className="flex items-center justify-between mb-3">
             <h3
@@ -250,6 +283,158 @@ export default function BoardSettingsModal({ boardId, onClose }: BoardSettingsMo
         </section>
       </div>
     </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Board Members Panel
+// ---------------------------------------------------------------------------
+
+const BOARD_ROLES = ['BoardAdmin', 'BoardMember', 'BoardViewer'] as const;
+
+function MembersPanel({ boardId }: { boardId: string }) {
+  const { data: membersData, isLoading } = useBoardMembers(boardId);
+  const { data: usersData } = useUsers();
+  const addMember = useAddBoardMember(boardId);
+  const patchMember = usePatchBoardMember(boardId);
+  const removeMember = useRemoveBoardMember(boardId);
+  const addToast = useToastStore((s) => s.addToast);
+
+  const [search, setSearch] = useState('');
+  const [newRole, setNewRole] = useState<string>('BoardMember');
+
+  const members = membersData?.items ?? [];
+  const memberIds = new Set(members.map((m) => m.user_id));
+
+  const filtered = useMemo(() => {
+    const all = usersData?.items ?? [];
+    const q = search.toLowerCase();
+    return all
+      .filter((u) => !memberIds.has(u.id))
+      .filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
+      .slice(0, 6);
+  }, [usersData, memberIds, search]);
+
+  if (isLoading) return <Spinner />;
+
+  return (
+    <div className="space-y-4">
+      {/* Existing members */}
+      {members.length === 0 ? (
+        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+          No members yet. Add users below.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {members.map((m) => (
+            <li
+              key={m.user_id}
+              className="flex items-center gap-3 p-2 rounded-lg"
+              style={{ backgroundColor: 'var(--color-surface-hover)' }}
+            >
+              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                {m.user_name.charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>{m.user_name}</div>
+                <div className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>{m.user_email}</div>
+              </div>
+              <select
+                value={m.role_in_board}
+                onChange={(e) =>
+                  patchMember.mutate(
+                    { userId: m.user_id, role_in_board: e.target.value },
+                    { onError: () => addToast('error', 'Failed to update role') },
+                  )
+                }
+                className="text-xs border rounded px-1.5 py-1"
+                style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
+              >
+                {BOARD_ROLES.map((r) => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
+              <button
+                onClick={() =>
+                  removeMember.mutate(m.user_id, {
+                    onError: () => addToast('error', 'Failed to remove member'),
+                  })
+                }
+                className="p-1 rounded hover:bg-red-100 hover:text-red-600 flex-shrink-0"
+                title="Remove member"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Add member */}
+      <div
+        className="pt-4 border-t space-y-2"
+        style={{ borderColor: 'var(--color-border)' }}
+      >
+        <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+          Add member
+        </h4>
+        <div className="flex gap-2">
+          <input
+            placeholder="Search by name or email..."
+            className="flex-1 text-sm border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
+            style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <select
+            value={newRole}
+            onChange={(e) => setNewRole(e.target.value)}
+            className="text-sm border rounded-lg px-2 py-2"
+            style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+          >
+            {BOARD_ROLES.map((r) => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
+        </div>
+        {search && filtered.length > 0 && (
+          <ul
+            className="rounded-lg border overflow-hidden"
+            style={{ borderColor: 'var(--color-border)' }}
+          >
+            {filtered.map((u) => (
+              <li key={u.id}>
+                <button
+                  className="w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-[var(--color-surface-hover)]"
+                  style={{ color: 'var(--color-text)' }}
+                  onClick={() =>
+                    addMember.mutate(
+                      { user_id: u.id, role_in_board: newRole },
+                      {
+                        onSuccess: () => setSearch(''),
+                        onError: () => addToast('error', 'Failed to add member'),
+                      },
+                    )
+                  }
+                >
+                  <div className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center flex-shrink-0">
+                    {u.name.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="flex-1 truncate">{u.name}</span>
+                  <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{u.email}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {search && filtered.length === 0 && (
+          <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>No users found matching "{search}"</p>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -362,17 +547,60 @@ function FieldRow({
           </div>
           {isSelect && (
             <div className="flex flex-wrap gap-1 mt-1.5">
-              {(field.options ?? []).map((opt, i) => (
-                <span
-                  key={i}
-                  className={`inline-flex items-center px-1.5 py-0 rounded text-xs ${tagClass((opt.color as TagVariant) ?? 'neutral')}`}
-                >
-                  {opt.label}
-                </span>
-              ))}
+              {(field.options ?? []).map((opt, i) => {
+                const isHex = opt.color?.startsWith('#');
+                if (isHex) {
+                  return (
+                    <span
+                      key={i}
+                      className="inline-flex items-center gap-1 px-1.5 py-0 rounded text-xs"
+                      style={{
+                        backgroundColor: `color-mix(in srgb, ${opt.color} 20%, transparent)`,
+                        color: 'var(--color-text)',
+                      }}
+                    >
+                      <span
+                        aria-hidden
+                        className="inline-block h-2 w-2 rounded-full"
+                        style={{ backgroundColor: opt.color }}
+                      />
+                      {opt.label}
+                    </span>
+                  );
+                }
+                return (
+                  <span
+                    key={i}
+                    className={`inline-flex items-center px-1.5 py-0 rounded text-xs ${tagClass((opt.color as TagVariant) ?? 'neutral')}`}
+                  >
+                    {opt.label}
+                  </span>
+                );
+              })}
             </div>
           )}
         </div>
+        {/* "Show on card" toggle — user flips this inline, no edit-mode
+            round trip needed. Patching through usePatchCustomField
+            invalidates the fields query which in turn re-renders the
+            kanban cards that key off show_on_card. */}
+        <label
+          className="flex items-center gap-1.5 text-xs cursor-pointer select-none"
+          style={{ color: 'var(--color-text-secondary)' }}
+          title={t('boardSettings.showOnCardHint', 'Display this field on the kanban card')}
+        >
+          <input
+            type="checkbox"
+            checked={field.show_on_card}
+            onChange={(e) =>
+              patchField.mutate(
+                { fieldId: field.id, show_on_card: e.target.checked },
+                { onError: () => addToast('error', t('common.error')) },
+              )
+            }
+          />
+          <span>{t('boardSettings.showOnCard', 'Show on card')}</span>
+        </label>
         <Button size="sm" variant="ghost" onClick={onStartEdit}>
           {t('common.rename')}
         </Button>
@@ -450,7 +678,7 @@ function FieldRow({
                 value={opt.label}
                 onChange={(e) => handleOptionChange(idx, { label: e.target.value })}
               />
-              <div className="flex gap-0.5">
+              <div className="flex gap-0.5 items-center">
                 {TAG_VARIANTS.map((v) => (
                   <button
                     key={v}
@@ -465,6 +693,38 @@ function FieldRow({
                     }}
                   />
                 ))}
+                {/* Custom hex color: native color input stores the raw
+                    `#rrggbb` into `opt.color`. `renderCardFieldValue`
+                    and `tagClass`-callers detect the '#' prefix and
+                    branch to a swatch+label rendering instead of a
+                    palette class. */}
+                <label
+                  className="w-5 h-5 rounded flex items-center justify-center cursor-pointer relative"
+                  title={t('boardSettings.customColor', 'Custom hex')}
+                  style={{
+                    border: '1px dashed var(--color-border)',
+                    outline: opt.color?.startsWith('#') ? '2px solid var(--color-primary)' : 'none',
+                    outlineOffset: '1px',
+                    backgroundColor: opt.color?.startsWith('#') ? opt.color : 'transparent',
+                  }}
+                >
+                  {!opt.color?.startsWith('#') && (
+                    <span
+                      className="text-[9px]"
+                      aria-hidden
+                      style={{ color: 'var(--color-text-muted)' }}
+                    >
+                      #
+                    </span>
+                  )}
+                  <input
+                    type="color"
+                    value={opt.color?.startsWith('#') ? opt.color : '#888888'}
+                    onChange={(e) => handleOptionChange(idx, { color: e.target.value })}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                    aria-label={t('boardSettings.customColor', 'Custom hex')}
+                  />
+                </label>
               </div>
               <button
                 type="button"

@@ -132,6 +132,15 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/api/boards/{id}/field-values",
             get(collab::list_board_field_values),
+        )
+        // Saved views (Round C)
+        .route(
+            "/api/boards/{id}/views",
+            get(collab::list_board_views).post(collab::create_board_view),
+        )
+        .route(
+            "/api/boards/{id}/views/{view_id}",
+            patch(collab::patch_board_view).delete(collab::delete_board_view),
         );
 
     let task_routes = Router::new()

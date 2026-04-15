@@ -28,6 +28,8 @@ pub struct BoardColumnRow {
     pub title: String,
     pub position: f64,
     pub version: i64,
+    /// Optional hex accent color (migration 0011). NULL renders as theme default.
+    pub color: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -261,6 +263,8 @@ pub struct BoardDepartmentResponse {
 #[derive(Deserialize, Debug)]
 pub struct CreateColumnRequest {
     pub title: String,
+    /// Optional #rrggbb accent color. `None` leaves the DB default (NULL).
+    pub color: Option<String>,
 }
 
 /// S-016: Patch column request.
@@ -269,6 +273,12 @@ pub struct PatchColumnRequest {
     pub title: Option<String>,
     pub position: Option<f64>,
     pub version: Option<i64>,
+    /// Three-way semantics via the `double_option` serde helper:
+    /// missing field = `None` (leave alone); explicit JSON `null` =
+    /// `Some(None)` (clear to DB NULL and revert to theme default);
+    /// string value = `Some(Some("#rrggbb"))` (overwrite).
+    #[serde(default, deserialize_with = "crate::http::serde_helpers::double_option::deserialize")]
+    pub color: Option<Option<String>>,
 }
 
 /// S-016: Column response.
@@ -279,6 +289,7 @@ pub struct ColumnResponse {
     pub title: String,
     pub position: f64,
     pub version: i64,
+    pub color: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -599,6 +610,11 @@ pub struct CustomFieldRow {
     pub options: serde_json::Value,
     pub position: f64,
     pub required: bool,
+    /// Whether this field's value renders on the kanban card itself
+    /// (Round B.2, migration 0012). Defaults to false — boards keep the
+    /// pre-existing compact card layout until the user opts specific
+    /// fields in, Mattermost-style.
+    pub show_on_card: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -608,6 +624,7 @@ pub struct CreateCustomFieldRequest {
     pub field_type: String,
     pub options: Option<serde_json::Value>,
     pub required: Option<bool>,
+    pub show_on_card: Option<bool>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -616,6 +633,7 @@ pub struct PatchCustomFieldRequest {
     pub options: Option<serde_json::Value>,
     pub position: Option<f64>,
     pub required: Option<bool>,
+    pub show_on_card: Option<bool>,
 }
 
 #[derive(sqlx::FromRow, Serialize, Debug)]
@@ -629,4 +647,40 @@ pub struct TaskFieldValueRow {
 #[derive(Deserialize, Debug)]
 pub struct SetFieldValueRequest {
     pub value: serde_json::Value,
+}
+
+// ---------------------------------------------------------------------------
+// Round C — Saved Views (migration 0013)
+// ---------------------------------------------------------------------------
+
+/// Row type for `board_views`. `config` is a free-form JSON blob whose
+/// shape varies by `view_type` — the frontend owns the schema.
+#[derive(sqlx::FromRow, Serialize, Debug, Clone)]
+pub struct BoardViewRow {
+    pub id: Uuid,
+    pub board_id: Uuid,
+    pub name: String,
+    pub view_type: String,
+    pub config: serde_json::Value,
+    pub owner_id: Uuid,
+    pub shared: bool,
+    pub position: f64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct CreateBoardViewRequest {
+    pub name: String,
+    pub view_type: String,
+    pub config: Option<serde_json::Value>,
+    pub shared: Option<bool>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct PatchBoardViewRequest {
+    pub name: Option<String>,
+    pub config: Option<serde_json::Value>,
+    pub shared: Option<bool>,
+    pub position: Option<f64>,
 }

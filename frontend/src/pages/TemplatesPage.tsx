@@ -338,6 +338,34 @@ function TemplatePreviewModal({
             </ul>
           )}
         </section>
+
+        {/* Custom fields */}
+        {Array.isArray(payload.custom_fields) && (payload.custom_fields as unknown[]).length > 0 && (
+          <section>
+            <h3
+              className="text-xs font-semibold uppercase tracking-wider mb-2"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              Custom Fields ({(payload.custom_fields as unknown[]).length})
+            </h3>
+            <div className="flex flex-wrap gap-1.5">
+              {(payload.custom_fields as { name: string; field_type: string }[]).map((cf, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs"
+                  style={{
+                    backgroundColor: 'var(--color-surface-hover)',
+                    color: 'var(--color-text)',
+                    border: '1px solid var(--color-border)',
+                  }}
+                >
+                  {cf.name}
+                  <span style={{ color: 'var(--color-text-muted)' }}>· {cf.field_type}</span>
+                </span>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </Modal>
   );
@@ -470,13 +498,32 @@ function UseTemplateModal({
 
 // --- Create Template Modal ---
 
+const TEMPLATE_FIELD_TYPES = [
+  'text', 'number', 'checkbox', 'select', 'multi_select', 'date', 'url', 'email', 'phone', 'person',
+] as const;
+
+interface TemplateFieldDef {
+  name: string;
+  field_type: string;
+  show_on_card: boolean;
+}
+
 function CreateTemplateModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [columnsText, setColumnsText] = useState('To Do, In Progress, Done');
+  const [fields, setFields] = useState<TemplateFieldDef[]>([]);
+  const [newFieldName, setNewFieldName] = useState('');
+  const [newFieldType, setNewFieldType] = useState<string>('text');
   const createTemplate = useCreateTemplate();
   const addToast = useToastStore((s) => s.addToast);
+
+  const addField = () => {
+    if (!newFieldName.trim()) return;
+    setFields((prev) => [...prev, { name: newFieldName.trim(), field_type: newFieldType, show_on_card: false }]);
+    setNewFieldName('');
+  };
 
   const handleCreate = () => {
     if (!name.trim()) return;
@@ -495,6 +542,7 @@ function CreateTemplateModal({ onClose }: { onClose: () => void }) {
           columns: columns.map((c, i) => ({ title: c, position: i })),
           labels: [],
           default_tasks: [],
+          custom_fields: fields,
         },
       },
       {
@@ -568,6 +616,51 @@ function CreateTemplateModal({ onClose }: { onClose: () => void }) {
             placeholder="To Do, In Progress, Done"
             style={inputStyle}
           />
+        </div>
+
+        {/* Custom fields section */}
+        <div>
+          <label className="block text-sm font-medium mb-2" style={labelStyle}>
+            Custom Fields <span className="text-xs font-normal" style={{ color: 'var(--color-text-muted)' }}>(copied to new boards)</span>
+          </label>
+          {fields.length > 0 && (
+            <ul className="mb-2 space-y-1">
+              {fields.map((f, i) => (
+                <li key={i} className="flex items-center gap-2 text-sm px-2 py-1 rounded" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
+                  <span className="flex-1" style={{ color: 'var(--color-text)' }}>{f.name}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}>{f.field_type}</span>
+                  <button
+                    onClick={() => setFields((prev) => prev.filter((_, idx) => idx !== i))}
+                    className="text-xs hover:text-red-500"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  >✕</button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex gap-2">
+            <input
+              className="flex-1 rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
+              placeholder="Field name"
+              value={newFieldName}
+              onChange={(e) => setNewFieldName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addField()}
+              style={inputStyle}
+            />
+            <select
+              className="rounded-lg px-2 py-1.5 text-sm"
+              value={newFieldType}
+              onChange={(e) => setNewFieldType(e.target.value)}
+              style={inputStyle}
+            >
+              {TEMPLATE_FIELD_TYPES.map((ft) => (
+                <option key={ft} value={ft}>{ft}</option>
+              ))}
+            </select>
+            <Button size="sm" variant="secondary" onClick={addField} disabled={!newFieldName.trim()}>
+              +
+            </Button>
+          </div>
         </div>
       </div>
     </Modal>

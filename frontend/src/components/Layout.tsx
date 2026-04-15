@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../stores/authStore';
 import { getLogoutUrl } from '../auth/oidc';
 import { usePermissions } from '../hooks/usePermissions';
+import { useBoards } from '../api/boards';
+import { useDepartments } from '../api/departments';
 import { ToastContainer } from './Toast';
 import CommandPalette from './CommandPalette';
 import OnboardingTour from './OnboardingTour';
@@ -35,8 +37,33 @@ const navItems = [
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 768);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [boardsExpanded, setBoardsExpanded] = useState(true);
   const { isSystemAdmin } = usePermissions();
   const { t } = useTranslation();
+  const { data: boardsData } = useBoards(30);
+  const { data: deptsData } = useDepartments();
+
+  // Group boards by their first department for sidebar sections
+  const boardGroups = useMemo(() => {
+    const boards = boardsData?.items ?? [];
+    const depts = deptsData?.items ?? [];
+    const deptMap = new Map(depts.map((d) => [d.id, d.name]));
+    const groups = new Map<string, { name: string; boards: typeof boards }>();
+    const ungrouped: typeof boards = [];
+
+    for (const board of boards) {
+      const deptId = board.department_ids?.[0];
+      if (deptId && deptMap.has(deptId)) {
+        const name = deptMap.get(deptId)!;
+        const existing = groups.get(deptId);
+        if (existing) existing.boards.push(board);
+        else groups.set(deptId, { name, boards: [board] });
+      } else {
+        ungrouped.push(board);
+      }
+    }
+    return { groups: [...groups.values()], ungrouped };
+  }, [boardsData, deptsData]);
 
   // Ctrl+K / Cmd+K opens command palette
   useEffect(() => {
@@ -79,7 +106,7 @@ export default function Layout() {
             {t('app.name')}
           </span>
         </div>
-        <nav className="flex-1 py-2" aria-label="Main navigation">
+        <nav className="flex-1 py-2 overflow-y-auto" aria-label="Main navigation">
           {navItems.filter((item) => !item.adminOnly || isSystemAdmin).map((item) => {
             const active = location.pathname === item.path;
             return (
@@ -109,6 +136,56 @@ export default function Layout() {
               </Link>
             );
           })}
+
+          {/* My Boards — grouped by team/department */}
+          {(boardsData?.items?.length ?? 0) > 0 && (
+            <div className="mt-2">
+              <button
+                onClick={() => setBoardsExpanded((v) => !v)}
+                className="w-full flex items-center gap-2 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider hover:bg-[var(--color-sidebar-hover)]"
+                style={{ color: 'var(--color-sidebar-text)' }}
+              >
+                <svg
+                  className={`w-3 h-3 flex-shrink-0 transition-transform ${boardsExpanded ? 'rotate-90' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                {t('nav.myBoards')}
+              </button>
+              {boardsExpanded && (
+                <div>
+                  {/* Team/dept sections */}
+                  {boardGroups.groups.map((group) => (
+                    <div key={group.name}>
+                      <div
+                        className="px-4 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider truncate"
+                        style={{ color: 'var(--color-sidebar-text)', opacity: 0.5 }}
+                        title={group.name}
+                      >
+                        {group.name}
+                      </div>
+                      {group.boards.map((board) => {
+                        const active = location.pathname === `/boards/${board.id}`;
+                        return (
+                          <BoardNavLink key={board.id} boardId={board.id} title={board.title} active={active} />
+                        );
+                      })}
+                    </div>
+                  ))}
+                  {/* Ungrouped (no team association) */}
+                  {boardGroups.ungrouped.map((board) => {
+                    const active = location.pathname === `/boards/${board.id}`;
+                    return (
+                      <BoardNavLink key={board.id} boardId={board.id} title={board.title} active={active} />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </nav>
         {/* User section */}
         <div className="border-t border-gray-800 p-3">
@@ -203,5 +280,33 @@ export default function Layout() {
       <TagColorSync />
       <AccentColorSync />
     </div>
+  );
+}
+
+function BoardNavLink({
+  boardId,
+  title,
+  active,
+}: {
+  boardId: string;
+  title: string;
+  active: boolean;
+}) {
+  return (
+    <Link
+      to={`/boards/${boardId}`}
+      className="flex items-center gap-2 pl-8 pr-4 py-1.5 text-sm truncate"
+      title={title}
+      style={{
+        backgroundColor: active ? 'var(--color-sidebar-hover)' : undefined,
+        color: active ? 'var(--color-sidebar-text-active)' : 'var(--color-sidebar-text)',
+      }}
+    >
+      <span
+        className="w-2 h-2 rounded-sm flex-shrink-0"
+        style={{ backgroundColor: active ? 'var(--color-primary)' : 'currentColor', opacity: active ? 1 : 0.4 }}
+      />
+      <span className="truncate">{title}</span>
+    </Link>
   );
 }

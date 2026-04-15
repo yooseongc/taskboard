@@ -8,7 +8,8 @@
     "directory": "Directory",
     "settings": "Settings",
     "profile": "Profile",
-    "logout": "Logout"
+    "logout": "Logout",
+    "myBoards": "My Boards"
   },
   "auth": {
     "title": "Taskboard",
@@ -229,6 +230,7 @@
     "fieldNamePrompt": "Enter field name",
     "deleteConfirm": "Delete the \"{{name}}\" field?\nAll values for this field will also be removed.",
     "openSettings": "Board settings",
+    "members": "Members",
     "reorder": "Reorder",
     "moveUp": "Move up",
     "moveDown": "Move down",
@@ -239,7 +241,10 @@
       "multi_select": "Multi-select",
       "date": "Date",
       "number": "Number",
-      "url": "URL"
+      "url": "URL",
+      "email": "Email",
+      "phone": "Phone",
+      "person": "Person"
     }
   },
   "templatePreview": {

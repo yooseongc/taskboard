@@ -161,6 +161,38 @@ fn validate_payload(payload: &serde_json::Value) -> Result<(), AppError> {
         }
     }
 
+    // custom_fields: optional, array, max 100
+    if let Some(cf_val) = obj.get("custom_fields") {
+        let cfs = cf_val.as_array().ok_or_else(|| {
+            AppError::InvalidInput("payload.custom_fields must be an array".into())
+        })?;
+        if cfs.len() > 100 {
+            return Err(AppError::InvalidInput(
+                "payload.custom_fields max 100 items".into(),
+            ));
+        }
+        let valid_types = ["text", "number", "select", "multi_select", "date", "checkbox", "url", "email", "phone", "person"];
+        for (i, cf) in cfs.iter().enumerate() {
+            cf.get("name")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| {
+                    AppError::InvalidInput(format!(
+                        "payload.custom_fields[{i}].name is required"
+                    ))
+                })?;
+            let ft = cf
+                .get("field_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("text");
+            if !valid_types.contains(&ft) {
+                return Err(AppError::InvalidInput(format!(
+                    "payload.custom_fields[{i}].field_type '{ft}' is not valid"
+                )));
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -1017,7 +1049,57 @@ pub async fn materialize_from_template(
         .await?;
     }
 
-    // 4f. Insert creator as BoardAdmin
+    // 4f. Copy custom_fields from template payload (if present)
+    let payload_fields = template
+        .payload
+        .get("custom_fields")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    for (idx, field_def) in payload_fields.iter().enumerate() {
+        let Some(name) = field_def.get("name").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let field_type = field_def
+            .get("field_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("text");
+        let options = field_def
+            .get("options")
+            .cloned()
+            .unwrap_or(serde_json::Value::Array(vec![]));
+        let required = field_def
+            .get("required")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let show_on_card = field_def
+            .get("show_on_card")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let position = (idx as f64) * 1024.0;
+        let field_id = uuid7::now_v7();
+
+        sqlx::query(
+            r#"
+            INSERT INTO board_custom_fields (id, board_id, name, field_type, options, required, show_on_card, position)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT DO NOTHING
+            "#,
+        )
+        .bind(field_id)
+        .bind(board_id)
+        .bind(name)
+        .bind(field_type)
+        .bind(&options)
+        .bind(required)
+        .bind(show_on_card)
+        .bind(position)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    // 4g. Insert creator as BoardAdmin
     sqlx::query(
         "INSERT INTO board_members (user_id, board_id, role_in_board) VALUES ($1, $2, 'BoardAdmin')",
     )

@@ -8,7 +8,8 @@
     "directory": "디렉터리",
     "settings": "설정",
     "profile": "프로필",
-    "logout": "로그아웃"
+    "logout": "로그아웃",
+    "myBoards": "내 보드"
   },
   "auth": {
     "title": "Taskboard",
@@ -229,6 +230,7 @@
     "fieldNamePrompt": "필드 이름을 입력하세요",
     "deleteConfirm": "\"{{name}}\" 필드를 삭제할까요?\n이 필드의 모든 값이 함께 제거됩니다.",
     "openSettings": "보드 설정",
+    "members": "멤버",
     "reorder": "순서 변경",
     "moveUp": "위로",
     "moveDown": "아래로",
@@ -239,7 +241,10 @@
       "multi_select": "다중 선택",
       "date": "날짜",
       "number": "숫자",
-      "url": "링크"
+      "url": "링크",
+      "email": "이메일",
+      "phone": "전화번호",
+      "person": "담당자"
     }
   },
   "templatePreview": {

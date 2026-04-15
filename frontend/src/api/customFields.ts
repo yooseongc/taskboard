@@ -9,6 +9,12 @@ export interface CustomField {
   options: { label: string; color?: string }[];
   position: number;
   required: boolean;
+  /**
+   * When true the field value is pinned to the kanban card in Board
+   * View. Default false — users opt fields in from board settings,
+   * Mattermost-style, so existing boards don't gain clutter.
+   */
+  show_on_card: boolean;
   created_at: string;
 }
 
@@ -36,6 +42,7 @@ export function useCreateCustomField(boardId: string) {
       field_type: string;
       options?: { label: string; color?: string }[];
       required?: boolean;
+      show_on_card?: boolean;
     }) =>
       apiFetch<CustomField>(`/api/boards/${boardId}/fields`, {
         method: 'POST',
@@ -59,6 +66,7 @@ export function usePatchCustomField(boardId: string) {
       options?: { label: string; color?: string }[];
       position?: number;
       required?: boolean;
+      show_on_card?: boolean;
     }) =>
       apiFetch<CustomField>(`/api/boards/${boardId}/fields/${fieldId}`, {
         method: 'PATCH',

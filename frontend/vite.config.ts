@@ -14,6 +14,18 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          query: ['@tanstack/react-query'],
+          dnd: ['@hello-pangea/dnd'],
+          state: ['zustand'],
+        },
+      },
+    },
+  },
   test: {
     environment: 'jsdom',
   },

@@ -61,10 +61,12 @@ pub async fn create_column(
     let col_id = uuid7::now_v7();
     let mut tx = state.pool.begin().await?;
 
+    let color = validate_column_color(body.color.as_deref())?;
+
     let row = sqlx::query_as::<_, BoardColumnRow>(
         r#"
-        INSERT INTO board_columns (id, board_id, title, position, version)
-        VALUES ($1, $2, $3, $4, 0)
+        INSERT INTO board_columns (id, board_id, title, position, version, color)
+        VALUES ($1, $2, $3, $4, 0, $5)
         RETURNING *
         "#,
     )
@@ -72,6 +74,7 @@ pub async fn create_column(
     .bind(board_id)
     .bind(&body.title)
     .bind(position)
+    .bind(color.as_deref())
     .fetch_one(&mut *tx)
     .await?;
 
@@ -94,10 +97,30 @@ pub async fn create_column(
         title: row.title,
         position: row.position,
         version: row.version,
+        color: row.color,
         created_at: row.created_at,
     };
 
     Ok((StatusCode::CREATED, Json(resp)))
+}
+
+/// Validate a user-supplied column accent color. We accept either `None`
+/// (let DB default stand), or a 7-char `#rrggbb` hex. Reject anything
+/// else with 400 so malformed values never reach the DB.
+fn validate_column_color(color: Option<&str>) -> Result<Option<String>, AppError> {
+    match color {
+        None => Ok(None),
+        Some(s) => {
+            let s = s.trim();
+            if s.len() != 7 || !s.starts_with('#') {
+                return Err(AppError::InvalidInput("color must be #rrggbb".into()));
+            }
+            if !s[1..].chars().all(|c| c.is_ascii_hexdigit()) {
+                return Err(AppError::InvalidInput("color must be #rrggbb".into()));
+            }
+            Ok(Some(s.to_ascii_lowercase()))
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +159,7 @@ pub async fn list_columns(
             title: r.title,
             position: r.position,
             version: r.version,
+            color: r.color,
             created_at: r.created_at,
         })
         .collect();
@@ -159,6 +183,19 @@ pub async fn patch_column(
 
     let expected_version = extract_version(&headers, body.version)?;
 
+    // Resolve the color patch up-front so a malformed value fails cleanly
+    // before we start a transaction. `color_update` encodes the three-way
+    // semantics: None = leave alone, Some(None) = set to NULL, Some(Some)
+    // = overwrite. We pass a (apply_flag, value) pair to the SQL UPDATE so
+    // COALESCE-style "leave alone" behaves correctly for a nullable column.
+    let color_update: Option<Option<String>> = match &body.color {
+        None => None,
+        Some(None) => Some(None),
+        Some(Some(s)) => Some(validate_column_color(Some(s))?),
+    };
+    let apply_color = color_update.is_some();
+    let color_value: Option<String> = color_update.flatten();
+
     let mut tx = state.pool.begin().await?;
 
     let updated = sqlx::query_as::<_, BoardColumnRow>(
@@ -166,6 +203,7 @@ pub async fn patch_column(
         UPDATE board_columns
         SET title = COALESCE($2, title),
             position = COALESCE($3, position),
+            color = CASE WHEN $6 THEN $7 ELSE color END,
             version = version + 1,
             updated_at = now()
         WHERE id = $1 AND version = $4 AND board_id = $5
@@ -177,6 +215,8 @@ pub async fn patch_column(
     .bind(body.position)
     .bind(expected_version)
     .bind(board_id)
+    .bind(apply_color)
+    .bind(color_value.as_deref())
     .fetch_optional(&mut *tx)
     .await?;
 
@@ -253,6 +293,7 @@ pub async fn patch_column(
         title: row.title,
         position: row.position,
         version: row.version,
+        color: row.color,
         created_at: row.created_at,
     };
 

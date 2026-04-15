@@ -380,7 +380,12 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                   const nextColumnId = e.target.value;
                   if (nextColumnId === task.column_id) return;
                   moveTask.mutate(
-                    { taskId, column_id: nextColumnId, position: 0 },
+                    {
+                      taskId,
+                      column_id: nextColumnId,
+                      position: 0,
+                      version: task.version,
+                    },
                     { onError: () => addToast('error', t('common.saveFailed')) },
                   );
                 }}
@@ -578,6 +583,7 @@ export default function TaskDrawer({ taskId, boardId, onClose }: TaskDrawerProps
                   <CustomFieldInput
                     field={field}
                     value={val}
+                    users={allUsers}
                     onChange={(v) =>
                       setFieldValue.mutate({ fieldId: field.id, value: v })
                     }
@@ -630,24 +636,72 @@ function Property({ label, children }: { label: string; children: React.ReactNod
 function CustomFieldInput({
   field,
   value,
+  users = [],
   onChange,
 }: {
   field: { field_type: string; options: { label: string; color?: string }[] };
   value: unknown;
+  users?: { id: string; name: string; email: string }[];
   onChange: (v: unknown) => void;
 }) {
   switch (field.field_type) {
     case 'text':
+      return (
+        <input
+          className="w-full text-xs border rounded px-1.5 py-1"
+          value={(value as string) ?? ''}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={(e) => onChange(e.target.value || null)}
+        />
+      );
     case 'url':
       return (
         <input
           className="w-full text-xs border rounded px-1.5 py-1"
-          placeholder={field.field_type === 'url' ? 'https://...' : ''}
+          placeholder="https://..."
           value={(value as string) ?? ''}
           onChange={(e) => onChange(e.target.value)}
-          onBlur={(e) => onChange(e.target.value)}
+          onBlur={(e) => onChange(e.target.value || null)}
         />
       );
+    case 'email':
+      return (
+        <input
+          type="email"
+          className="w-full text-xs border rounded px-1.5 py-1"
+          placeholder="user@example.com"
+          value={(value as string) ?? ''}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={(e) => onChange(e.target.value || null)}
+        />
+      );
+    case 'phone':
+      return (
+        <input
+          type="tel"
+          className="w-full text-xs border rounded px-1.5 py-1"
+          placeholder="+82 10-0000-0000"
+          value={(value as string) ?? ''}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={(e) => onChange(e.target.value || null)}
+        />
+      );
+    case 'person': {
+      // Stores a user ID; displays the resolved name
+      const selectedId = (value as string) ?? '';
+      return (
+        <select
+          className="w-full text-xs border rounded px-1.5 py-1"
+          value={selectedId}
+          onChange={(e) => onChange(e.target.value || null)}
+        >
+          <option value="">— None —</option>
+          {users.map((u) => (
+            <option key={u.id} value={u.id}>{u.name}</option>
+          ))}
+        </select>
+      );
+    }
     case 'number':
       return (
         <input
@@ -724,29 +778,33 @@ function DrawerShell({ onClose, children }: { onClose: () => void; children: Rea
   const trapRef = useFocusTrap<HTMLDivElement>(true);
   return (
     <>
-      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
-      <div
-        ref={trapRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Task details"
-        className="fixed inset-0 md:inset-y-0 md:right-0 md:left-auto w-full md:max-w-2xl z-50 flex flex-col"
-        style={{
-          backgroundColor: 'var(--color-surface)',
-          boxShadow: 'var(--shadow-lg)',
-        }}
-      >
-        <button
-          onClick={onClose}
-          aria-label="Close task details"
-          className="absolute top-4 right-4 z-10 p-1 rounded hover:opacity-70 focus:outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
-          style={{ color: 'var(--color-text-muted)' }}
+      {/* Backdrop */}
+      <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose} />
+      {/* Centered large dialog — fills ~90% of viewport */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8">
+        <div
+          ref={trapRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Task details"
+          className="relative w-full max-w-5xl h-full max-h-[90vh] flex flex-col rounded-xl overflow-hidden"
+          style={{
+            backgroundColor: 'var(--color-surface)',
+            boxShadow: 'var(--shadow-lg)',
+          }}
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-        {children}
+          <button
+            onClick={onClose}
+            aria-label="Close task details"
+            className="absolute top-4 right-4 z-10 p-1 rounded hover:opacity-70 focus:outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          {children}
+        </div>
       </div>
     </>
   );

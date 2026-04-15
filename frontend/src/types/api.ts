@@ -94,6 +94,12 @@ export interface BoardColumn {
   title: string;
   position: number;
   version: number;
+  /**
+   * Optional accent color as `#rrggbb`. `null` means "theme default" and
+   * should render as a neutral column header; the server accepts `null`
+   * in a PATCH body to clear a previously-set color.
+   */
+  color: string | null;
   created_at: string;
 }
 
@@ -195,10 +201,10 @@ export interface ChecklistItem {
 export interface BoardMember {
   user_id: string;
   board_id: string;
-  role: string;
+  role_in_board: string;
   user_name: string;
   user_email: string;
-  joined_at: string;
+  added_at: string;
 }
 
 /** Department member */

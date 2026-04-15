@@ -15,9 +15,20 @@ const localizer = dateFnsLocalizer({
   locales,
 });
 
+export interface CalendarDateField {
+  /** 'start_date' | 'due_date' or a custom field UUID */
+  id: string;
+  label: string;
+  kind: 'builtin' | 'custom';
+}
+
 interface CalendarViewProps {
   tasks: TaskDto[];
   onTaskClick: (taskId: string) => void;
+  /** The date field to display as events. Defaults to due_date. */
+  dateField?: CalendarDateField;
+  /** Custom field values keyed by `task_id:field_id` for custom date fields */
+  customFieldValues?: Map<string, string>;
 }
 
 interface CalendarEvent {
@@ -34,27 +45,50 @@ interface CalendarEvent {
 // is the single PRIORITY_EVENT_COLORS map shared with any other raster
 // surface that can't read CSS custom properties.
 
+function resolveDate(
+  task: TaskDto,
+  dateField: CalendarDateField | undefined,
+  customFieldValues: Map<string, string> | undefined,
+): { start: Date; end: Date } | null {
+  if (!dateField || dateField.id === 'due_date') {
+    if (!task.due_date && !task.start_date) return null;
+    const start = task.start_date ? new Date(task.start_date) : new Date(task.due_date!);
+    const end = task.due_date ? new Date(task.due_date) : start;
+    return { start, end };
+  }
+  if (dateField.id === 'start_date') {
+    if (!task.start_date) return null;
+    const d = new Date(task.start_date);
+    return { start: d, end: d };
+  }
+  // custom date field
+  const raw = customFieldValues?.get(`${task.id}:${dateField.id}`);
+  if (!raw) return null;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  return { start: d, end: d };
+}
+
 export default function CalendarView({
   tasks,
   onTaskClick,
+  dateField,
+  customFieldValues,
 }: CalendarViewProps) {
   const events = useMemo<CalendarEvent[]>(() => {
     return tasks
-      .filter((t) => t.due_date || t.start_date)
-      .map((t) => {
-        const start = t.start_date
-          ? new Date(t.start_date)
-          : new Date(t.due_date!);
-        const end = t.due_date ? new Date(t.due_date) : start;
-        return {
+      .flatMap((t) => {
+        const dates = resolveDate(t, dateField, customFieldValues);
+        if (!dates) return [];
+        return [{
           id: t.id,
           title: t.title,
-          start,
-          end,
+          start: dates.start,
+          end: dates.end,
           priority: t.priority,
-        };
+        }];
       });
-  }, [tasks]);
+  }, [tasks, dateField, customFieldValues]);
 
   const eventStyleGetter = useCallback((event: CalendarEvent) => {
     return {
