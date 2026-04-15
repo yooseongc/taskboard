@@ -17,7 +17,14 @@ import {
   usePatchColumn,
   useDeleteColumn,
 } from '../api/boards';
-import { useCreateTask, useMoveTask, useDeleteTask } from '../api/tasks';
+import {
+  useCreateTask,
+  useMoveTask,
+  useDeleteTask,
+  usePatchTask,
+} from '../api/tasks';
+import { apiFetch } from '../api/client';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   useBoardCustomFields,
   useBoardFieldValues,
@@ -25,18 +32,34 @@ import {
   type TaskFieldValue,
 } from '../api/customFields';
 import { Spinner } from '../components/Spinner';
-import TaskDrawer from '../components/TaskDrawer';
+import TaskModal from '../components/TaskModal';
 import TableView from '../components/TableView';
 import CalendarView, { type CalendarDateField } from '../components/CalendarView';
 import BoardSettingsModal from '../components/BoardSettingsModal';
 import SavedViewBar from '../components/SavedViewBar';
+import ViewToolbar from '../components/ViewToolbar';
+import AvatarStack from '../components/AvatarStack';
+import TaskMetaBadges from '../components/TaskMetaBadges';
 import type { BoardViewConfig, TableViewConfig } from '../api/views';
 import type { TableViewState } from '../components/TableView';
 import { useToastStore } from '../stores/toastStore';
 import Breadcrumbs from '../components/ui/Breadcrumbs';
 import { useTagTheme } from '../theme/constants';
 import { tagClass, type TagVariant } from '../theme/constants';
-import type { TaskDto, BoardColumn } from '../types/api';
+import type {
+  TaskDto,
+  BoardColumn,
+  GroupByKey,
+  ViewDensity,
+  UserRef,
+  LabelRef,
+} from '../types/api';
+import {
+  groupTasks,
+  mutationForGroupChange,
+  type GroupContext,
+  type TaskGroup,
+} from '../lib/groupBy';
 
 type ViewTab = 'board' | 'table' | 'calendar' | 'activity';
 
@@ -59,6 +82,8 @@ export default function BoardViewPage() {
   const patchColumn = usePatchColumn(id!);
   const deleteColumn = useDeleteColumn(id!);
   const createTask = useCreateTask(id!);
+  const patchTask = usePatchTask(id!);
+  const qc = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
 
   const [activeView, setActiveView] = useState<ViewTab>('board');
@@ -83,6 +108,13 @@ export default function BoardViewPage() {
   const [boardSearch, setBoardSearch] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [groupBy, setGroupBy] = useState<GroupByKey>({ type: 'column' });
+  const [density, setDensity] = useState<ViewDensity>('normal');
+  const [tableGroupBy, setTableGroupBy] = useState<GroupByKey>({ type: 'none' });
+  const [tableDensity, setTableDensity] = useState<ViewDensity>('normal');
+  const [calendarGroupBy, setCalendarGroupBy] = useState<GroupByKey>({
+    type: 'none',
+  });
 
   if (boardLoading) return <Spinner />;
   if (!board) {
@@ -162,19 +194,31 @@ export default function BoardViewPage() {
     return true;
   });
 
-  // Group tasks by column
-  const tasksByColumn = new Map<string, TaskDto[]>();
-  for (const col of columns) {
-    tasksByColumn.set(col.id, []);
+  // Derive label/user definitions from observed tasks so empty groups
+  // still appear even when the board-level label/user fetch hasn't been
+  // wired up here. Falls back gracefully — a label not used by any task
+  // simply won't show as a group, which is the desired UX.
+  const observedLabels = new Map<string, LabelRef>();
+  const observedUsers = new Map<string, UserRef>();
+  for (const t of rawTasks) {
+    for (const l of t.labels ?? []) observedLabels.set(l.id, l);
+    for (const u of t.assignees ?? []) observedUsers.set(u.id, u);
   }
-  for (const task of tasks) {
-    const colTasks = tasksByColumn.get(task.column_id) ?? [];
-    colTasks.push(task);
-    tasksByColumn.set(task.column_id, colTasks);
-  }
-  for (const [, colTasks] of tasksByColumn) {
-    colTasks.sort((a, b) => a.position - b.position);
-  }
+  const groupCtx: GroupContext = {
+    columns,
+    labels: Array.from(observedLabels.values()).map((l) => ({
+      id: l.id,
+      board_id: id!,
+      name: l.name,
+      color: l.color,
+      created_at: '',
+    })),
+    users: Array.from(observedUsers.values()),
+    fields: fieldsData?.items ?? [],
+    fieldValues: fieldValuesData?.items ?? [],
+  };
+  const sortedTasks = [...tasks].sort((a, b) => a.position - b.position);
+  const groups: TaskGroup[] = groupTasks(sortedTasks, groupBy, groupCtx);
 
   const handleDragEnd = (result: DropResult) => {
     const { source, destination, draggableId } = result;
@@ -185,24 +229,113 @@ export default function BoardViewPage() {
     )
       return;
 
-    // Server requires the current task version for optimistic concurrency.
-    // We source it from the raw (unfiltered) list so the lookup survives
-    // board-level search/filter state.
     const task = rawTasks.find((t) => t.id === draggableId);
     if (!task) return;
 
-    const payload = {
-      taskId: draggableId,
-      column_id: destination.droppableId,
-      position: destination.index,
-      version: task.version,
+    // Column-grouped DnD — existing behaviour: move task between columns
+    // with optimistic-concurrency version.
+    if (groupBy.type === 'column') {
+      const payload = {
+        taskId: draggableId,
+        column_id: destination.droppableId,
+        position: destination.index,
+        version: task.version,
+      };
+      moveTask.mutate(payload, {
+        onError: () =>
+          addToast('error', 'Failed to move task', {
+            action: { label: 'Retry', onClick: () => moveTask.mutate(payload) },
+          }),
+      });
+      return;
+    }
+
+    // Non-column grouping — dragging across groups mutates the grouping
+    // field itself (status / priority / assignees / labels / custom field).
+    const mutation = mutationForGroupChange(
+      task,
+      groupBy,
+      source.droppableId,
+      destination.droppableId,
+      groupCtx,
+    );
+    if (!mutation) return;
+
+    const invalidate = () => {
+      qc.invalidateQueries({ queryKey: ['board', id!, 'tasks'] });
+      qc.invalidateQueries({ queryKey: ['task', draggableId] });
     };
-    moveTask.mutate(payload, {
-      onError: () =>
-        addToast('error', 'Failed to move task', {
-          action: { label: 'Retry', onClick: () => moveTask.mutate(payload) },
-        }),
-    });
+
+    switch (mutation.kind) {
+      case 'patch-task':
+        patchTask.mutate(
+          { taskId: draggableId, ...mutation.patch, version: task.version },
+          {
+            onError: () => addToast('error', 'Failed to update task'),
+          },
+        );
+        break;
+      case 'add-assignee':
+        (async () => {
+          try {
+            if (mutation.previousUserId) {
+              await apiFetch(
+                `/api/tasks/${draggableId}/assignees/${mutation.previousUserId}`,
+                { method: 'DELETE' },
+              );
+            }
+            await apiFetch(`/api/tasks/${draggableId}/assignees`, {
+              method: 'POST',
+              body: JSON.stringify({ user_id: mutation.userId }),
+            });
+            invalidate();
+          } catch {
+            addToast('error', 'Failed to update assignee');
+          }
+        })();
+        break;
+      case 'add-label':
+        (async () => {
+          try {
+            if (mutation.previousLabelId) {
+              await apiFetch(
+                `/api/tasks/${draggableId}/labels/${mutation.previousLabelId}`,
+                { method: 'DELETE' },
+              );
+            }
+            await apiFetch(`/api/tasks/${draggableId}/labels`, {
+              method: 'POST',
+              body: JSON.stringify({ label_id: mutation.labelId }),
+            });
+            invalidate();
+          } catch {
+            addToast('error', 'Failed to update label');
+          }
+        })();
+        break;
+      case 'set-field':
+        (async () => {
+          try {
+            await apiFetch(
+              `/api/tasks/${draggableId}/fields/${mutation.fieldId}`,
+              {
+                method: 'PUT',
+                body: JSON.stringify({ value: mutation.value }),
+              },
+            );
+            qc.invalidateQueries({
+              queryKey: ['board', id!, 'field-values'],
+            });
+            qc.invalidateQueries({
+              queryKey: ['task', draggableId, 'fields'],
+            });
+            invalidate();
+          } catch {
+            addToast('error', 'Failed to update field');
+          }
+        })();
+        break;
+    }
   };
 
   const handleAddColumn = () => {
@@ -288,58 +421,83 @@ export default function BoardViewPage() {
         <SavedViewBar
           boardId={id!}
           viewType="board"
-          currentConfig={{ search: boardSearch, priority: filterPriority }}
+          currentConfig={{
+            search: boardSearch,
+            priority: filterPriority,
+            groupBy,
+            density,
+          }}
           onLoadConfig={(cfg) => {
-            const c = cfg as BoardViewConfig;
+            const c = cfg as BoardViewConfig & {
+              groupBy?: GroupByKey;
+              density?: ViewDensity;
+            };
             setBoardSearch(c.search ?? '');
             setFilterPriority(c.priority ?? '');
+            if (c.groupBy) setGroupBy(c.groupBy);
+            if (c.density) setDensity(c.density);
           }}
         />
       )}
 
-      {/* Board toolbar (search/filter) */}
+      {/* Board toolbar (search/group-by/density + priority filter) */}
       {activeView === 'board' && (
         <div
-          className="flex items-center gap-2 px-6 py-2"
-          style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface)' }}
+          className="px-6"
+          style={{
+            borderBottom: '1px solid var(--color-border)',
+            backgroundColor: 'var(--color-surface)',
+          }}
         >
-          <input
-            type="text"
-            placeholder="Search tasks..."
-            value={boardSearch}
-            onChange={(e) => setBoardSearch(e.target.value)}
-            className="text-sm rounded px-3 py-1 w-56 focus:outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
-            style={{
-              backgroundColor: 'var(--color-bg)',
-              border: '1px solid var(--color-border)',
-              color: 'var(--color-text)',
-            }}
+          <ViewToolbar
+            search={boardSearch}
+            onSearchChange={setBoardSearch}
+            groupBy={groupBy}
+            onGroupByChange={setGroupBy}
+            groupByOptions={[
+              'column',
+              'status',
+              'priority',
+              'assignee',
+              'label',
+              'custom_field',
+            ]}
+            customFields={fieldsData?.items ?? []}
+            density={density}
+            onDensityChange={setDensity}
+            leftExtras={
+              <>
+                <select
+                  value={filterPriority}
+                  onChange={(e) => setFilterPriority(e.target.value)}
+                  className="text-sm rounded-lg px-2 py-1.5"
+                  style={{
+                    backgroundColor: 'var(--color-surface)',
+                    border: '1px solid var(--color-border)',
+                    color: 'var(--color-text)',
+                  }}
+                >
+                  <option value="">All priorities</option>
+                  <option value="urgent">Urgent</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+                {(boardSearch || filterPriority) && (
+                  <button
+                    onClick={() => {
+                      setBoardSearch('');
+                      setFilterPriority('');
+                    }}
+                    className="text-xs"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  >
+                    Clear ({tasks.length}/{rawTasks.length})
+                  </button>
+                )}
+              </>
+            }
           />
-          <select
-            value={filterPriority}
-            onChange={(e) => setFilterPriority(e.target.value)}
-            className="text-sm rounded px-2 py-1"
-            style={{
-              backgroundColor: 'var(--color-bg)',
-              border: '1px solid var(--color-border)',
-              color: 'var(--color-text)',
-            }}
-          >
-            <option value="">All priorities</option>
-            <option value="urgent">Urgent</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-          </select>
-          {(boardSearch || filterPriority) && (
-            <button
-              onClick={() => { setBoardSearch(''); setFilterPriority(''); }}
-              className="text-xs"
-              style={{ color: 'var(--color-text-muted)' }}
-            >
-              Clear filters ({tasks.length}/{rawTasks.length})
-            </button>
-          )}
         </div>
       )}
 
@@ -348,40 +506,53 @@ export default function BoardViewPage() {
         <div className="flex-1 overflow-x-auto p-4">
           <DragDropContext onDragEnd={handleDragEnd}>
             <div className="flex gap-4 h-full">
-              {columns.map((column) => (
-                <KanbanColumn
-                  key={column.id}
-                  column={column}
-                  tasks={tasksByColumn.get(column.id) ?? []}
-                  boardId={id!}
-                  cardFields={cardFields}
-                  valuesByTask={valuesByTask}
-                  onTaskClick={setOpenTaskId}
-                  onRenameColumn={(title) =>
-                    patchColumn.mutate({
-                      columnId: column.id,
-                      title,
-                      version: column.version,
-                    })
-                  }
-                  onRecolorColumn={(color) =>
-                    patchColumn.mutate({
-                      columnId: column.id,
-                      color,
-                      version: column.version,
-                    })
-                  }
-                  onDeleteColumn={() => deleteColumn.mutate(column.id)}
-                  onCreateTask={(title) =>
-                    createTask.mutate({
-                      title,
-                      column_id: column.id,
-                    })
-                  }
-                />
-              ))}
+              {groupBy.type === 'column'
+                ? columns.map((column) => (
+                    <KanbanColumn
+                      key={column.id}
+                      column={column}
+                      tasks={groups.find((g) => g.key === column.id)?.tasks ?? []}
+                      boardId={id!}
+                      cardFields={cardFields}
+                      valuesByTask={valuesByTask}
+                      density={density}
+                      onTaskClick={setOpenTaskId}
+                      onRenameColumn={(title) =>
+                        patchColumn.mutate({
+                          columnId: column.id,
+                          title,
+                          version: column.version,
+                        })
+                      }
+                      onRecolorColumn={(color) =>
+                        patchColumn.mutate({
+                          columnId: column.id,
+                          color,
+                          version: column.version,
+                        })
+                      }
+                      onDeleteColumn={() => deleteColumn.mutate(column.id)}
+                      onCreateTask={(title) =>
+                        createTask.mutate({
+                          title,
+                          column_id: column.id,
+                        })
+                      }
+                    />
+                  ))
+                : groups.map((group) => (
+                    <GroupLane
+                      key={group.key}
+                      group={group}
+                      cardFields={cardFields}
+                      valuesByTask={valuesByTask}
+                      density={density}
+                      onTaskClick={setOpenTaskId}
+                    />
+                  ))}
 
-              {/* Add column */}
+              {/* Add column — only when grouping by column */}
+              {groupBy.type === 'column' && (
               <div className="w-64 md:w-72 flex-shrink-0">
                 {addingColumn ? (
                   <div
@@ -431,6 +602,7 @@ export default function BoardViewPage() {
                   </button>
                 )}
               </div>
+              )}
             </div>
           </DragDropContext>
         </div>
@@ -441,19 +613,52 @@ export default function BoardViewPage() {
           <SavedViewBar
             boardId={id!}
             viewType="table"
-            currentConfig={tableConfig as unknown as Record<string, unknown>}
+            currentConfig={
+              {
+                ...tableConfig,
+                groupBy: tableGroupBy,
+                density: tableDensity,
+              } as unknown as Record<string, unknown>
+            }
             onLoadConfig={(cfg) => {
-              const c = cfg as TableViewConfig;
+              const c = cfg as TableViewConfig & {
+                groupBy?: GroupByKey;
+                density?: ViewDensity;
+              };
               const next: TableViewState = {
                 sortKey: (c.sortKey as TableViewState['sortKey']) ?? 'title',
                 sortDir: (c.sortDir as TableViewState['sortDir']) ?? 'asc',
                 filters: (c.filters as TableViewState['filters']) ?? [],
-                filterMode: (c.filterMode as TableViewState['filterMode']) ?? 'and',
+                filterMode:
+                  (c.filterMode as TableViewState['filterMode']) ?? 'and',
               };
               setTableConfig(next);
+              if (c.groupBy) setTableGroupBy(c.groupBy);
+              if (c.density) setTableDensity(c.density);
               setTableKey((k) => k + 1);
             }}
           />
+          <div
+            className="px-4"
+            style={{ borderBottom: '1px solid var(--color-border)' }}
+          >
+            <ViewToolbar
+              groupBy={tableGroupBy}
+              onGroupByChange={setTableGroupBy}
+              groupByOptions={[
+                'none',
+                'column',
+                'status',
+                'priority',
+                'assignee',
+                'label',
+                'custom_field',
+              ]}
+              customFields={fieldsData?.items ?? []}
+              density={tableDensity}
+              onDensityChange={setTableDensity}
+            />
+          </div>
           <div className="flex-1 overflow-auto">
             <TableView
               key={tableKey}
@@ -463,6 +668,8 @@ export default function BoardViewPage() {
               onTaskClick={setOpenTaskId}
               defaultConfig={tableConfig}
               onStateChange={setTableConfig}
+              groupBy={tableGroupBy}
+              density={tableDensity}
               onCreateTask={(title, columnId) =>
                 createTask.mutate({ title, column_id: columnId })
               }
@@ -488,33 +695,58 @@ export default function BoardViewPage() {
 
       {activeView === 'calendar' && (
         <div className="flex flex-col flex-1 overflow-hidden">
-          {/* Date field source picker */}
+          {/* Calendar toolbar — date field picker + group by */}
           <div
-            className="flex items-center gap-2 px-6 py-2 flex-shrink-0"
-            style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface)' }}
+            className="flex items-center gap-3 px-6 flex-shrink-0"
+            style={{
+              borderBottom: '1px solid var(--color-border)',
+              backgroundColor: 'var(--color-surface)',
+            }}
           >
-            <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-              Date field:
-            </span>
-            <select
-              value={calendarDateField.id}
-              onChange={(e) => {
-                const opt = dateFieldOptions.find((o) => o.id === e.target.value);
-                if (opt) setCalendarDateField(opt);
-              }}
-              className="text-sm rounded px-2 py-1"
-              style={{
-                backgroundColor: 'var(--color-bg)',
-                border: '1px solid var(--color-border)',
-                color: 'var(--color-text)',
-              }}
-            >
-              {dateFieldOptions.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+            <ViewToolbar
+              groupBy={calendarGroupBy}
+              onGroupByChange={setCalendarGroupBy}
+              groupByOptions={[
+                'none',
+                'status',
+                'priority',
+                'assignee',
+                'label',
+                'custom_field',
+              ]}
+              customFields={fieldsData?.items ?? []}
+              leftExtras={
+                <>
+                  <span
+                    className="text-sm"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  >
+                    Date:
+                  </span>
+                  <select
+                    value={calendarDateField.id}
+                    onChange={(e) => {
+                      const opt = dateFieldOptions.find(
+                        (o) => o.id === e.target.value,
+                      );
+                      if (opt) setCalendarDateField(opt);
+                    }}
+                    className="text-sm rounded-lg px-2 py-1.5"
+                    style={{
+                      backgroundColor: 'var(--color-surface)',
+                      border: '1px solid var(--color-border)',
+                      color: 'var(--color-text)',
+                    }}
+                  >
+                    {dateFieldOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              }
+            />
           </div>
           <div className="flex-1 overflow-auto">
             <CalendarView
@@ -522,6 +754,9 @@ export default function BoardViewPage() {
               onTaskClick={setOpenTaskId}
               dateField={calendarDateField}
               customFieldValues={customFieldValues}
+              groupBy={calendarGroupBy}
+              customFields={fieldsData?.items ?? []}
+              allFieldValues={fieldValuesData?.items ?? []}
             />
           </div>
         </div>
@@ -608,7 +843,7 @@ export default function BoardViewPage() {
 
       {/* Task Drawer */}
       {openTaskId && (
-        <TaskDrawer
+        <TaskModal
           taskId={openTaskId}
           boardId={id!}
           onClose={() => setOpenTaskId(null)}
@@ -769,6 +1004,7 @@ function KanbanColumn({
   boardId: _boardId,
   cardFields,
   valuesByTask,
+  density = 'normal',
   onTaskClick,
   onRenameColumn,
   onRecolorColumn,
@@ -780,6 +1016,7 @@ function KanbanColumn({
   boardId: string;
   cardFields: CustomField[];
   valuesByTask: Map<string, TaskFieldValue[]>;
+  density?: ViewDensity;
   onTaskClick: (id: string) => void;
   onRenameColumn: (title: string) => void;
   onRecolorColumn: (color: string | null) => void;
@@ -1002,6 +1239,7 @@ function KanbanColumn({
                       task={task}
                       cardFields={cardFields}
                       fieldValues={valuesByTask.get(task.id) ?? []}
+                      density={density}
                     />
                   </div>
                 )}
@@ -1066,16 +1304,110 @@ function KanbanColumn({
   );
 }
 
+/**
+ * Lane rendered when the board is grouped by something other than
+ * column — status/priority/assignee/label/custom field. Unlike
+ * KanbanColumn this lane has no rename/color/delete menus and never
+ * creates tasks inline (column is not known). DnD from one lane to
+ * another mutates the grouping field via `mutationForGroupChange`.
+ */
+function GroupLane({
+  group,
+  cardFields,
+  valuesByTask,
+  density,
+  onTaskClick,
+}: {
+  group: TaskGroup;
+  cardFields: CustomField[];
+  valuesByTask: Map<string, TaskFieldValue[]>;
+  density: ViewDensity;
+  onTaskClick: (id: string) => void;
+}) {
+  const accent = group.color ?? 'transparent';
+  return (
+    <div className="flex flex-col w-64 md:w-72 flex-shrink-0">
+      <div
+        className="flex items-center justify-between rounded-t-lg px-3 py-2"
+        style={{
+          backgroundColor: group.color
+            ? `color-mix(in srgb, ${group.color} 18%, var(--color-surface-hover))`
+            : 'var(--color-surface-hover)',
+          borderTop: `3px solid ${accent}`,
+        }}
+      >
+        <h3
+          className="text-sm font-semibold truncate"
+          style={{ color: 'var(--color-text)' }}
+          title={group.label}
+        >
+          {group.label}
+        </h3>
+        <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          {group.tasks.length}
+        </span>
+      </div>
+      <Droppable droppableId={group.key}>
+        {(provided, snapshot) => (
+          <div
+            ref={provided.innerRef}
+            {...provided.droppableProps}
+            className="flex-1 space-y-2 overflow-y-auto rounded-b-lg p-2 min-h-[100px]"
+            style={{
+              backgroundColor: snapshot.isDraggingOver
+                ? 'var(--color-primary-light)'
+                : 'var(--color-bg)',
+            }}
+          >
+            {group.tasks.map((task, index) => (
+              <Draggable key={task.id} draggableId={task.id} index={index}>
+                {(provided, snapshot) => (
+                  <div
+                    ref={provided.innerRef}
+                    {...provided.draggableProps}
+                    {...provided.dragHandleProps}
+                    className="rounded-lg p-3 transition-shadow cursor-pointer"
+                    style={{
+                      backgroundColor: 'var(--color-surface)',
+                      color: 'var(--color-text)',
+                      border: `1px solid ${snapshot.isDragging ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                      boxShadow: snapshot.isDragging
+                        ? 'var(--shadow-lg)'
+                        : 'var(--shadow-sm)',
+                    }}
+                    onClick={() => onTaskClick(task.id)}
+                  >
+                    <TaskCardContent
+                      task={task}
+                      cardFields={cardFields}
+                      fieldValues={valuesByTask.get(task.id) ?? []}
+                      density={density}
+                    />
+                  </div>
+                )}
+              </Draggable>
+            ))}
+            {provided.placeholder}
+          </div>
+        )}
+      </Droppable>
+    </div>
+  );
+}
+
 function TaskCardContent({
   task,
   cardFields,
   fieldValues,
+  density = 'normal',
 }: {
   task: TaskDto;
   cardFields: CustomField[];
   fieldValues: TaskFieldValue[];
+  density?: ViewDensity;
 }) {
   const { priorityClass, statusClass } = useTagTheme();
+  const compact = density === 'compact';
   // Index field-values by field id for O(1) lookup inside the map below.
   const valueByField = new Map(fieldValues.map((v) => [v.field_id, v.value]));
   const labels = task.labels ?? [];
@@ -1087,7 +1419,16 @@ function TaskCardContent({
 
   return (
     <>
-      {/* Labels as color bars */}
+      {/* Top color strip — derived from the first label, mimicking
+          Mattermost Boards cards. Pure decorative so the label chips
+          below still disambiguate multi-label cards. */}
+      {labels.length > 0 && (
+        <div
+          className="-mx-3 -mt-3 mb-2 h-[3px] rounded-t-lg"
+          style={{ backgroundColor: labels[0].color }}
+        />
+      )}
+      {/* Labels as compact chips */}
       {labels.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-1.5">
           {labels.map((l) => (
@@ -1107,7 +1448,7 @@ function TaskCardContent({
       >
         {task.title}
       </p>
-      {task.summary && (
+      {!compact && task.summary && (
         <p
           className="text-xs mt-0.5 line-clamp-2 leading-relaxed"
           style={{ color: 'var(--color-text-secondary)' }}
@@ -1115,7 +1456,7 @@ function TaskCardContent({
           {task.summary}
         </p>
       )}
-      {/* Meta row */}
+      {/* Meta row 1: priority + status (never wraps onto due date) */}
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <span
           className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold ${priorityClass(task.priority)}`}
@@ -1129,15 +1470,17 @@ function TaskCardContent({
             {task.status.replace('_', ' ')}
           </span>
         )}
-        {task.due_date && (
-          <span
-            className={`text-xs ${isOverdue ? 'text-red-500 font-medium' : 'text-[var(--color-text-muted)]'}`}
-          >
-            {isOverdue ? 'Overdue ' : ''}
-            {new Date(task.due_date).toLocaleDateString()}
-          </span>
-        )}
       </div>
+      {/* Meta row 2: due date (separate line, tokenized overdue color) */}
+      {task.due_date && (
+        <div
+          className={`mt-1.5 text-xs ${isOverdue ? 'font-medium' : ''}`}
+          style={{ color: isOverdue ? 'var(--color-danger)' : 'var(--color-text-muted)' }}
+        >
+          {isOverdue ? 'Overdue ' : ''}
+          {new Date(task.due_date).toLocaleDateString()}
+        </div>
+      )}
       {/* Custom field pills — only for fields the user flagged "Show on
           card" in Board Settings. We deliberately skip fields that have
           no value set on this task (renderCardFieldValue returns null)
@@ -1150,78 +1493,34 @@ function TaskCardContent({
             return (
               <span
                 key={field.id}
-                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs"
+                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs max-w-full"
                 style={{
                   backgroundColor: 'var(--color-surface-hover)',
                   color: 'var(--color-text-secondary)',
                   border: '1px solid var(--color-border)',
                 }}
-                title={field.name}
+                title={`${field.name}`}
               >
                 <span
-                  className="font-medium"
+                  className="font-medium max-w-[60px] truncate"
                   style={{ color: 'var(--color-text-muted)' }}
                 >
                   {field.name}:
                 </span>
-                {rendered}
+                <span className="max-w-[90px] truncate">{rendered}</span>
               </span>
             );
           })}
         </div>
       )}
-      {/* Bottom row: checklist, comments, assignees */}
+      {/* Bottom row: checklist/comment meta + assignee avatars */}
       {(checklist.total > 0 ||
         commentCount > 0 ||
         assignees.length > 0) && (
         <div className="mt-2 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-            {checklist.total > 0 && (
-              <span className="flex items-center gap-0.5" title="Checklist">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-                {checklist.checked}/{checklist.total}
-              </span>
-            )}
-            {commentCount > 0 && (
-              <span className="flex items-center gap-0.5" title="Comments">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-                </svg>
-                {commentCount}
-              </span>
-            )}
-          </div>
+          <TaskMetaBadges task={task} />
           {assignees.length > 0 && (
-            <div className="flex -space-x-1">
-              {assignees.slice(0, 3).map((a) => (
-                <div
-                  key={a.id}
-                  className="w-6 h-6 rounded-full text-xs flex items-center justify-center"
-                  style={{
-                    backgroundColor: 'var(--color-primary)',
-                    color: 'var(--color-text-inverse)',
-                    border: '2px solid var(--color-surface)',
-                  }}
-                  title={a.name}
-                >
-                  {a.name.charAt(0).toUpperCase()}
-                </div>
-              ))}
-              {assignees.length > 3 && (
-                <div
-                  className="w-6 h-6 rounded-full text-xs flex items-center justify-center"
-                  style={{
-                    backgroundColor: 'var(--color-surface-hover)',
-                    color: 'var(--color-text-secondary)',
-                    border: '2px solid var(--color-surface)',
-                  }}
-                >
-                  +{assignees.length - 3}
-                </div>
-              )}
-            </div>
+            <AvatarStack users={assignees} max={3} size="sm" showEmpty={false} />
           )}
         </div>
       )}

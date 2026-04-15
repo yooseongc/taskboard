@@ -1,8 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { TaskDto, BoardColumn, Priority, TaskStatus } from '../types/api';
+import type {
+  TaskDto,
+  BoardColumn,
+  Priority,
+  TaskStatus,
+  GroupByKey,
+  ViewDensity,
+  UserRef,
+  LabelRef,
+} from '../types/api';
 import Badge from './ui/Badge';
 import Button from './ui/Button';
+import AvatarStack from './AvatarStack';
+import TaskMetaBadges from './TaskMetaBadges';
 import { useTagTheme } from '../theme/constants';
 import {
   useBoardCustomFields,
@@ -10,6 +21,7 @@ import {
   type CustomField,
   type TaskFieldValue,
 } from '../api/customFields';
+import { groupTasks, type GroupContext } from '../lib/groupBy';
 
 export interface TableViewState {
   sortKey: SortKey;
@@ -30,6 +42,10 @@ interface TableViewProps {
   defaultConfig?: Partial<TableViewState>;
   /** Called whenever sort/filter state changes — lets parent snapshot for SavedViewBar. */
   onStateChange?: (state: TableViewState) => void;
+  /** Grouping spec. Defaults to `{ type: 'none' }`. */
+  groupBy?: GroupByKey;
+  /** Row density. Defaults to `normal`. */
+  density?: ViewDensity;
 }
 
 /**
@@ -174,6 +190,8 @@ export default function TableView({
   onBulkDelete,
   defaultConfig,
   onStateChange,
+  groupBy = { type: 'none' },
+  density = 'normal',
 }: TableViewProps) {
   const [sortKey, setSortKey] = useState<SortKey>(defaultConfig?.sortKey ?? 'title');
   const [sortDir, setSortDir] = useState<SortDir>(defaultConfig?.sortDir ?? 'asc');
@@ -190,6 +208,7 @@ export default function TableView({
   const [newTitle, setNewTitle] = useState('');
   const [newColumnId, setNewColumnId] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const { t } = useTranslation();
   const { priorityClass, statusClass } = useTagTheme();
 
@@ -288,6 +307,33 @@ export default function TableView({
     return list;
   }, [filtered, sortKey, sortDir, columnMap]);
 
+  // Derive label/user definitions from observed tasks — same approach as
+  // BoardViewPage. Empty groups (definitions with no matching tasks) still
+  // appear so the user can see there's nothing in that bucket.
+  const grouped = useMemo(() => {
+    if (groupBy.type === 'none') return null;
+    const obsLabels = new Map<string, LabelRef>();
+    const obsUsers = new Map<string, UserRef>();
+    for (const t of sorted) {
+      for (const l of t.labels ?? []) obsLabels.set(l.id, l);
+      for (const u of t.assignees ?? []) obsUsers.set(u.id, u);
+    }
+    const ctx: GroupContext = {
+      columns,
+      labels: Array.from(obsLabels.values()).map((l) => ({
+        id: l.id,
+        board_id: boardId,
+        name: l.name,
+        color: l.color,
+        created_at: '',
+      })),
+      users: Array.from(obsUsers.values()),
+      fields: customFields,
+      fieldValues: fieldValuesData?.items ?? [],
+    };
+    return groupTasks(sorted, groupBy, ctx).filter((g) => g.tasks.length > 0);
+  }, [groupBy, sorted, columns, customFields, fieldValuesData, boardId]);
+
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -319,6 +365,90 @@ export default function TableView({
     setNewTitle('');
     setAdding(false);
   };
+
+  const rowPad = density === 'compact' ? 'py-1.5' : 'py-2.5';
+
+  const renderTaskRow = (task: TaskDto) => (
+    <tr
+      key={task.id}
+      onClick={() => onTaskClick(task.id)}
+      className="hover:bg-[var(--color-surface-active)] cursor-pointer"
+    >
+      {(onBulkMove || onBulkDelete) && (
+        <td
+          className={`px-3 w-8 ${rowPad}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            aria-label={`Select ${task.title}`}
+            checked={selected.has(task.id)}
+            onChange={(e) => {
+              const next = new Set(selected);
+              if (e.target.checked) next.add(task.id);
+              else next.delete(task.id);
+              setSelected(next);
+            }}
+          />
+        </td>
+      )}
+      <td className={`px-4 ${rowPad}`}>
+        <div>
+          {(task.labels ?? []).length > 0 && (
+            <div className="flex gap-1 mb-0.5">
+              {(task.labels ?? []).map((l) => (
+                <span
+                  key={l.id}
+                  className="inline-block h-1.5 w-6 rounded-full"
+                  style={{ backgroundColor: l.color }}
+                />
+              ))}
+            </div>
+          )}
+          <span
+            className="font-medium"
+            style={{ color: 'var(--color-text)' }}
+          >
+            {task.title}
+          </span>
+          {density !== 'compact' && task.summary && (
+            <span
+              className="text-xs ml-2"
+              style={{ color: 'var(--color-text-secondary)' }}
+            >
+              {task.summary}
+            </span>
+          )}
+        </div>
+      </td>
+      <td
+        className={`px-4 ${rowPad}`}
+        style={{ color: 'var(--color-text-secondary)' }}
+      >
+        {columnMap.get(task.column_id) ?? '-'}
+      </td>
+      <td className={`px-4 ${rowPad}`}>
+        <Badge className={statusClass(task.status)}>
+          {task.status.replace('_', ' ')}
+        </Badge>
+      </td>
+      <td className={`px-4 ${rowPad}`}>
+        <Badge className={priorityClass(task.priority)}>{task.priority}</Badge>
+      </td>
+      <td
+        className={`px-4 text-xs ${rowPad}`}
+        style={{ color: 'var(--color-text-secondary)' }}
+      >
+        {task.due_date ? new Date(task.due_date).toLocaleDateString() : '-'}
+      </td>
+      <td className={`px-4 ${rowPad}`}>
+        <AvatarStack users={task.assignees ?? []} max={3} size="md" />
+      </td>
+      <td className={`px-4 ${rowPad}`}>
+        <TaskMetaBadges task={task} />
+      </td>
+    </tr>
+  );
 
   return (
     <div className="p-4">
@@ -572,130 +702,62 @@ export default function TableView({
           <tbody
             className="divide-y"
             style={{ backgroundColor: 'var(--color-surface)' }}>
-            {sorted.map((task) => (
-              <tr
-                key={task.id}
-                onClick={() => onTaskClick(task.id)}
-                className="hover:bg-[var(--color-surface-active)] cursor-pointer"
-              >
-                {(onBulkMove || onBulkDelete) && (
-                  <td className="px-3 py-2.5 w-8" onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      aria-label={`Select ${task.title}`}
-                      checked={selected.has(task.id)}
-                      onChange={(e) => {
-                        const next = new Set(selected);
-                        if (e.target.checked) next.add(task.id);
-                        else next.delete(task.id);
-                        setSelected(next);
+            {grouped
+              ? grouped.flatMap((group) => {
+                  const collapsed = collapsedGroups.has(group.key);
+                  const rows: React.ReactNode[] = [
+                    <tr
+                      key={`group-${group.key}`}
+                      className="cursor-pointer select-none"
+                      style={{
+                        backgroundColor: 'var(--color-surface-hover)',
+                        borderTop: group.color
+                          ? `2px solid ${group.color}`
+                          : undefined,
                       }}
-                    />
-                  </td>
-                )}
-                <td className="px-4 py-2.5">
-                  <div>
-                    {/* Labels */}
-                    {(task.labels ?? []).length > 0 && (
-                      <div className="flex gap-1 mb-0.5">
-                        {(task.labels ?? []).map((l) => (
-                          <span
-                            key={l.id}
-                            className="inline-block h-1.5 w-6 rounded-full"
-                            style={{ backgroundColor: l.color }}
-                          />
-                        ))}
-                      </div>
-                    )}
-                    <span className="font-medium" style={{ color: 'var(--color-text)' }}>
-                      {task.title}
-                    </span>
-                    {task.summary && (
-                      <span
-                        className="text-xs ml-2"
+                      onClick={() =>
+                        setCollapsedGroups((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(group.key)) next.delete(group.key);
+                          else next.add(group.key);
+                          return next;
+                        })
+                      }
+                    >
+                      <td
+                        colSpan={onBulkMove || onBulkDelete ? 8 : 7}
+                        className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider"
                         style={{ color: 'var(--color-text-secondary)' }}
                       >
-                        {task.summary}
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td className="px-4 py-2.5" style={{ color: 'var(--color-text-secondary)' }}>
-                  {columnMap.get(task.column_id) ?? '-'}
-                </td>
-                <td className="px-4 py-2.5">
-                  <Badge className={statusClass(task.status)}>
-                    {task.status.replace('_', ' ')}
-                  </Badge>
-                </td>
-                <td className="px-4 py-2.5">
-                  <Badge className={priorityClass(task.priority)}>
-                    {task.priority}
-                  </Badge>
-                </td>
-                <td
-                  className="px-4 py-2.5 text-xs"
-                  style={{ color: 'var(--color-text-secondary)' }}
-                >
-                  {task.due_date
-                    ? new Date(task.due_date).toLocaleDateString()
-                    : '-'}
-                </td>
-                <td className="px-4 py-2.5">
-                  <div className="flex -space-x-1">
-                    {(task.assignees ?? []).slice(0, 3).map((a) => (
-                      <div
-                        key={a.id}
-                        className="w-6 h-6 rounded-full text-xs flex items-center justify-center"
-                        style={{
-                          backgroundColor: 'var(--color-primary)',
-                          color: 'var(--color-text-inverse)',
-                          border: '2px solid var(--color-surface)',
-                        }}
-                        title={a.name}
-                      >
-                        {a.name.charAt(0).toUpperCase()}
-                      </div>
-                    ))}
-                    {(task.assignees ?? []).length > 3 && (
-                      <div
-                        className="w-6 h-6 rounded-full text-xs flex items-center justify-center"
-                        style={{
-                          backgroundColor: 'var(--color-surface-hover)',
-                          color: 'var(--color-text-secondary)',
-                          border: '2px solid var(--color-surface)',
-                        }}
-                      >
-                        +{(task.assignees ?? []).length - 3}
-                      </div>
-                    )}
-                    {(task.assignees ?? []).length === 0 && (
-                      <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                        -
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td
-                  className="px-4 py-2.5 text-xs"
-                  style={{ color: 'var(--color-text-muted)' }}
-                >
-                  <div className="flex gap-2">
-                    {(task.checklist_summary?.total ?? 0) > 0 && (
-                      <span title={t('tableView.checklistProgress')}>
-                        {(task.checklist_summary?.checked ?? 0)}/{(task.checklist_summary?.total ?? 0)}
-                      </span>
-                    )}
-                    {(task.comment_count ?? 0) > 0 && (
-                      <span title={t('task.comments')}>
-                        {(task.comment_count ?? 0)}c
-                      </span>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {sorted.length === 0 && (
+                        <span className="mr-2 inline-block w-3">
+                          {collapsed ? '▸' : '▾'}
+                        </span>
+                        {group.color && (
+                          <span
+                            className="inline-block w-2 h-2 rounded-full mr-2"
+                            style={{ backgroundColor: group.color }}
+                          />
+                        )}
+                        {group.label}
+                        <span
+                          className="ml-2 font-normal"
+                          style={{ color: 'var(--color-text-muted)' }}
+                        >
+                          · {group.tasks.length}
+                        </span>
+                      </td>
+                    </tr>,
+                  ];
+                  if (!collapsed) {
+                    for (const task of group.tasks) {
+                      rows.push(renderTaskRow(task));
+                    }
+                  }
+                  return rows;
+                })
+              : sorted.map((task) => renderTaskRow(task))}
+            {((grouped && grouped.length === 0) ||
+              (!grouped && sorted.length === 0)) && (
               <tr>
                 <td
                   colSpan={onBulkMove || onBulkDelete ? 8 : 7}

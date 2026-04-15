@@ -239,3 +239,26 @@ export interface Label {
   color: string;
   created_at: string;
 }
+
+/**
+ * GroupByKey — descriptor for how a view groups tasks.
+ *
+ * Board defaults to `column` (the existing kanban behaviour), Table/Calendar
+ * default to `none`. Any other value re-groups tasks in-memory and, for
+ * Board, repurposes drag-and-drop to mutate the grouping field.
+ *
+ * `assignee`, `label`, and `multi_select` custom fields are *multi-valued*:
+ * a task with N values appears in N groups. Tasks with zero values appear
+ * in an "Unassigned" / "No label" synthetic group.
+ */
+export type GroupByKey =
+  | { type: 'none' }
+  | { type: 'column' }
+  | { type: 'status' }
+  | { type: 'priority' }
+  | { type: 'assignee' }
+  | { type: 'label' }
+  | { type: 'custom_field'; fieldId: string };
+
+/** Card / row rendering density. */
+export type ViewDensity = 'compact' | 'normal';

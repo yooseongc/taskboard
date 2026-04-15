@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useDepartments, useDepartmentMembers } from '../api/departments';
 import { useUsers } from '../api/users';
 import { Spinner } from '../components/Spinner';
@@ -9,6 +10,7 @@ import type { Department, User } from '../types/api';
 const PAGE_SIZE = 20;
 
 export default function DirectoryPage() {
+  const { t } = useTranslation();
   const { data: deptsData, isLoading: deptsLoading } = useDepartments();
   const { data: usersData, isLoading: usersLoading } = useUsers();
   const [selectedDeptId, setSelectedDeptId] = useState<string | null>(null);
@@ -36,9 +38,9 @@ export default function DirectoryPage() {
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">Directory</h1>
+        <h1 className="text-2xl font-bold">{t('directory.title')}</h1>
         <p className="text-sm text-[var(--color-text-muted)] mt-1">
-          Organization structure and people. Synced from Active Directory.
+          {t('directory.subtitle')}
         </p>
       </div>
 
@@ -49,7 +51,7 @@ export default function DirectoryPage() {
         <div className="w-64 flex-shrink-0">
           <div className="surface-raised p-3 sticky top-4">
             <h2 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
-              Departments
+              {t('directory.departments')}
             </h2>
             {/* "All people" option */}
             <div
@@ -63,7 +65,7 @@ export default function DirectoryPage() {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
-              <span>All people</span>
+              <span>{t('directory.allPeople')}</span>
               <span className="ml-auto text-xs text-[var(--color-text-muted)]">{allUsers.length}</span>
             </div>
             <div className="border-t my-1.5" />
@@ -86,11 +88,11 @@ export default function DirectoryPage() {
             {/* Header */}
             <div className="px-4 py-3 border-b flex items-center gap-3">
               <h2 className="text-sm font-semibold">
-                {selectedDept ? selectedDept.name : 'All People'}
+                {selectedDept ? selectedDept.name : t('directory.allPeople')}
               </h2>
               <input
                 type="text"
-                placeholder="Search by name or email..."
+                placeholder={t('directory.searchPlaceholder')}
                 className="ml-auto border rounded-lg px-3 py-1.5 text-sm w-64 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 value={search}
                 onChange={(e) => handleSearch(e.target.value)}
@@ -174,6 +176,7 @@ function DeptMembersView({
   deptMap: Map<string, string>;
   allUsers: User[];
 }) {
+  const { t } = useTranslation();
   const { data, isLoading } = useDepartmentMembers(departmentId);
   const members = data?.items ?? [];
 
@@ -210,11 +213,11 @@ function DeptMembersView({
       <table className="w-full text-sm">
         <thead className="bg-[var(--color-surface-hover)]">
           <tr>
-            <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">Person</th>
-            <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">Email</th>
-            <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">Role in Dept</th>
-            <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">Other Departments</th>
-            <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">Status</th>
+            <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">{t('directory.person')}</th>
+            <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">{t('directory.email')}</th>
+            <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">{t('directory.deptRole')}</th>
+            <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">{t('directory.otherDepts')}</th>
+            <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">{t('directory.status')}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-[var(--color-border-light)]">
@@ -257,7 +260,7 @@ function DeptMembersView({
               </td>
               <td className="px-4 py-2.5">
                 <Badge variant={m.user?.active !== false ? 'success' : 'neutral'}>
-                  {m.user?.active !== false ? 'Active' : 'Inactive'}
+                  {m.user?.active !== false ? t('directory.active') : t('directory.inactive')}
                 </Badge>
               </td>
             </tr>
@@ -265,7 +268,7 @@ function DeptMembersView({
           {paged.length === 0 && (
             <tr>
               <td colSpan={5} className="px-4 py-8 text-center text-[var(--color-text-muted)]">
-                {members.length === 0 ? 'No members in this department.' : 'No results.'}
+                {members.length === 0 ? t('directory.noMembers') : t('directory.noResults')}
               </td>
             </tr>
           )}
@@ -279,15 +282,16 @@ function DeptMembersView({
 // --- Shared user table ---
 
 function UserTable({ users, deptMap }: { users: User[]; deptMap: Map<string, string> }) {
+  const { t } = useTranslation();
   return (
     <table className="w-full text-sm">
       <thead className="bg-[var(--color-surface-hover)]">
         <tr>
-          <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">Person</th>
-          <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">Email</th>
-          <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">Roles</th>
-          <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">Departments</th>
-          <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">Status</th>
+          <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">{t('directory.person')}</th>
+          <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">{t('directory.email')}</th>
+          <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">{t('directory.roles')}</th>
+          <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">{t('directory.departments')}</th>
+          <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">{t('directory.status')}</th>
         </tr>
       </thead>
       <tbody className="divide-y divide-[var(--color-border-light)]">
@@ -332,14 +336,14 @@ function UserTable({ users, deptMap }: { users: User[]; deptMap: Map<string, str
             </td>
             <td className="px-4 py-2.5">
               <Badge variant={user.active ? 'success' : 'neutral'}>
-                {user.active ? 'Active' : 'Inactive'}
+                {user.active ? t('directory.active') : t('directory.inactive')}
               </Badge>
             </td>
           </tr>
         ))}
         {users.length === 0 && (
           <tr>
-            <td colSpan={5} className="px-4 py-8 text-center text-[var(--color-text-muted)]">No results.</td>
+            <td colSpan={5} className="px-4 py-8 text-center text-[var(--color-text-muted)]">{t('directory.noResults')}</td>
           </tr>
         )}
       </tbody>
@@ -360,6 +364,7 @@ function Pagination({
   total: number;
   setPage: (p: number) => void;
 }) {
+  const { t } = useTranslation();
   if (totalPages <= 1) return null;
   return (
     <div className="px-4 py-3 border-t flex items-center justify-between text-sm">
@@ -372,14 +377,14 @@ function Pagination({
           onClick={() => setPage(page - 1)}
           className="px-2.5 py-1 border rounded text-xs disabled:opacity-30 hover:bg-[var(--color-surface-hover)]"
         >
-          Prev
+          {t('directory.prev')}
         </button>
         <button
           disabled={page >= totalPages - 1}
           onClick={() => setPage(page + 1)}
           className="px-2.5 py-1 border rounded text-xs disabled:opacity-30 hover:bg-[var(--color-surface-hover)]"
         >
-          Next
+          {t('directory.next')}
         </button>
       </div>
     </div>

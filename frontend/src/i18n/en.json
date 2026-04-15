@@ -5,7 +5,7 @@
   "nav": {
     "boards": "Boards",
     "templates": "Templates",
-    "directory": "Directory",
+    "directory": "Organization",
     "settings": "Settings",
     "profile": "Profile",
     "logout": "Logout",
@@ -53,6 +53,7 @@
     "summary": "Summary",
     "summaryPlaceholder": "One-line summary (optional)",
     "column": "Column",
+    "inList": "in list",
     "description": "Description",
     "descPlaceholder": "Click to add description (Markdown supported)...",
     "descEditPlaceholder": "Write in Markdown...",
@@ -95,7 +96,7 @@
     "emptyAction": "Create your first template"
   },
   "directory": {
-    "title": "Directory",
+    "title": "Organization",
     "subtitle": "Organization structure synced from Active Directory.",
     "departments": "Departments",
     "allPeople": "All People",
@@ -248,6 +249,29 @@
       "phone": "Phone",
       "person": "Person"
     }
+  },
+  "toolbar": {
+    "groupBy": "Group",
+    "groupByNone": "None",
+    "groupByColumn": "Column",
+    "groupByStatus": "Status",
+    "groupByPriority": "Priority",
+    "groupByAssignee": "Assignee",
+    "groupByLabel": "Label",
+    "customFields": "Custom fields",
+    "density": {
+      "compact": "Compact",
+      "normal": "Normal"
+    },
+    "noGroup": "No group",
+    "unassigned": "Unassigned",
+    "noLabel": "No label",
+    "noValue": "No value",
+    "addProperty": "+ Add a property",
+    "newProperty": "New property",
+    "existingProperty": "Existing property",
+    "propertyName": "Property name",
+    "progress": "Progress"
   },
   "templatePreview": {
     "title": "{{name}} preview",

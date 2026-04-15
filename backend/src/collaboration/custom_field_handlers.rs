@@ -43,7 +43,7 @@ pub async fn create_custom_field(
 ) -> Result<impl IntoResponse, AppError> {
     check_board_permission(&state.pool, &user, board_id, Action::Update, ResourceType::Board).await?;
 
-    let valid_types = ["text", "number", "select", "multi_select", "date", "checkbox", "url", "email", "phone", "person"];
+    let valid_types = ["text", "number", "progress", "select", "multi_select", "date", "checkbox", "url", "email", "phone", "person"];
     if !valid_types.contains(&body.field_type.as_str()) {
         return Err(AppError::InvalidInput(format!(
             "field_type must be one of: {}",

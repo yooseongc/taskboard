@@ -12,6 +12,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from './client';
+import type { GroupByKey, ViewDensity } from '../types/api';
 
 export type ViewType = 'board' | 'table' | 'calendar';
 
@@ -49,6 +50,8 @@ export interface TableViewConfig {
   sortDir?: 'asc' | 'desc';
   visibleColumns?: string[];
   visibleFieldIds?: string[];
+  groupBy?: GroupByKey;
+  density?: ViewDensity;
 }
 
 /**
@@ -60,11 +63,14 @@ export interface TableViewConfig {
 export interface BoardViewConfig {
   search?: string;
   priority?: string;
+  groupBy?: GroupByKey;
+  density?: ViewDensity;
 }
 
 export interface CalendarViewConfig {
   /** Custom date field id, or `"due_date"` / `"start_date"` for built-ins. */
   dateField?: string;
+  groupBy?: GroupByKey;
 }
 
 export function useBoardViews(boardId: string) {

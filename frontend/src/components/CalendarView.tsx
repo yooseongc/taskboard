@@ -2,8 +2,10 @@ import { useMemo, useCallback } from 'react';
 import { Calendar, dateFnsLocalizer, type View } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { enUS } from 'date-fns/locale/en-US';
-import type { TaskDto } from '../types/api';
+import type { TaskDto, GroupByKey } from '../types/api';
+import type { CustomField, TaskFieldValue } from '../api/customFields';
 import { PRIORITY_EVENT_COLORS } from '../theme/constants';
+import { paletteColor } from '../lib/groupBy';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
 const locales = { 'en-US': enUS };
@@ -29,6 +31,10 @@ interface CalendarViewProps {
   dateField?: CalendarDateField;
   /** Custom field values keyed by `task_id:field_id` for custom date fields */
   customFieldValues?: Map<string, string>;
+  /** Optional grouping — drives event color palette. */
+  groupBy?: GroupByKey;
+  customFields?: CustomField[];
+  allFieldValues?: TaskFieldValue[];
 }
 
 interface CalendarEvent {
@@ -36,7 +42,7 @@ interface CalendarEvent {
   title: string;
   start: Date;
   end: Date;
-  priority: string;
+  color: string;
 }
 
 // Calendar event blocks draw onto the react-big-calendar grid, which paints
@@ -69,31 +75,90 @@ function resolveDate(
   return { start: d, end: d };
 }
 
+const STATUS_EVENT_COLORS: Record<string, string> = {
+  open: '#6b7280',
+  in_progress: '#3b82f6',
+  done: '#10b981',
+  archived: '#9ca3af',
+};
+
+function eventColor(
+  task: TaskDto,
+  groupBy: GroupByKey,
+  customFields: CustomField[],
+  allFieldValues: TaskFieldValue[],
+): string {
+  switch (groupBy.type) {
+    case 'status':
+      return STATUS_EVENT_COLORS[task.status] ?? '#6b7280';
+    case 'priority':
+      return PRIORITY_EVENT_COLORS[task.priority] ?? '#3b82f6';
+    case 'assignee': {
+      const first = task.assignees?.[0];
+      return first ? paletteColor(first.id) : '#9ca3af';
+    }
+    case 'label': {
+      const first = task.labels?.[0];
+      return first?.color ?? '#9ca3af';
+    }
+    case 'custom_field': {
+      const field = customFields.find((f) => f.id === groupBy.fieldId);
+      if (!field) return '#3b82f6';
+      const v = allFieldValues.find(
+        (fv) => fv.task_id === task.id && fv.field_id === groupBy.fieldId,
+      )?.value;
+      if (!v) return '#9ca3af';
+      if (field.field_type === 'select') {
+        const opt = field.options.find((o) => o.label === v);
+        return opt?.color ?? paletteColor(String(v));
+      }
+      if (field.field_type === 'multi_select' && Array.isArray(v)) {
+        const first = v[0];
+        if (!first) return '#9ca3af';
+        const opt = field.options.find((o) => o.label === first);
+        return opt?.color ?? paletteColor(first as string);
+      }
+      if (field.field_type === 'person') {
+        return paletteColor(String(v));
+      }
+      return '#3b82f6';
+    }
+    case 'column':
+    case 'none':
+    default:
+      return PRIORITY_EVENT_COLORS[task.priority] ?? '#3b82f6';
+  }
+}
+
 export default function CalendarView({
   tasks,
   onTaskClick,
   dateField,
   customFieldValues,
+  groupBy = { type: 'none' },
+  customFields = [],
+  allFieldValues = [],
 }: CalendarViewProps) {
   const events = useMemo<CalendarEvent[]>(() => {
-    return tasks
-      .flatMap((t) => {
-        const dates = resolveDate(t, dateField, customFieldValues);
-        if (!dates) return [];
-        return [{
+    return tasks.flatMap((t) => {
+      const dates = resolveDate(t, dateField, customFieldValues);
+      if (!dates) return [];
+      return [
+        {
           id: t.id,
           title: t.title,
           start: dates.start,
           end: dates.end,
-          priority: t.priority,
-        }];
-      });
-  }, [tasks, dateField, customFieldValues]);
+          color: eventColor(t, groupBy, customFields, allFieldValues),
+        },
+      ];
+    });
+  }, [tasks, dateField, customFieldValues, groupBy, customFields, allFieldValues]);
 
   const eventStyleGetter = useCallback((event: CalendarEvent) => {
     return {
       style: {
-        backgroundColor: PRIORITY_EVENT_COLORS[event.priority] ?? '#3b82f6',
+        backgroundColor: event.color,
         borderRadius: '4px',
         opacity: 0.9,
         color: '#ffffff',
@@ -111,6 +176,12 @@ export default function CalendarView({
   );
 
   const defaultView: View = 'month';
+
+  // Derive the event color per the active groupBy. `none`/`column` fall
+  // back to the priority palette — the pre-Round-H behaviour. Other
+  // groupings pick a stable per-key color so events from the same group
+  // share a hue at a glance.
+  // (hoisted to helper below so the useMemo deps stay explicit)
 
   return (
     <div className="p-4 h-full" style={{ minHeight: 600 }}>

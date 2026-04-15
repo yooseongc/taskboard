@@ -31,7 +31,7 @@ export default function CommandPalette({ onClose }: { onClose: () => void }) {
       // Navigation
       { id: 'nav-boards', label: '보드', keywords: 'boards 보드 홈', icon: '📋', group: 'navigation', action: () => { navigate('/'); onClose(); } },
       { id: 'nav-templates', label: '템플릿', keywords: 'templates 템플릿', icon: '📄', group: 'navigation', action: () => { navigate('/templates'); onClose(); } },
-      { id: 'nav-directory', label: '디렉터리', keywords: 'directory people 사용자 조직', icon: '👥', group: 'navigation', action: () => { navigate('/directory'); onClose(); } },
+      { id: 'nav-directory', label: '조직', keywords: 'directory organization people 사용자 조직 디렉터리', icon: '👥', group: 'navigation', action: () => { navigate('/directory'); onClose(); } },
       { id: 'nav-settings', label: '설정', keywords: 'settings 설정', icon: '⚙️', group: 'navigation', action: () => { navigate('/settings'); onClose(); } },
       { id: 'nav-profile', label: '프로필', keywords: 'profile 프로필 내 정보', icon: '👤', group: 'navigation', action: () => { navigate('/profile'); onClose(); } },
       // Theme

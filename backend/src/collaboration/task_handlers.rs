@@ -1651,7 +1651,7 @@ pub async fn add_checklist_item(
     )
     .bind(item_id)
     .bind(cl_id)
-    .bind(&body.text)
+    .bind(&body.title)
     .bind(checked)
     .bind(position)
     .fetch_one(&mut *tx)
@@ -1670,7 +1670,7 @@ pub async fn add_checklist_item(
         Json(serde_json::json!({
             "id": row.id,
             "checklist_id": row.checklist_id,
-            "text": row.text,
+            "title": row.text,
             "checked": row.checked,
             "position": row.position,
             "created_at": row.created_at,
@@ -1733,7 +1733,7 @@ pub async fn patch_checklist_item(
         "#,
     )
     .bind(item_id)
-    .bind(&body.text)
+    .bind(&body.title)
     .bind(body.checked)
     .bind(cl_id)
     .fetch_one(&mut *tx)
@@ -1769,7 +1769,7 @@ pub async fn patch_checklist_item(
     Ok(Json(serde_json::json!({
         "id": row.id,
         "checklist_id": row.checklist_id,
-        "text": row.text,
+        "title": row.text,
         "checked": row.checked,
         "position": row.position,
         "created_at": row.created_at,

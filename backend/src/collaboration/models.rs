@@ -423,14 +423,14 @@ pub struct CreateChecklistRequest {
 /// S-019: Add checklist item request.
 #[derive(Deserialize, Debug)]
 pub struct AddChecklistItemRequest {
-    pub text: String,
+    pub title: String,
     pub checked: Option<bool>,
 }
 
 /// S-019: Patch checklist item request.
 #[derive(Deserialize, Debug)]
 pub struct PatchChecklistItemRequest {
-    pub text: Option<String>,
+    pub title: Option<String>,
     pub checked: Option<bool>,
 }
 
