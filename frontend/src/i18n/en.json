@@ -218,6 +218,7 @@
     "colDueDate": "Due Date",
     "colAssignees": "Assignees",
     "colInfo": "Info",
+    "properties": "Properties",
     "noTasks": "No tasks found.",
     "checklistProgress": "Checklist progress"
   },

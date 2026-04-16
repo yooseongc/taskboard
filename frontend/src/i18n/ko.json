@@ -218,6 +218,7 @@
     "colDueDate": "마감일",
     "colAssignees": "담당자",
     "colInfo": "정보",
+    "properties": "속성",
     "noTasks": "태스크가 없습니다.",
     "checklistProgress": "체크리스트 진행"
   },

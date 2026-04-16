@@ -1290,25 +1290,49 @@ function CustomFieldInput({
           onChange={(e) => onChange(e.target.checked)}
         />
       );
-    case 'select':
+    case 'select': {
+      const selVal = (value as string) ?? '';
+      const selOpt = (field.options ?? []).find((o) => o.label === selVal);
+      const selColor = selOpt?.color;
       return (
-        <select
-          className="w-full text-xs border rounded px-1.5 py-1"
-          value={(value as string) ?? ''}
-          onChange={(e) => onChange(e.target.value || null)}
-        >
-          <option value="">-</option>
-          {(field.options ?? []).map((opt) => (
-            <option key={opt.label} value={opt.label}>{opt.label}</option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2 w-full">
+          {selVal && (
+            <span
+              className="inline-block text-xs font-medium px-2 py-0.5 rounded"
+              style={{
+                backgroundColor: selColor ? `${selColor}22` : 'var(--color-surface-hover)',
+                color: selColor ?? 'var(--color-text-secondary)',
+                border: selColor ? `1px solid ${selColor}44` : '1px solid var(--color-border)',
+              }}
+            >
+              {selVal}
+            </span>
+          )}
+          <select
+            className="flex-1 text-xs border rounded px-1.5 py-1"
+            value={selVal}
+            onChange={(e) => onChange(e.target.value || null)}
+            style={{
+              backgroundColor: 'var(--color-bg)',
+              border: '1px solid var(--color-border)',
+              color: 'var(--color-text)',
+            }}
+          >
+            <option value="">-</option>
+            {(field.options ?? []).map((opt) => (
+              <option key={opt.label} value={opt.label}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
       );
+    }
     case 'multi_select': {
       const selected = Array.isArray(value) ? (value as string[]) : [];
       return (
         <div className="flex flex-wrap gap-1">
           {(field.options ?? []).map((opt) => {
             const active = selected.includes(opt.label);
+            const optColor = opt.color;
             return (
               <button
                 key={opt.label}
@@ -1318,9 +1342,18 @@ function CustomFieldInput({
                     : [...selected, opt.label];
                   onChange(next);
                 }}
-                className={`px-1.5 py-0.5 rounded text-xs ${
-                  active ? 'bg-[var(--color-primary-light)] text-[var(--color-primary-text)]' : 'bg-[var(--color-surface-hover)] text-[var(--color-text-muted)]'
-                }`}
+                className="px-1.5 py-0.5 rounded text-xs font-medium"
+                style={active && optColor ? {
+                  backgroundColor: `${optColor}22`,
+                  color: optColor,
+                  border: `1px solid ${optColor}44`,
+                } : active ? {
+                  backgroundColor: 'var(--color-primary-light)',
+                  color: 'var(--color-primary-text)',
+                } : {
+                  backgroundColor: 'var(--color-surface-hover)',
+                  color: 'var(--color-text-muted)',
+                }}
               >
                 {opt.label}
               </button>

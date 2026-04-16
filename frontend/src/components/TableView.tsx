@@ -23,6 +23,7 @@ import {
 } from '../api/customFields';
 import { groupTasks, type GroupContext } from '../lib/groupBy';
 import ViewToolbar from './ViewToolbar';
+import Modal from './ui/Modal';
 
 export interface TableViewState {
   sortKey: SortKey;
@@ -31,6 +32,7 @@ export interface TableViewState {
   filterMode: FilterMode;
   hiddenColumns?: string[];
   columnWidths?: Record<string, number>;
+  columnOrder?: string[];
 }
 
 const ALL_COLUMN_IDS = ['title', 'column', 'priority', 'due_date', 'assignees', 'info'] as const;
@@ -221,6 +223,9 @@ export default function TableView({
     defaultConfig?.columnWidths ?? {},
   );
   const [propertiesOpen, setPropertiesOpen] = useState(false);
+  const [columnOrder, setColumnOrder] = useState<string[]>(
+    defaultConfig?.columnOrder ?? [...ALL_COLUMN_IDS],
+  );
 
   // Report state changes to parent so BoardViewPage can snapshot for SavedViewBar.
   useEffect(() => {
@@ -231,9 +236,10 @@ export default function TableView({
       filterMode,
       hiddenColumns: Array.from(hiddenColumns),
       columnWidths,
+      columnOrder,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortKey, sortDir, filters, filterMode, hiddenColumns, columnWidths]);
+  }, [sortKey, sortDir, filters, filterMode, hiddenColumns, columnWidths, columnOrder]);
   const { t } = useTranslation();
   const { priorityClass } = useTagTheme();
 
@@ -663,80 +669,13 @@ export default function TableView({
             >
               + {t('tableView.addFilter')}
             </Button>
-            <div className="relative">
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setPropertiesOpen((v) => !v)}
-              >
-                Properties
-              </Button>
-              {propertiesOpen && (
-                <div
-                  className="absolute left-0 top-full mt-1 z-20 rounded-lg py-1 shadow-lg min-w-[180px]"
-                  style={{
-                    backgroundColor: 'var(--color-surface)',
-                    border: '1px solid var(--color-border)',
-                  }}
-                  onMouseLeave={() => setPropertiesOpen(false)}
-                >
-                  {ALL_COLUMN_IDS.map((colId) => {
-                    const hidden = hiddenColumns.has(colId);
-                    return (
-                      <label
-                        key={colId}
-                        className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-[var(--color-surface-hover)]"
-                        style={{ color: 'var(--color-text)' }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!hidden}
-                          onChange={() =>
-                            setHiddenColumns((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(colId)) next.delete(colId);
-                              else next.add(colId);
-                              return next;
-                            })
-                          }
-                        />
-                        <span className="capitalize">{colId.replace('_', ' ')}</span>
-                      </label>
-                    );
-                  })}
-                  {realFields.length > 0 && (
-                    <div
-                      className="border-t my-1"
-                      style={{ borderColor: 'var(--color-border)' }}
-                    />
-                  )}
-                  {realFields.map((field) => {
-                    const hidden = hiddenColumns.has(field.id as ColumnId);
-                    return (
-                      <label
-                        key={field.id}
-                        className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-[var(--color-surface-hover)]"
-                        style={{ color: 'var(--color-text)' }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!hidden}
-                          onChange={() =>
-                            setHiddenColumns((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(field.id as ColumnId)) next.delete(field.id as ColumnId);
-                              else next.add(field.id as ColumnId);
-                              return next;
-                            })
-                          }
-                        />
-                        <span>{field.name}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setPropertiesOpen(true)}
+            >
+              {t('tableView.properties')}
+            </Button>
             <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
               {t('tableView.count', { count: sorted.length })}
             </span>
@@ -1086,6 +1025,118 @@ export default function TableView({
           </tbody>
         </table>
       </div>
+
+      {/* Properties Modal — column visibility + ordering */}
+      {propertiesOpen && (
+        <Modal
+          title={t('tableView.properties')}
+          onClose={() => setPropertiesOpen(false)}
+          width="max-w-sm"
+        >
+          <div className="space-y-1">
+            {(() => {
+              const allItems: { id: string; label: string; isBuiltIn: boolean }[] = [
+                ...ALL_COLUMN_IDS.map((id) => ({
+                  id,
+                  label: id === 'title' ? t('tableView.colTitle')
+                       : id === 'column' ? t('tableView.colColumn')
+                       : id === 'priority' ? t('tableView.colPriority')
+                       : id === 'due_date' ? t('tableView.colDueDate')
+                       : id === 'assignees' ? t('tableView.colAssignees')
+                       : t('tableView.colInfo'),
+                  isBuiltIn: true,
+                })),
+                ...realFields.map((f) => ({ id: f.id, label: f.name, isBuiltIn: false })),
+              ];
+              // Sort by columnOrder
+              const ordered = [...allItems].sort((a, b) => {
+                const ai = columnOrder.indexOf(a.id);
+                const bi = columnOrder.indexOf(b.id);
+                return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+              });
+              const moveUp = (id: string) => {
+                setColumnOrder((prev) => {
+                  const list = [...prev];
+                  const idx = list.indexOf(id);
+                  if (idx <= 0) return prev;
+                  [list[idx - 1], list[idx]] = [list[idx], list[idx - 1]];
+                  return list;
+                });
+              };
+              const moveDown = (id: string) => {
+                setColumnOrder((prev) => {
+                  const list = [...prev];
+                  const idx = list.indexOf(id);
+                  if (idx === -1 || idx >= list.length - 1) return prev;
+                  [list[idx], list[idx + 1]] = [list[idx + 1], list[idx]];
+                  return list;
+                });
+              };
+              // Ensure all items are in columnOrder
+              if (ordered.some((item) => !columnOrder.includes(item.id))) {
+                const missing = ordered.filter((item) => !columnOrder.includes(item.id));
+                setColumnOrder((prev) => [...prev, ...missing.map((m) => m.id)]);
+              }
+              return ordered.map((item, idx) => {
+                const hidden = hiddenColumns.has(item.id as ColumnId);
+                return (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg"
+                    style={{
+                      backgroundColor: hidden ? 'transparent' : 'var(--color-surface)',
+                      border: '1px solid var(--color-border)',
+                      opacity: hidden ? 0.5 : 1,
+                    }}
+                  >
+                    {/* Drag handle hint */}
+                    <span
+                      className="text-xs cursor-grab select-none"
+                      style={{ color: 'var(--color-text-muted)' }}
+                    >
+                      ⠿
+                    </span>
+                    <input
+                      type="checkbox"
+                      className="w-3.5 h-3.5 rounded"
+                      checked={!hidden}
+                      onChange={() =>
+                        setHiddenColumns((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(item.id as ColumnId)) next.delete(item.id as ColumnId);
+                          else next.add(item.id as ColumnId);
+                          return next;
+                        })
+                      }
+                    />
+                    <span className="flex-1 text-sm font-medium" style={{ color: 'var(--color-text)' }}>
+                      {item.label}
+                    </span>
+                    <div className="flex flex-col -my-1">
+                      <button
+                        onClick={() => moveUp(item.id)}
+                        disabled={idx === 0}
+                        className="text-[10px] leading-none px-0.5 py-0.5 rounded hover:bg-[var(--color-surface-hover)] disabled:opacity-15 transition-opacity"
+                        style={{ color: 'var(--color-text-muted)' }}
+                      >
+                        ▴
+                      </button>
+                      <button
+                        onClick={() => moveDown(item.id)}
+                        disabled={idx === ordered.length - 1}
+                        className="text-[10px] leading-none px-0.5 py-0.5 rounded hover:bg-[var(--color-surface-hover)] disabled:opacity-15 transition-opacity"
+                        style={{ color: 'var(--color-text-muted)' }}
+                      >
+                        ▾
+                      </button>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
