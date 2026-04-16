@@ -33,7 +33,7 @@ export interface TableViewState {
   columnWidths?: Record<string, number>;
 }
 
-const ALL_COLUMN_IDS = ['title', 'column', 'status', 'priority', 'due_date', 'assignees', 'info'] as const;
+const ALL_COLUMN_IDS = ['title', 'column', 'priority', 'due_date', 'assignees', 'info'] as const;
 type ColumnId = (typeof ALL_COLUMN_IDS)[number];
 
 interface TableViewProps {
@@ -75,7 +75,7 @@ interface FilterChip {
 
 type FilterMode = 'and' | 'or';
 
-type SortKey = 'title' | 'priority' | 'status' | 'due_date' | 'column';
+type SortKey = 'title' | 'priority' | 'due_date' | 'column';
 type SortDir = 'asc' | 'desc';
 
 const priorityOrder: Record<Priority, number> = {
@@ -113,8 +113,9 @@ function evaluateFilter(
   if (value === undefined || value === null) return false;
 
   if (field.field_type === 'checkbox') {
-    if (chip.operator === 'is_true') return value === true;
-    if (chip.operator === 'is_false') return value === false;
+    const bool = value === true || value === 'true' || value === 1;
+    if (chip.operator === 'is_true') return bool;
+    if (chip.operator === 'is_false') return !bool;
     return false;
   }
 
@@ -234,7 +235,7 @@ export default function TableView({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortKey, sortDir, filters, filterMode, hiddenColumns, columnWidths]);
   const { t } = useTranslation();
-  const { priorityClass, statusClass } = useTagTheme();
+  const { priorityClass } = useTagTheme();
 
   // Custom fields and their values for the entire board — feeds the filter
   // builder. Field defs let us populate the operator/value pickers; values
@@ -248,12 +249,6 @@ export default function TableView({
   // IDs are prefixed with `__builtin:` so the evaluator can dispatch them
   // to a per-field extractor without colliding with real UUIDs.
   const builtInFields: CustomField[] = useMemo(() => {
-    const statusOpts = [
-      { label: 'open' },
-      { label: 'in_progress' },
-      { label: 'done' },
-      { label: 'archived' },
-    ];
     const priorityOpts = [
       { label: 'urgent' },
       { label: 'high' },
@@ -263,11 +258,10 @@ export default function TableView({
     const columnOpts = columns.map((c) => ({ label: c.id }));
     return [
       { id: '__builtin:title', board_id: boardId, name: 'Title', field_type: 'text', options: [], position: -100, required: false, show_on_card: false, created_at: '' },
-      { id: '__builtin:status', board_id: boardId, name: 'Status (built-in)', field_type: 'select', options: statusOpts, position: -99, required: false, show_on_card: false, created_at: '' },
       { id: '__builtin:priority', board_id: boardId, name: 'Priority (built-in)', field_type: 'select', options: priorityOpts, position: -98, required: false, show_on_card: false, created_at: '' },
       { id: '__builtin:due_date', board_id: boardId, name: 'Due date', field_type: 'date', options: [], position: -97, required: false, show_on_card: false, created_at: '' },
       { id: '__builtin:start_date', board_id: boardId, name: 'Start date', field_type: 'date', options: [], position: -96, required: false, show_on_card: false, created_at: '' },
-      { id: '__builtin:column', board_id: boardId, name: 'Column', field_type: 'select', options: columnOpts, position: -95, required: false, show_on_card: false, created_at: '' },
+      { id: '__builtin:column', board_id: boardId, name: 'Status', field_type: 'select', options: columnOpts, position: -95, required: false, show_on_card: false, created_at: '' },
     ];
   }, [boardId, columns]);
 
@@ -319,6 +313,12 @@ export default function TableView({
     return m;
   }, [columns]);
 
+  const columnColorMap = useMemo(() => {
+    const m = new Map<string, string | null>();
+    for (const c of columns) m.set(c.id, c.color ?? null);
+    return m;
+  }, [columns]);
+
   const filtered = useMemo(() => {
     let list = [...tasks];
     if (search) {
@@ -367,8 +367,6 @@ export default function TableView({
           return dir * a.title.localeCompare(b.title);
         case 'priority':
           return dir * (priorityOrder[a.priority] - priorityOrder[b.priority]);
-        case 'status':
-          return dir * a.status.localeCompare(b.status);
         case 'due_date': {
           const da = a.due_date ?? '';
           const db = b.due_date ?? '';
@@ -447,6 +445,61 @@ export default function TableView({
 
   const rowPad = density === 'compact' ? 'py-1.5' : 'py-2.5';
 
+  const renderFieldCell = (field: CustomField, value: unknown): React.ReactNode => {
+    if (value === undefined || value === null) return '-';
+    switch (field.field_type) {
+      case 'checkbox':
+        return (value === true || value === 'true') ? '✓' : '-';
+      case 'date':
+        return typeof value === 'string' ? new Date(value).toLocaleDateString() : '-';
+      case 'number':
+      case 'progress':
+        return String(value);
+      case 'select': {
+        const opt = (field.options ?? []).find((o) => o.label === value);
+        const color = (opt as any)?.color as string | undefined;
+        return (
+          <span
+            className="inline-block text-xs font-medium px-2 py-0.5 rounded"
+            style={{
+              backgroundColor: color ? `${color}22` : 'var(--color-surface-hover)',
+              color: color ?? 'var(--color-text-secondary)',
+              border: color ? `1px solid ${color}44` : '1px solid var(--color-border)',
+            }}
+          >
+            {String(value)}
+          </span>
+        );
+      }
+      case 'multi_select': {
+        const vals = Array.isArray(value) ? value : [value];
+        return (
+          <div className="flex flex-wrap gap-1">
+            {vals.map((v, i) => {
+              const opt = (field.options ?? []).find((o) => o.label === v);
+              const color = (opt as any)?.color as string | undefined;
+              return (
+                <span
+                  key={i}
+                  className="inline-block text-xs font-medium px-2 py-0.5 rounded"
+                  style={{
+                    backgroundColor: color ? `${color}22` : 'var(--color-surface-hover)',
+                    color: color ?? 'var(--color-text-secondary)',
+                    border: color ? `1px solid ${color}44` : '1px solid var(--color-border)',
+                  }}
+                >
+                  {String(v)}
+                </span>
+              );
+            })}
+          </div>
+        );
+      }
+      default:
+        return String(value);
+    }
+  };
+
   const renderTaskRow = (task: TaskDto) => (
     <tr
       key={task.id}
@@ -503,18 +556,24 @@ export default function TableView({
         </td>
       )}
       {!hiddenColumns.has('column') && (
-        <td
-          className={`px-4 ${rowPad}`}
-          style={{ color: 'var(--color-text-secondary)' }}
-        >
-          {columnMap.get(task.column_id) ?? '-'}
-        </td>
-      )}
-      {!hiddenColumns.has('status') && (
         <td className={`px-4 ${rowPad}`}>
-          <Badge className={statusClass(task.status)}>
-            {task.status.replace('_', ' ')}
-          </Badge>
+          {(() => {
+            const colName = columnMap.get(task.column_id);
+            const colColor = columnColorMap.get(task.column_id);
+            if (!colName) return '-';
+            return (
+              <span
+                className="inline-block text-xs font-medium px-2 py-0.5 rounded"
+                style={{
+                  backgroundColor: colColor ? `${colColor}22` : 'var(--color-surface-hover)',
+                  color: colColor ?? 'var(--color-text-secondary)',
+                  border: colColor ? `1px solid ${colColor}44` : '1px solid var(--color-border)',
+                }}
+              >
+                {colName}
+              </span>
+            );
+          })()}
         </td>
       )}
       {!hiddenColumns.has('priority') && (
@@ -536,6 +595,17 @@ export default function TableView({
         <td className={`px-4 ${rowPad}`}>
           <AvatarStack users={task.assignees ?? []} max={3} size="md" />
         </td>
+      )}
+      {realFields.map((field) =>
+        !hiddenColumns.has(field.id as ColumnId) ? (
+          <td
+            key={field.id}
+            className={`px-4 text-xs ${rowPad}`}
+            style={{ color: 'var(--color-text-secondary)' }}
+          >
+            {renderFieldCell(field, valuesByTaskField.get(task.id)?.get(field.id))}
+          </td>
+        ) : null,
       )}
       {!hiddenColumns.has('info') && (
         <td className={`px-4 ${rowPad}`}>
@@ -631,6 +701,36 @@ export default function TableView({
                           }
                         />
                         <span className="capitalize">{colId.replace('_', ' ')}</span>
+                      </label>
+                    );
+                  })}
+                  {realFields.length > 0 && (
+                    <div
+                      className="border-t my-1"
+                      style={{ borderColor: 'var(--color-border)' }}
+                    />
+                  )}
+                  {realFields.map((field) => {
+                    const hidden = hiddenColumns.has(field.id as ColumnId);
+                    return (
+                      <label
+                        key={field.id}
+                        className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-[var(--color-surface-hover)]"
+                        style={{ color: 'var(--color-text)' }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!hidden}
+                          onChange={() =>
+                            setHiddenColumns((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(field.id as ColumnId)) next.delete(field.id as ColumnId);
+                              else next.add(field.id as ColumnId);
+                              return next;
+                            })
+                          }
+                        />
+                        <span>{field.name}</span>
                       </label>
                     );
                   })}
@@ -829,7 +929,6 @@ export default function TableView({
                 [
                   ['title', t('tableView.colTitle')],
                   ['column', t('tableView.colColumn')],
-                  ['status', t('tableView.colStatus')],
                   ['priority', t('tableView.colPriority')],
                   ['due_date', t('tableView.colDueDate')],
                 ] as [SortKey, string][]
@@ -873,6 +972,27 @@ export default function TableView({
                     }
                   />
                 </th>
+              )}
+              {realFields.map((field) =>
+                !hiddenColumns.has(field.id as ColumnId) ? (
+                  <th
+                    key={field.id}
+                    className="px-4 py-2.5 text-left font-medium relative group"
+                    style={{
+                      color: 'var(--color-text-secondary)',
+                      width: columnWidths[field.id],
+                      minWidth: columnWidths[field.id],
+                    }}
+                  >
+                    {field.name}
+                    <ColumnResizeHandle
+                      columnKey={field.id}
+                      onResize={(w) =>
+                        setColumnWidths((prev) => ({ ...prev, [field.id]: w }))
+                      }
+                    />
+                  </th>
+                ) : null,
               )}
               {!hiddenColumns.has('info') && (
                 <th
@@ -920,7 +1040,7 @@ export default function TableView({
                       }
                     >
                       <td
-                        colSpan={(onBulkMove || onBulkDelete ? 1 : 0) + (7 - hiddenColumns.size)}
+                        colSpan={(onBulkMove || onBulkDelete ? 1 : 0) + (6 + realFields.length - hiddenColumns.size)}
                         className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider"
                         style={{ color: 'var(--color-text-secondary)' }}
                       >
@@ -955,7 +1075,7 @@ export default function TableView({
               (!grouped && sorted.length === 0)) && (
               <tr>
                 <td
-                  colSpan={(onBulkMove || onBulkDelete ? 1 : 0) + (7 - hiddenColumns.size)}
+                  colSpan={(onBulkMove || onBulkDelete ? 1 : 0) + (6 + realFields.length - hiddenColumns.size)}
                   className="px-4 py-8 text-center"
                   style={{ color: 'var(--color-text-muted)' }}
                 >

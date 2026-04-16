@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import {
@@ -36,6 +36,7 @@ import TaskModal from '../components/TaskModal';
 import TableView from '../components/TableView';
 import CalendarView, { type CalendarDateField } from '../components/CalendarView';
 import BoardSettingsModal from '../components/BoardSettingsModal';
+import Modal from '../components/ui/Modal';
 import ViewToolbar from '../components/ViewToolbar';
 import AvatarStack from '../components/AvatarStack';
 import TaskMetaBadges from '../components/TaskMetaBadges';
@@ -109,7 +110,13 @@ export default function BoardViewPage() {
   const [addingView, setAddingView] = useState(false);
   const [newViewName, setNewViewName] = useState('');
   const [newViewType, setNewViewType] = useState<ViewType>('board');
-  const [tabMenuId, setTabMenuId] = useState<string | null>(null);
+  const [editingView, setEditingView] = useState<BoardView | null>(null);
+  const [editViewName, setEditViewName] = useState('');
+  const [editViewType, setEditViewType] = useState<ViewType>('board');
+  const [deletingView, setDeletingView] = useState<BoardView | null>(null);
+  // Suppress auto-save after view type change or initial apply so the
+  // default/empty state doesn't overwrite the real persisted config.
+  const suppressAutoSaveUntil = useRef(0);
 
   // Apply a saved view's config: switches the renderer to its view_type
   // and loads each view-type's persisted state (filter/sort/groupBy/density).
@@ -124,8 +131,10 @@ export default function BoardViewPage() {
       };
       setBoardSearch(c.search ?? '');
       setFilterPriority(c.priority ?? '');
-      if (c.groupBy) setGroupBy(c.groupBy);
-      if (c.density) setDensity(c.density);
+      // Kanban must always group by column — 'none' makes no sense here
+      const bg = c.groupBy?.type === 'none' ? { type: 'column' as const } : (c.groupBy ?? { type: 'column' as const });
+      setGroupBy(bg);
+      setDensity(c.density ?? 'normal');
     } else if (view.view_type === 'table') {
       setActiveView('table');
       const c = (view.config ?? {}) as TableViewConfig & {
@@ -138,8 +147,8 @@ export default function BoardViewPage() {
         filters: (c.filters as TableViewState['filters']) ?? [],
         filterMode: (c.filterMode as TableViewState['filterMode']) ?? 'and',
       });
-      if (c.groupBy) setTableGroupBy(c.groupBy);
-      if (c.density) setTableDensity(c.density);
+      setTableGroupBy(c.groupBy ?? { type: 'none' });
+      setTableDensity(c.density ?? 'normal');
       setTableKey((k) => k + 1);
     } else if (view.view_type === 'calendar') {
       setActiveView('calendar');
@@ -545,43 +554,53 @@ export default function BoardViewPage() {
   };
 
   const handleDeleteView = (view: BoardView) => {
-    if (!confirm(`Delete view "${view.name}"?`)) return;
-    deleteBoardView.mutate(view.id, {
+    setDeletingView(view);
+  };
+
+  const confirmDeleteView = () => {
+    if (!deletingView) return;
+    deleteBoardView.mutate(deletingView.id, {
       onSuccess: () => {
-        // Pick another view as active if we just deleted the selected one.
-        if (selectedViewId === view.id) {
-          const next = boardViews.find((v) => v.id !== view.id);
+        if (selectedViewId === deletingView.id) {
+          const next = boardViews.find((v) => v.id !== deletingView.id);
           if (next) applyView(next);
           else setSelectedViewId(null);
         }
+        setDeletingView(null);
       },
-      onError: () => addToast('error', t('common.saveFailed')),
+      onError: () => {
+        addToast('error', t('common.saveFailed'));
+        setDeletingView(null);
+      },
     });
   };
 
-  const handleRenameView = (view: BoardView) => {
-    const next = prompt('Rename view', view.name);
-    if (next === null) return;
-    const trimmed = next.trim();
-    if (!trimmed || trimmed === view.name) return;
-    patchBoardView.mutate(
-      { viewId: view.id, name: trimmed },
-      { onError: () => addToast('error', t('common.saveFailed')) },
-    );
+  const openEditViewModal = (view: BoardView) => {
+    setEditingView(view);
+    setEditViewName(view.name);
+    setEditViewType(view.view_type as ViewType);
   };
 
-  const handleChangeViewType = (view: BoardView, type: ViewType) => {
-    if (view.view_type === type) return;
-    patchBoardView.mutate(
-      { viewId: view.id, view_type: type },
-      {
-        onSuccess: (updated) => {
-          // Re-apply so renderer + state line up with the new type.
-          if (selectedViewId === view.id) applyView(updated);
-        },
-        onError: () => addToast('error', t('common.saveFailed')),
+  const handleSaveEditView = () => {
+    if (!editingView) return;
+    const trimmedName = editViewName.trim();
+    if (!trimmedName) return;
+    const nameChanged = trimmedName !== editingView.name;
+    const typeChanged = editViewType !== editingView.view_type;
+    if (!nameChanged && !typeChanged) {
+      setEditingView(null);
+      return;
+    }
+    const patch: Record<string, string> = { viewId: editingView.id };
+    if (nameChanged) patch.name = trimmedName;
+    if (typeChanged) patch.view_type = editViewType;
+    patchBoardView.mutate(patch as any, {
+      onSuccess: (updated) => {
+        if (selectedViewId === editingView.id) applyView(updated);
+        setEditingView(null);
       },
-    );
+      onError: () => addToast('error', t('common.saveFailed')),
+    });
   };
 
   return (
@@ -618,7 +637,7 @@ export default function BoardViewPage() {
           always sits at the end. Selecting a tab applies that view's
           config; "+ View" appends a new view of the chosen type. */}
       <div
-        className="flex items-center gap-1 px-6 py-1.5 overflow-x-auto"
+        className="flex items-center gap-1 px-6 py-1.5 flex-wrap"
         style={{
           backgroundColor: 'var(--color-surface)',
           borderBottom: '1px solid var(--color-border)',
@@ -648,7 +667,7 @@ export default function BoardViewPage() {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  setTabMenuId(tabMenuId === view.id ? null : view.id);
+                  openEditViewModal(view);
                 }}
                 aria-label={`View options for ${view.name}`}
                 title="View options"
@@ -657,163 +676,19 @@ export default function BoardViewPage() {
               >
                 ⋯
               </button>
-              {tabMenuId === view.id && (
-                <div
-                  className="absolute left-0 top-full mt-1 z-30 rounded-lg py-1 shadow-lg min-w-[180px]"
-                  style={{
-                    backgroundColor: 'var(--color-surface)',
-                    border: '1px solid var(--color-border)',
-                  }}
-                  onMouseLeave={() => setTabMenuId(null)}
-                >
-                  <button
-                    onClick={() => {
-                      setTabMenuId(null);
-                      handleRenameView(view);
-                    }}
-                    className="w-full text-left px-3 py-1.5 text-sm hover:bg-[var(--color-surface-hover)]"
-                    style={{ color: 'var(--color-text)' }}
-                  >
-                    Rename
-                  </button>
-                  <div
-                    className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider"
-                    style={{ color: 'var(--color-text-muted)' }}
-                  >
-                    Change type
-                  </div>
-                  {(['board', 'table', 'calendar'] as ViewType[]).map((tt) => (
-                    <button
-                      key={tt}
-                      onClick={() => {
-                        setTabMenuId(null);
-                        handleChangeViewType(view, tt);
-                      }}
-                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-[var(--color-surface-hover)] flex items-center justify-between"
-                      style={{
-                        color: 'var(--color-text)',
-                        opacity: tt === view.view_type ? 0.5 : 1,
-                      }}
-                      disabled={tt === view.view_type}
-                    >
-                      <span className="flex items-center gap-2">
-                        <span aria-hidden>{viewTypeIcon(tt)}</span>
-                        <span className="capitalize">{tt === 'board' ? 'Kanban' : tt}</span>
-                      </span>
-                      {tt === view.view_type && <span>✓</span>}
-                    </button>
-                  ))}
-                  <div
-                    className="border-t my-1"
-                    style={{ borderColor: 'var(--color-border)' }}
-                  />
-                  <button
-                    onClick={() => {
-                      setTabMenuId(null);
-                      patchBoardView.mutate({
-                        viewId: view.id,
-                        shared: !view.shared,
-                      });
-                    }}
-                    className="w-full text-left px-3 py-1.5 text-sm hover:bg-[var(--color-surface-hover)]"
-                    style={{ color: 'var(--color-text)' }}
-                  >
-                    {view.shared ? 'Unshare' : 'Share with board'}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setTabMenuId(null);
-                      handleDeleteView(view);
-                    }}
-                    className="w-full text-left px-3 py-1.5 text-sm hover:bg-[var(--color-danger-light)]"
-                    style={{ color: 'var(--color-danger)' }}
-                  >
-                    Delete
-                  </button>
-                </div>
-              )}
             </div>
           );
         })}
 
-        {/* + View popover */}
-        <div className="relative flex-shrink-0">
-          {addingView ? (
-            <div
-              className="absolute left-0 top-full mt-1 z-20 rounded-lg p-3 shadow-lg w-64"
-              style={{
-                backgroundColor: 'var(--color-surface)',
-                border: '1px solid var(--color-border)',
-              }}
-            >
-              <div
-                className="text-xs font-semibold mb-2 uppercase tracking-wider"
-                style={{ color: 'var(--color-text-muted)' }}
-              >
-                New view
-              </div>
-              <input
-                autoFocus
-                placeholder="View name"
-                value={newViewName}
-                onChange={(e) => setNewViewName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleCreateView()}
-                className="w-full text-sm rounded px-2 py-1.5 mb-2 outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
-                style={{
-                  backgroundColor: 'var(--color-bg)',
-                  border: '1px solid var(--color-border)',
-                  color: 'var(--color-text)',
-                }}
-              />
-              <select
-                value={newViewType}
-                onChange={(e) => setNewViewType(e.target.value as ViewType)}
-                className="w-full text-sm rounded px-2 py-1.5 mb-2 outline-none"
-                style={{
-                  backgroundColor: 'var(--color-bg)',
-                  border: '1px solid var(--color-border)',
-                  color: 'var(--color-text)',
-                }}
-              >
-                <option value="board">▦ Kanban</option>
-                <option value="table">☰ Table</option>
-                <option value="calendar">📅 Calendar</option>
-              </select>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleCreateView}
-                  disabled={!newViewName.trim() || createBoardView.isPending}
-                  className="px-3 py-1 text-xs rounded font-medium"
-                  style={{
-                    backgroundColor: 'var(--color-primary)',
-                    color: 'var(--color-text-inverse)',
-                    opacity: newViewName.trim() ? 1 : 0.5,
-                  }}
-                >
-                  {t('common.create')}
-                </button>
-                <button
-                  onClick={() => {
-                    setAddingView(false);
-                    setNewViewName('');
-                  }}
-                  className="px-2 py-1 text-xs"
-                  style={{ color: 'var(--color-text-muted)' }}
-                >
-                  {t('common.cancel')}
-                </button>
-              </div>
-            </div>
-          ) : null}
-          <button
-            onClick={() => setAddingView(true)}
-            className="rounded-md px-2 py-1 text-sm"
-            style={{ color: 'var(--color-text-muted)' }}
-            title="New view"
-          >
-            +
-          </button>
-        </div>
+        {/* + View button */}
+        <button
+          onClick={() => setAddingView(true)}
+          className="rounded-md px-2 py-1 text-sm flex-shrink-0"
+          style={{ color: 'var(--color-text-muted)' }}
+          title="New view"
+        >
+          +
+        </button>
 
         {/* Activity tab — always last, special-case (no view config). */}
         <button
@@ -1204,6 +1079,222 @@ export default function BoardViewPage() {
           boardId={id!}
           onClose={() => setSettingsOpen(false)}
         />
+      )}
+
+      {/* New View Modal */}
+      {addingView && (
+        <Modal
+          title={t('board.newView', 'New View')}
+          onClose={() => { setAddingView(false); setNewViewName(''); }}
+          width="max-w-sm"
+          footer={
+            <>
+              <button
+                onClick={() => { setAddingView(false); setNewViewName(''); }}
+                className="px-3 py-1.5 text-sm rounded"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={handleCreateView}
+                disabled={!newViewName.trim() || createBoardView.isPending}
+                className="px-4 py-1.5 text-sm rounded font-medium"
+                style={{
+                  backgroundColor: 'var(--color-primary)',
+                  color: 'var(--color-text-inverse)',
+                  opacity: newViewName.trim() ? 1 : 0.5,
+                }}
+              >
+                {t('common.create')}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                {t('board.viewName', 'View name')}
+              </label>
+              <input
+                autoFocus
+                placeholder="View name"
+                value={newViewName}
+                onChange={(e) => setNewViewName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && newViewName.trim() && handleCreateView()}
+                className="w-full text-sm rounded px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
+                style={{
+                  backgroundColor: 'var(--color-bg)',
+                  border: '1px solid var(--color-border)',
+                  color: 'var(--color-text)',
+                }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                {t('board.viewType', 'View type')}
+              </label>
+              <select
+                value={newViewType}
+                onChange={(e) => setNewViewType(e.target.value as ViewType)}
+                className="w-full text-sm rounded px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
+                style={{
+                  backgroundColor: 'var(--color-bg)',
+                  border: '1px solid var(--color-border)',
+                  color: 'var(--color-text)',
+                }}
+              >
+                <option value="board">Kanban</option>
+                <option value="table">Table</option>
+                <option value="calendar">Calendar</option>
+              </select>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Edit View Modal */}
+      {editingView && (
+        <Modal
+          title={t('board.editView', 'Edit View')}
+          onClose={() => setEditingView(null)}
+          width="max-w-sm"
+          footer={
+            <>
+              <button
+                onClick={() => setEditingView(null)}
+                className="px-3 py-1.5 text-sm rounded"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={handleSaveEditView}
+                disabled={!editViewName.trim() || patchBoardView.isPending}
+                className="px-4 py-1.5 text-sm rounded font-medium"
+                style={{
+                  backgroundColor: 'var(--color-primary)',
+                  color: 'var(--color-text-inverse)',
+                  opacity: editViewName.trim() ? 1 : 0.5,
+                }}
+              >
+                {t('common.save', 'Save')}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                {t('board.viewName', 'View name')}
+              </label>
+              <input
+                autoFocus
+                placeholder="View name"
+                value={editViewName}
+                onChange={(e) => setEditViewName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && editViewName.trim() && handleSaveEditView()}
+                className="w-full text-sm rounded px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
+                style={{
+                  backgroundColor: 'var(--color-bg)',
+                  border: '1px solid var(--color-border)',
+                  color: 'var(--color-text)',
+                }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                {t('board.viewType', 'View type')}
+              </label>
+              <select
+                value={editViewType}
+                onChange={(e) => setEditViewType(e.target.value as ViewType)}
+                className="w-full text-sm rounded px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
+                style={{
+                  backgroundColor: 'var(--color-bg)',
+                  border: '1px solid var(--color-border)',
+                  color: 'var(--color-text)',
+                }}
+              >
+                <option value="board">Kanban</option>
+                <option value="table">Table</option>
+                <option value="calendar">Calendar</option>
+              </select>
+            </div>
+            {/* Share toggle */}
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
+                {t('board.shareView', 'Share with board')}
+              </label>
+              <button
+                onClick={() => {
+                  if (!editingView) return;
+                  patchBoardView.mutate({ viewId: editingView.id, shared: !editingView.shared });
+                }}
+                className="text-sm px-3 py-1 rounded"
+                style={{
+                  backgroundColor: editingView?.shared ? 'var(--color-primary-light)' : 'var(--color-bg)',
+                  color: editingView?.shared ? 'var(--color-primary-text)' : 'var(--color-text-muted)',
+                  border: '1px solid var(--color-border)',
+                }}
+              >
+                {editingView?.shared ? t('board.shared', 'Shared') : t('board.notShared', 'Not shared')}
+              </button>
+            </div>
+            {/* Delete */}
+            <div
+              className="pt-2"
+              style={{ borderTop: '1px solid var(--color-border)' }}
+            >
+              <button
+                onClick={() => {
+                  if (!editingView) return;
+                  setEditingView(null);
+                  handleDeleteView(editingView);
+                }}
+                className="w-full text-sm py-1.5 rounded hover:bg-[var(--color-danger-light)]"
+                style={{ color: 'var(--color-danger)' }}
+              >
+                {t('board.deleteThisView', 'Delete this view')}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Delete View Confirm Modal */}
+      {deletingView && (
+        <Modal
+          title={t('board.deleteView', 'Delete View')}
+          onClose={() => setDeletingView(null)}
+          width="max-w-sm"
+          footer={
+            <>
+              <button
+                onClick={() => setDeletingView(null)}
+                className="px-3 py-1.5 text-sm rounded"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={confirmDeleteView}
+                disabled={deleteBoardView.isPending}
+                className="px-4 py-1.5 text-sm rounded font-medium"
+                style={{
+                  backgroundColor: 'var(--color-danger)',
+                  color: '#fff',
+                }}
+              >
+                {t('common.delete', 'Delete')}
+              </button>
+            </>
+          }
+        >
+          <p className="text-sm" style={{ color: 'var(--color-text)' }}>
+            {t('board.deleteViewConfirm', `Are you sure you want to delete the view "${deletingView.name}"?`)}
+          </p>
+        </Modal>
       )}
     </div>
   );
