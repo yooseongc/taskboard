@@ -160,17 +160,6 @@ function GroupByMenu({
               {t('toolbar.groupByColumn')}
             </MenuRow>
           )}
-          {options.includes('status') && (
-            <MenuRow
-              active={value.type === 'status'}
-              onClick={() => {
-                onChange({ type: 'status' });
-                setOpen(false);
-              }}
-            >
-              {t('toolbar.groupByStatus')}
-            </MenuRow>
-          )}
           {options.includes('priority') && (
             <MenuRow
               active={value.type === 'priority'}
@@ -309,7 +298,7 @@ function groupByLabel(
     case 'column':
       return t('toolbar.groupByColumn');
     case 'status':
-      return t('toolbar.groupByStatus');
+      return t('toolbar.groupByColumn');
     case 'priority':
       return t('toolbar.groupByPriority');
     case 'assignee':
