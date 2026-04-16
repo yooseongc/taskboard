@@ -30,9 +30,12 @@ export default function OidcCallbackPage() {
     let cancelled = false;
 
     handleOidcCallback(code, state)
-      .then(({ access_token }) => {
+      .then(({ access_token, refresh_token }) => {
         if (!cancelled) {
           login(access_token);
+          if (refresh_token) {
+            import('../auth/refresh').then((m) => m.setRefreshToken(refresh_token));
+          }
           navigate('/', { replace: true });
         }
       })

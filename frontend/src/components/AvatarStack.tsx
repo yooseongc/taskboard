@@ -7,21 +7,14 @@ interface Props {
   showEmpty?: boolean;
 }
 
-const SIZE_CLASSES = {
-  sm: 'w-5 h-5 text-[10px]',
-  md: 'w-6 h-6 text-xs',
-} as const;
-
 export default function AvatarStack({
   users,
   max = 3,
-  size = 'md',
   showEmpty = true,
 }: Props) {
   const list = users ?? [];
   const visible = list.slice(0, max);
   const overflow = list.length - visible.length;
-  const sz = SIZE_CLASSES[size];
 
   if (list.length === 0) {
     return showEmpty ? (
@@ -32,32 +25,39 @@ export default function AvatarStack({
   }
 
   return (
-    <div className="flex -space-x-1">
+    <div className="flex flex-wrap items-center gap-1">
       {visible.map((a) => (
-        <div
+        <span
           key={a.id}
-          className={`${sz} rounded-full flex items-center justify-center font-medium`}
+          className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded"
           style={{
-            backgroundColor: 'var(--color-primary)',
-            color: 'var(--color-text-inverse)',
-            border: '2px solid var(--color-surface)',
+            backgroundColor: 'var(--color-primary-light)',
+            color: 'var(--color-primary-text)',
           }}
-          title={a.name}
+          title={a.email}
         >
-          {a.name.charAt(0).toUpperCase()}
-        </div>
+          <span
+            className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold flex-shrink-0"
+            style={{
+              backgroundColor: 'var(--color-primary)',
+              color: 'var(--color-text-inverse)',
+            }}
+          >
+            {a.name.charAt(0).toUpperCase()}
+          </span>
+          {a.name}
+        </span>
       ))}
       {overflow > 0 && (
-        <div
-          className={`${sz} rounded-full flex items-center justify-center font-medium`}
+        <span
+          className="text-xs px-1.5 py-0.5 rounded"
           style={{
             backgroundColor: 'var(--color-surface-hover)',
             color: 'var(--color-text-secondary)',
-            border: '2px solid var(--color-surface)',
           }}
         >
           +{overflow}
-        </div>
+        </span>
       )}
     </div>
   );

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { WhoamiResponse } from '../types/api';
 import { getToken, setToken, clearToken } from '../auth';
+import { clearRefreshToken } from '../auth/refresh';
 
 interface AuthState {
   user: WhoamiResponse | null;
@@ -20,6 +21,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
   logout: () => {
     clearToken();
+    clearRefreshToken();
     set({ user: null, isAuthenticated: false });
   },
 }));
