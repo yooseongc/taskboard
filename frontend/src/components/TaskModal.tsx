@@ -31,6 +31,7 @@ import { useEscapeKey } from '../hooks/useEscapeKey';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { Spinner } from './Spinner';
 import Button from './ui/Button';
+import { tagClass, type TagVariant } from '../theme/constants';
 // NOTE: hardcoded `Priority` / `TaskStatus` enums are no longer consumed by
 // this component — the Custom Fields block at the bottom of the right
 // sidebar renders Status/Priority via the seeded built-in select fields
@@ -1297,16 +1298,22 @@ function CustomFieldInput({
       return (
         <div className="flex items-center gap-2 w-full">
           {selVal && (
-            <span
-              className="inline-block text-xs font-medium px-2 py-0.5 rounded"
-              style={{
-                backgroundColor: selColor ? `${selColor}22` : 'var(--color-surface-hover)',
-                color: selColor ?? 'var(--color-text-secondary)',
-                border: selColor ? `1px solid ${selColor}44` : '1px solid var(--color-border)',
-              }}
-            >
-              {selVal}
-            </span>
+            selColor && isSemanticToken(selColor) ? (
+              <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded ${tagClass(selColor as TagVariant)}`}>
+                {selVal}
+              </span>
+            ) : (
+              <span
+                className="inline-block text-xs font-medium px-2 py-0.5 rounded"
+                style={{
+                  backgroundColor: selColor ? `${selColor}22` : 'var(--color-surface-hover)',
+                  color: selColor ?? 'var(--color-text-secondary)',
+                  border: selColor ? `1px solid ${selColor}44` : '1px solid var(--color-border)',
+                }}
+              >
+                {selVal}
+              </span>
+            )
           )}
           <select
             className="flex-1 text-xs border rounded px-1.5 py-1"
@@ -1342,18 +1349,18 @@ function CustomFieldInput({
                     : [...selected, opt.label];
                   onChange(next);
                 }}
-                className="px-1.5 py-0.5 rounded text-xs font-medium"
-                style={active && optColor ? {
+                className={`px-1.5 py-0.5 rounded text-xs font-medium ${active && optColor && isSemanticToken(optColor) ? tagClass(optColor as TagVariant) : ''}`}
+                style={active && optColor && !isSemanticToken(optColor) ? {
                   backgroundColor: `${optColor}22`,
                   color: optColor,
                   border: `1px solid ${optColor}44`,
-                } : active ? {
+                } : active && !(optColor && isSemanticToken(optColor)) ? {
                   backgroundColor: 'var(--color-primary-light)',
                   color: 'var(--color-primary-text)',
-                } : {
+                } : !(optColor && isSemanticToken(optColor)) ? {
                   backgroundColor: 'var(--color-surface-hover)',
                   color: 'var(--color-text-muted)',
-                }}
+                } : undefined}
               >
                 {opt.label}
               </button>
@@ -1402,4 +1409,9 @@ function DrawerShell({ onClose, children }: { onClose: () => void; children: Rea
       </div>
     </>
   );
+}
+
+const SEMANTIC_TOKENS = new Set(['neutral','info','success','warning','orange','danger','critical','accent']);
+function isSemanticToken(color: string): boolean {
+  return SEMANTIC_TOKENS.has(color);
 }

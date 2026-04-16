@@ -15,7 +15,7 @@ import Badge from './ui/Badge';
 import Button from './ui/Button';
 import AvatarStack from './AvatarStack';
 import TaskMetaBadges from './TaskMetaBadges';
-import { useTagTheme } from '../theme/constants';
+import { useTagTheme, tagClass, type TagVariant } from '../theme/constants';
 import {
   useBoardCustomFields,
   useBoardFieldValues,
@@ -492,18 +492,7 @@ export default function TableView({
       case 'select': {
         const opt = (field.options ?? []).find((o) => o.label === value);
         const color = (opt as any)?.color as string | undefined;
-        return (
-          <span
-            className="inline-block text-xs font-medium px-2 py-0.5 rounded"
-            style={{
-              backgroundColor: color ? `${color}22` : 'var(--color-surface-hover)',
-              color: color ?? 'var(--color-text-secondary)',
-              border: color ? `1px solid ${color}44` : '1px solid var(--color-border)',
-            }}
-          >
-            {String(value)}
-          </span>
-        );
+        return <OptionBadge label={String(value)} color={color} />;
       }
       case 'multi_select': {
         const vals = Array.isArray(value) ? value : [value];
@@ -512,19 +501,7 @@ export default function TableView({
             {vals.map((v, i) => {
               const opt = (field.options ?? []).find((o) => o.label === v);
               const color = (opt as any)?.color as string | undefined;
-              return (
-                <span
-                  key={i}
-                  className="inline-block text-xs font-medium px-2 py-0.5 rounded"
-                  style={{
-                    backgroundColor: color ? `${color}22` : 'var(--color-surface-hover)',
-                    color: color ?? 'var(--color-text-secondary)',
-                    border: color ? `1px solid ${color}44` : '1px solid var(--color-border)',
-                  }}
-                >
-                  {String(v)}
-                </span>
-              );
+              return <OptionBadge key={i} label={String(v)} color={color} />;
             })}
           </div>
         );
@@ -1267,5 +1244,32 @@ function PropertiesDndList({
         )}
       </Droppable>
     </DragDropContext>
+  );
+}
+
+/** Renders a select option value as a colored badge.
+ *  Supports both semantic tokens (info/warning/success/...) and hex colors (#rrggbb). */
+const SEMANTIC_TOKENS = new Set(['neutral','info','success','warning','orange','danger','critical','accent']);
+
+function OptionBadge({ label, color }: { label: string; color?: string }) {
+  if (color && SEMANTIC_TOKENS.has(color)) {
+    return (
+      <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded ${tagClass(color as TagVariant)}`}>
+        {label}
+      </span>
+    );
+  }
+  // hex color or no color
+  return (
+    <span
+      className="inline-block text-xs font-medium px-2 py-0.5 rounded"
+      style={{
+        backgroundColor: color ? `${color}22` : 'var(--color-surface-hover)',
+        color: color ?? 'var(--color-text-secondary)',
+        border: color ? `1px solid ${color}44` : '1px solid var(--color-border)',
+      }}
+    >
+      {label}
+    </span>
   );
 }
