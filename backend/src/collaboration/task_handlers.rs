@@ -1903,7 +1903,8 @@ async fn board_view(
         None
     };
 
-    Ok(serde_json::to_value(PaginatedResponse::new(rows, next_cursor)).unwrap())
+    let dtos = enrich_tasks(&state.pool, rows).await?;
+    Ok(serde_json::to_value(PaginatedResponse::new(dtos, next_cursor)).unwrap())
 }
 
 // ---------------------------------------------------------------------------
@@ -2039,7 +2040,8 @@ async fn table_view(
         None
     };
 
-    Ok(serde_json::to_value(PaginatedResponse::new(rows, next_cursor)).unwrap())
+    let dtos = enrich_tasks(&state.pool, rows).await?;
+    Ok(serde_json::to_value(PaginatedResponse::new(dtos, next_cursor)).unwrap())
 }
 
 // ---------------------------------------------------------------------------
@@ -2098,6 +2100,115 @@ async fn calendar_view(
         scheduled,
         unscheduled,
     }).unwrap())
+}
+
+// ---------------------------------------------------------------------------
+// Enrich TaskRow → TaskDto (batch labels, assignees, checklist, comments)
+// ---------------------------------------------------------------------------
+
+async fn enrich_tasks(
+    pool: &sqlx::PgPool,
+    rows: Vec<TaskRow>,
+) -> Result<Vec<TaskDto>, AppError> {
+    if rows.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let task_ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
+
+    // Batch-fetch labels
+    let label_rows: Vec<(Uuid, Uuid, String, String)> = sqlx::query_as(
+        "SELECT tl.task_id, l.id, l.name, l.color FROM labels l JOIN task_labels tl ON tl.label_id = l.id WHERE tl.task_id = ANY($1)",
+    )
+    .bind(&task_ids)
+    .fetch_all(pool)
+    .await?;
+
+    let mut labels_map: std::collections::HashMap<Uuid, Vec<LabelInfo>> = std::collections::HashMap::new();
+    for (task_id, lid, name, color) in label_rows {
+        labels_map.entry(task_id).or_default().push(LabelInfo { id: lid, name, color });
+    }
+
+    // Batch-fetch assignees
+    let assignee_rows: Vec<(Uuid, Uuid, String, String)> = sqlx::query_as(
+        "SELECT ta.task_id, u.id, u.name, u.email FROM users u JOIN task_assignees ta ON ta.user_id = u.id WHERE ta.task_id = ANY($1)",
+    )
+    .bind(&task_ids)
+    .fetch_all(pool)
+    .await?;
+
+    let mut assignees_map: std::collections::HashMap<Uuid, Vec<AssigneeInfo>> = std::collections::HashMap::new();
+    for (task_id, uid, name, email) in assignee_rows {
+        assignees_map.entry(task_id).or_default().push(AssigneeInfo { id: uid, name, email });
+    }
+
+    // Batch-fetch checklist summaries
+    let cl_rows: Vec<(Uuid, i64, i64)> = sqlx::query_as(
+        r#"
+        SELECT c.task_id, COUNT(ci.id), COUNT(ci.id) FILTER (WHERE ci.checked = true)
+        FROM task_checklists c
+        JOIN task_checklist_items ci ON ci.checklist_id = c.id
+        WHERE c.task_id = ANY($1)
+        GROUP BY c.task_id
+        "#,
+    )
+    .bind(&task_ids)
+    .fetch_all(pool)
+    .await?;
+
+    let mut cl_map: std::collections::HashMap<Uuid, (i64, i64)> = std::collections::HashMap::new();
+    for (task_id, total, checked) in cl_rows {
+        cl_map.insert(task_id, (total, checked));
+    }
+
+    // Batch-fetch comment counts
+    let comment_rows: Vec<(Uuid, i64)> = sqlx::query_as(
+        "SELECT task_id, COUNT(*) FROM comments WHERE task_id = ANY($1) AND deleted_at IS NULL GROUP BY task_id",
+    )
+    .bind(&task_ids)
+    .fetch_all(pool)
+    .await?;
+
+    let mut comment_map: std::collections::HashMap<Uuid, i64> = std::collections::HashMap::new();
+    for (task_id, count) in comment_rows {
+        comment_map.insert(task_id, count);
+    }
+
+    let dtos = rows
+        .into_iter()
+        .map(|task| {
+            let labels = labels_map.remove(&task.id).unwrap_or_default();
+            let assignees = assignees_map.remove(&task.id).unwrap_or_default();
+            let (cl_total, cl_checked) = cl_map.get(&task.id).copied().unwrap_or((0, 0));
+            let comment_count = comment_map.get(&task.id).copied().unwrap_or(0);
+            TaskDto {
+                id: task.id,
+                board_id: task.board_id,
+                column_id: task.column_id,
+                position: task.position,
+                title: task.title,
+                summary: task.summary,
+                description: task.description,
+                priority: task.priority,
+                status: task.status,
+                start_date: task.start_date,
+                due_date: task.due_date,
+                created_by: task.created_by,
+                version: task.version,
+                created_at: task.created_at,
+                updated_at: task.updated_at,
+                labels,
+                assignees,
+                checklist_summary: ChecklistSummary {
+                    total: cl_total,
+                    checked: cl_checked,
+                },
+                comment_count,
+            }
+        })
+        .collect();
+
+    Ok(dtos)
 }
 
 // ---------------------------------------------------------------------------

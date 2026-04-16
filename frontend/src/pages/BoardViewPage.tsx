@@ -610,7 +610,7 @@ export default function BoardViewPage() {
         className="px-6 py-3"
         style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface)' }}
       >
-        <Breadcrumbs items={[{ label: 'Boards', to: '/' }, { label: board.title }]} />
+        <Breadcrumbs items={[{ label: t('nav.boards'), to: '/' }, { label: board.title }]} />
         <div className="flex items-center gap-3 mt-1">
           <h1 className="text-lg font-bold" style={{ color: 'var(--color-text)' }}>{board.title}</h1>
           {board.description && (
