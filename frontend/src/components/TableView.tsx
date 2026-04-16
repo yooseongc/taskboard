@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import type {
   TaskDto,
   BoardColumn,
@@ -319,6 +320,33 @@ export default function TableView({
     return m;
   }, [columns]);
 
+  // Ordered list of visible columns for rendering headers and cells.
+  // Merges built-in columns + custom fields, sorted by columnOrder, filtered by hiddenColumns.
+  const orderedVisibleColumns = useMemo(() => {
+    const sortableIds = new Set<string>(['title', 'column', 'priority', 'due_date']);
+    const labelMap: Record<string, string> = {
+      title: t('tableView.colTitle'),
+      column: t('tableView.colColumn'),
+      priority: t('tableView.colPriority'),
+      due_date: t('tableView.colDueDate'),
+      assignees: t('tableView.colAssignees'),
+      info: t('tableView.colInfo'),
+    };
+    const allIds = [...ALL_COLUMN_IDS as readonly string[], ...realFields.map((f) => f.id)];
+    const sorted = [
+      ...columnOrder.filter((id) => allIds.includes(id)),
+      ...allIds.filter((id) => !columnOrder.includes(id)),
+    ];
+    return sorted
+      .filter((id) => !hiddenColumns.has(id as ColumnId))
+      .map((id) => ({
+        id,
+        label: labelMap[id] ?? realFields.find((f) => f.id === id)?.name ?? id,
+        sortable: sortableIds.has(id),
+        isCustomField: !ALL_COLUMN_IDS.includes(id as any),
+      }));
+  }, [columnOrder, hiddenColumns, realFields, t]);
+
   const columnColorMap = useMemo(() => {
     const m = new Map<string, string | null>();
     for (const c of columns) m.set(c.id, c.color ?? null);
@@ -506,6 +534,58 @@ export default function TableView({
     }
   };
 
+  const renderCell = (colId: string, task: TaskDto): React.ReactNode => {
+    switch (colId) {
+      case 'title':
+        return (
+          <div>
+            {(task.labels ?? []).length > 0 && (
+              <div className="flex gap-1 mb-0.5">
+                {(task.labels ?? []).map((l) => (
+                  <span key={l.id} className="inline-block h-1.5 w-6 rounded-full" style={{ backgroundColor: l.color }} />
+                ))}
+              </div>
+            )}
+            <span className="font-medium" style={{ color: 'var(--color-text)' }}>{task.title}</span>
+            {density !== 'compact' && task.summary && (
+              <span className="text-xs ml-2" style={{ color: 'var(--color-text-secondary)' }}>{task.summary}</span>
+            )}
+          </div>
+        );
+      case 'column': {
+        const colName = columnMap.get(task.column_id);
+        const colColor = columnColorMap.get(task.column_id);
+        if (!colName) return '-';
+        return (
+          <span
+            className="inline-block text-xs font-medium px-2 py-0.5 rounded"
+            style={{
+              backgroundColor: colColor ? `${colColor}22` : 'var(--color-surface-hover)',
+              color: colColor ?? 'var(--color-text-secondary)',
+              border: colColor ? `1px solid ${colColor}44` : '1px solid var(--color-border)',
+            }}
+          >
+            {colName}
+          </span>
+        );
+      }
+      case 'priority':
+        return <Badge className={priorityClass(task.priority)}>{task.priority}</Badge>;
+      case 'due_date':
+        return task.due_date ? new Date(task.due_date).toLocaleDateString() : '-';
+      case 'assignees':
+        return <AvatarStack users={task.assignees ?? []} max={3} size="md" />;
+      case 'info':
+        return <TaskMetaBadges task={task} />;
+      default: {
+        // Custom field
+        const field = realFields.find((f) => f.id === colId);
+        if (!field) return '-';
+        return renderFieldCell(field, valuesByTaskField.get(task.id)?.get(colId));
+      }
+    }
+  };
+
   const renderTaskRow = (task: TaskDto) => (
     <tr
       key={task.id}
@@ -530,94 +610,11 @@ export default function TableView({
           />
         </td>
       )}
-      {!hiddenColumns.has('title') && (
-        <td className={`px-4 ${rowPad}`}>
-          <div>
-            {(task.labels ?? []).length > 0 && (
-              <div className="flex gap-1 mb-0.5">
-                {(task.labels ?? []).map((l) => (
-                  <span
-                    key={l.id}
-                    className="inline-block h-1.5 w-6 rounded-full"
-                    style={{ backgroundColor: l.color }}
-                  />
-                ))}
-              </div>
-            )}
-            <span
-              className="font-medium"
-              style={{ color: 'var(--color-text)' }}
-            >
-              {task.title}
-            </span>
-            {density !== 'compact' && task.summary && (
-              <span
-                className="text-xs ml-2"
-                style={{ color: 'var(--color-text-secondary)' }}
-              >
-                {task.summary}
-              </span>
-            )}
-          </div>
+      {orderedVisibleColumns.map((col) => (
+        <td key={col.id} className={`px-4 ${col.id === 'due_date' ? 'text-xs' : ''} ${rowPad}`} style={col.isCustomField || col.id === 'due_date' ? { color: 'var(--color-text-secondary)' } : undefined}>
+          {renderCell(col.id, task)}
         </td>
-      )}
-      {!hiddenColumns.has('column') && (
-        <td className={`px-4 ${rowPad}`}>
-          {(() => {
-            const colName = columnMap.get(task.column_id);
-            const colColor = columnColorMap.get(task.column_id);
-            if (!colName) return '-';
-            return (
-              <span
-                className="inline-block text-xs font-medium px-2 py-0.5 rounded"
-                style={{
-                  backgroundColor: colColor ? `${colColor}22` : 'var(--color-surface-hover)',
-                  color: colColor ?? 'var(--color-text-secondary)',
-                  border: colColor ? `1px solid ${colColor}44` : '1px solid var(--color-border)',
-                }}
-              >
-                {colName}
-              </span>
-            );
-          })()}
-        </td>
-      )}
-      {!hiddenColumns.has('priority') && (
-        <td className={`px-4 ${rowPad}`}>
-          <Badge className={priorityClass(task.priority)}>
-            {task.priority}
-          </Badge>
-        </td>
-      )}
-      {!hiddenColumns.has('due_date') && (
-        <td
-          className={`px-4 text-xs ${rowPad}`}
-          style={{ color: 'var(--color-text-secondary)' }}
-        >
-          {task.due_date ? new Date(task.due_date).toLocaleDateString() : '-'}
-        </td>
-      )}
-      {!hiddenColumns.has('assignees') && (
-        <td className={`px-4 ${rowPad}`}>
-          <AvatarStack users={task.assignees ?? []} max={3} size="md" />
-        </td>
-      )}
-      {realFields.map((field) =>
-        !hiddenColumns.has(field.id as ColumnId) ? (
-          <td
-            key={field.id}
-            className={`px-4 text-xs ${rowPad}`}
-            style={{ color: 'var(--color-text-secondary)' }}
-          >
-            {renderFieldCell(field, valuesByTaskField.get(task.id)?.get(field.id))}
-          </td>
-        ) : null,
-      )}
-      {!hiddenColumns.has('info') && (
-        <td className={`px-4 ${rowPad}`}>
-          <TaskMetaBadges task={task} />
-        </td>
-      )}
+      ))}
     </tr>
   );
 
@@ -864,93 +861,27 @@ export default function TableView({
                   />
                 </th>
               )}
-              {(
-                [
-                  ['title', t('tableView.colTitle')],
-                  ['column', t('tableView.colColumn')],
-                  ['priority', t('tableView.colPriority')],
-                  ['due_date', t('tableView.colDueDate')],
-                ] as [SortKey, string][]
-              )
-                .filter(([key]) => !hiddenColumns.has(key as ColumnId))
-                .map(([key, label]) => (
-                  <th
-                    key={key}
-                    onClick={() => handleSort(key)}
-                    className="px-4 py-2.5 text-left font-medium cursor-pointer hover:bg-[var(--color-surface-active)] select-none relative group"
-                    style={{
-                      color: 'var(--color-text-secondary)',
-                      width: columnWidths[key],
-                      minWidth: columnWidths[key],
-                    }}
-                  >
-                    {label}
-                    <SortIcon col={key} />
-                    <ColumnResizeHandle
-                      columnKey={key}
-                      onResize={(w) =>
-                        setColumnWidths((prev) => ({ ...prev, [key]: w }))
-                      }
-                    />
-                  </th>
-                ))}
-              {!hiddenColumns.has('assignees') && (
+              {orderedVisibleColumns.map((col) => (
                 <th
-                  className="px-4 py-2.5 text-left font-medium relative group"
+                  key={col.id}
+                  onClick={col.sortable ? () => handleSort(col.id as SortKey) : undefined}
+                  className={`px-4 py-2.5 text-left font-medium relative group select-none ${col.sortable ? 'cursor-pointer hover:bg-[var(--color-surface-active)]' : ''}`}
                   style={{
                     color: 'var(--color-text-secondary)',
-                    width: columnWidths['assignees'],
-                    minWidth: columnWidths['assignees'],
+                    width: columnWidths[col.id],
+                    minWidth: columnWidths[col.id],
                   }}
                 >
-                  {t('tableView.colAssignees')}
+                  {col.label}
+                  {col.sortable && <SortIcon col={col.id as SortKey} />}
                   <ColumnResizeHandle
-                    columnKey="assignees"
+                    columnKey={col.id}
                     onResize={(w) =>
-                      setColumnWidths((prev) => ({ ...prev, assignees: w }))
+                      setColumnWidths((prev) => ({ ...prev, [col.id]: w }))
                     }
                   />
                 </th>
-              )}
-              {realFields.map((field) =>
-                !hiddenColumns.has(field.id as ColumnId) ? (
-                  <th
-                    key={field.id}
-                    className="px-4 py-2.5 text-left font-medium relative group"
-                    style={{
-                      color: 'var(--color-text-secondary)',
-                      width: columnWidths[field.id],
-                      minWidth: columnWidths[field.id],
-                    }}
-                  >
-                    {field.name}
-                    <ColumnResizeHandle
-                      columnKey={field.id}
-                      onResize={(w) =>
-                        setColumnWidths((prev) => ({ ...prev, [field.id]: w }))
-                      }
-                    />
-                  </th>
-                ) : null,
-              )}
-              {!hiddenColumns.has('info') && (
-                <th
-                  className="px-4 py-2.5 text-left font-medium w-16 relative group"
-                  style={{
-                    color: 'var(--color-text-secondary)',
-                    width: columnWidths['info'],
-                    minWidth: columnWidths['info'],
-                  }}
-                >
-                  {t('tableView.colInfo')}
-                  <ColumnResizeHandle
-                    columnKey="info"
-                    onResize={(w) =>
-                      setColumnWidths((prev) => ({ ...prev, info: w }))
-                    }
-                  />
-                </th>
-              )}
+              ))}
             </tr>
           </thead>
           <tbody
@@ -1034,106 +965,14 @@ export default function TableView({
           width="max-w-sm"
         >
           <div className="space-y-1">
-            {(() => {
-              const allItems: { id: string; label: string; isBuiltIn: boolean }[] = [
-                ...ALL_COLUMN_IDS.map((id) => ({
-                  id,
-                  label: id === 'title' ? t('tableView.colTitle')
-                       : id === 'column' ? t('tableView.colColumn')
-                       : id === 'priority' ? t('tableView.colPriority')
-                       : id === 'due_date' ? t('tableView.colDueDate')
-                       : id === 'assignees' ? t('tableView.colAssignees')
-                       : t('tableView.colInfo'),
-                  isBuiltIn: true,
-                })),
-                ...realFields.map((f) => ({ id: f.id, label: f.name, isBuiltIn: false })),
-              ];
-              // Sort by columnOrder
-              const ordered = [...allItems].sort((a, b) => {
-                const ai = columnOrder.indexOf(a.id);
-                const bi = columnOrder.indexOf(b.id);
-                return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-              });
-              const moveUp = (id: string) => {
-                setColumnOrder((prev) => {
-                  const list = [...prev];
-                  const idx = list.indexOf(id);
-                  if (idx <= 0) return prev;
-                  [list[idx - 1], list[idx]] = [list[idx], list[idx - 1]];
-                  return list;
-                });
-              };
-              const moveDown = (id: string) => {
-                setColumnOrder((prev) => {
-                  const list = [...prev];
-                  const idx = list.indexOf(id);
-                  if (idx === -1 || idx >= list.length - 1) return prev;
-                  [list[idx], list[idx + 1]] = [list[idx + 1], list[idx]];
-                  return list;
-                });
-              };
-              // Ensure all items are in columnOrder
-              if (ordered.some((item) => !columnOrder.includes(item.id))) {
-                const missing = ordered.filter((item) => !columnOrder.includes(item.id));
-                setColumnOrder((prev) => [...prev, ...missing.map((m) => m.id)]);
-              }
-              return ordered.map((item, idx) => {
-                const hidden = hiddenColumns.has(item.id as ColumnId);
-                return (
-                  <div
-                    key={item.id}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg"
-                    style={{
-                      backgroundColor: hidden ? 'transparent' : 'var(--color-surface)',
-                      border: '1px solid var(--color-border)',
-                      opacity: hidden ? 0.5 : 1,
-                    }}
-                  >
-                    {/* Drag handle hint */}
-                    <span
-                      className="text-xs cursor-grab select-none"
-                      style={{ color: 'var(--color-text-muted)' }}
-                    >
-                      ⠿
-                    </span>
-                    <input
-                      type="checkbox"
-                      className="w-3.5 h-3.5 rounded"
-                      checked={!hidden}
-                      onChange={() =>
-                        setHiddenColumns((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(item.id as ColumnId)) next.delete(item.id as ColumnId);
-                          else next.add(item.id as ColumnId);
-                          return next;
-                        })
-                      }
-                    />
-                    <span className="flex-1 text-sm font-medium" style={{ color: 'var(--color-text)' }}>
-                      {item.label}
-                    </span>
-                    <div className="flex flex-col -my-1">
-                      <button
-                        onClick={() => moveUp(item.id)}
-                        disabled={idx === 0}
-                        className="text-[10px] leading-none px-0.5 py-0.5 rounded hover:bg-[var(--color-surface-hover)] disabled:opacity-15 transition-opacity"
-                        style={{ color: 'var(--color-text-muted)' }}
-                      >
-                        ▴
-                      </button>
-                      <button
-                        onClick={() => moveDown(item.id)}
-                        disabled={idx === ordered.length - 1}
-                        className="text-[10px] leading-none px-0.5 py-0.5 rounded hover:bg-[var(--color-surface-hover)] disabled:opacity-15 transition-opacity"
-                        style={{ color: 'var(--color-text-muted)' }}
-                      >
-                        ▾
-                      </button>
-                    </div>
-                  </div>
-                );
-              });
-            })()}
+            <PropertiesDndList
+              columnOrder={columnOrder}
+              setColumnOrder={setColumnOrder}
+              hiddenColumns={hiddenColumns}
+              setHiddenColumns={setHiddenColumns}
+              realFields={realFields}
+              t={t}
+            />
           </div>
         </Modal>
       )}
@@ -1323,5 +1162,110 @@ function ColumnResizeHandle({
       style={{ backgroundColor: 'var(--color-primary)' }}
       title={`Resize ${columnKey}`}
     />
+  );
+}
+
+/** Drag-and-drop list for the Properties modal. */
+function PropertiesDndList({
+  columnOrder,
+  setColumnOrder,
+  hiddenColumns,
+  setHiddenColumns,
+  realFields,
+  t,
+}: {
+  columnOrder: string[];
+  setColumnOrder: React.Dispatch<React.SetStateAction<string[]>>;
+  hiddenColumns: Set<ColumnId>;
+  setHiddenColumns: React.Dispatch<React.SetStateAction<Set<ColumnId>>>;
+  realFields: CustomField[];
+  t: (key: string) => string;
+}) {
+  const colLabel = (id: string) => {
+    switch (id) {
+      case 'title': return t('tableView.colTitle');
+      case 'column': return t('tableView.colColumn');
+      case 'priority': return t('tableView.colPriority');
+      case 'due_date': return t('tableView.colDueDate');
+      case 'assignees': return t('tableView.colAssignees');
+      case 'info': return t('tableView.colInfo');
+      default: {
+        const f = realFields.find((rf) => rf.id === id);
+        return f?.name ?? id;
+      }
+    }
+  };
+
+  // Build ordered list: start from columnOrder, add any missing items at the end
+  const allIds = [...ALL_COLUMN_IDS as readonly string[], ...realFields.map((f) => f.id)];
+  const ordered = [
+    ...columnOrder.filter((id) => allIds.includes(id)),
+    ...allIds.filter((id) => !columnOrder.includes(id)),
+  ];
+
+  const onDragEnd = (result: DropResult) => {
+    if (!result.destination) return;
+    const list = [...ordered];
+    const [moved] = list.splice(result.source.index, 1);
+    list.splice(result.destination.index, 0, moved);
+    setColumnOrder(list);
+  };
+
+  return (
+    <DragDropContext onDragEnd={onDragEnd}>
+      <Droppable droppableId="properties-list">
+        {(provided) => (
+          <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-1">
+            {ordered.map((id, idx) => {
+              const hidden = hiddenColumns.has(id as ColumnId);
+              return (
+                <Draggable key={id} draggableId={id} index={idx}>
+                  {(dragProvided, snapshot) => (
+                    <div
+                      ref={dragProvided.innerRef}
+                      {...dragProvided.draggableProps}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg"
+                      style={{
+                        ...dragProvided.draggableProps.style,
+                        backgroundColor: snapshot.isDragging
+                          ? 'var(--color-primary-light)'
+                          : hidden ? 'transparent' : 'var(--color-surface)',
+                        border: '1px solid var(--color-border)',
+                        opacity: hidden ? 0.5 : 1,
+                      }}
+                    >
+                      <span
+                        {...dragProvided.dragHandleProps}
+                        className="text-xs cursor-grab select-none"
+                        style={{ color: 'var(--color-text-muted)' }}
+                      >
+                        ⠿
+                      </span>
+                      <input
+                        type="checkbox"
+                        className="w-3.5 h-3.5 rounded"
+                        checked={!hidden}
+                        onChange={() =>
+                          setHiddenColumns((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(id as ColumnId)) next.delete(id as ColumnId);
+                            else next.add(id as ColumnId);
+                            return next;
+                          })
+                        }
+                      />
+                      <span className="flex-1 text-sm font-medium" style={{ color: 'var(--color-text)' }}>
+                        {colLabel(id)}
+                      </span>
+                    </div>
+                  )}
+                </Draggable>
+              );
+            })}
+            {provided.placeholder}
+          </div>
+        )}
+      </Droppable>
+    </DragDropContext>
   );
 }
