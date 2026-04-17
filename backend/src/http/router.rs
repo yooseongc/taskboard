@@ -66,6 +66,10 @@ pub fn build_router(state: AppState) -> Router {
         // ROLES.md §6: management views — boards per user / per department
         .route("/api/users/{user_id}/boards", get(collab::list_user_boards))
         .route("/api/departments/{dept_id}/boards", get(collab::list_department_boards))
+        // ROLES.md §7: board ownership transfer
+        .route("/api/boards/{id}/transfer", patch(collab::transfer_board))
+        // ROLES.md §9: audit log (SystemAdmin only)
+        .route("/api/audit-logs", get(collab::list_audit_logs))
         .route("/api/boards/{id}", get(collab::get_board))
         .route("/api/boards/{id}", patch(collab::patch_board))
         .route("/api/boards/{id}", delete(collab::delete_board))

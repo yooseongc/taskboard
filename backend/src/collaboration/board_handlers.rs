@@ -819,6 +819,13 @@ pub async fn add_board_member(
 
     tx.commit().await?;
 
+    // Audit log (ROLES.md §9)
+    record_audit_event(
+        &state.pool, user.user_id, "member.add", "board_member", Some(body.user_id),
+        None,
+        Some(serde_json::json!({ "board_id": board_id, "role": body.role_in_board })),
+    ).await;
+
     Ok((
         StatusCode::CREATED,
         Json(serde_json::json!({
@@ -986,6 +993,12 @@ pub async fn remove_board_member(
 
     tx.commit().await?;
 
+    // Audit log (ROLES.md §9)
+    record_audit_event(
+        &state.pool, user.user_id, "member.remove", "board_member", Some(target_user_id),
+        Some(serde_json::json!({ "board_id": board_id })), None,
+    ).await;
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1018,6 +1031,13 @@ pub async fn patch_board_member(
     .fetch_optional(&state.pool)
     .await?
     .ok_or_else(|| AppError::NotFound("Board member".into()))?;
+
+    // Audit log (ROLES.md §9)
+    record_audit_event(
+        &state.pool, user.user_id, "member.role_change", "board_member", Some(target_user_id),
+        None,
+        Some(serde_json::json!({ "board_id": board_id, "new_role": body.role_in_board })),
+    ).await;
 
     Ok(Json(serde_json::json!({
         "user_id": row.user_id,
@@ -1221,6 +1241,240 @@ pub async fn list_my_boards(
     };
 
     Ok(Json(serde_json::json!({ "items": filtered })))
+}
+
+// ===========================================================================
+// ROLES.md §9: Audit log helper — record permission/role changes.
+// ===========================================================================
+
+async fn record_audit_event(
+    pool: &sqlx::PgPool,
+    actor_id: Uuid,
+    action: &str,
+    target_type: &str,
+    target_id: Option<Uuid>,
+    before: Option<serde_json::Value>,
+    after: Option<serde_json::Value>,
+) {
+    // Best-effort: log audit failure but don't block the operation.
+    let id = uuid7::now_v7();
+    if let Err(e) = sqlx::query(
+        "INSERT INTO auth_audit_log (id, actor_id, action, target_type, target_id, before, after) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    )
+    .bind(id)
+    .bind(actor_id)
+    .bind(action)
+    .bind(target_type)
+    .bind(target_id)
+    .bind(before)
+    .bind(after)
+    .execute(pool)
+    .await
+    {
+        tracing::error!(error = %e, action = action, "Failed to write audit log");
+    }
+}
+
+// ===========================================================================
+// ROLES.md §7: PATCH /api/boards/:id/transfer
+// SystemAdmin: any board → any owner
+// Board Admin (department): can transfer to other depts they belong to
+// Personal owner: can transfer to another user
+// ===========================================================================
+
+#[derive(serde::Deserialize, Debug)]
+pub struct TransferBoardRequest {
+    /// "department" or "personal"
+    pub owner_type: String,
+    /// Required when owner_type == "department"
+    pub department_ids: Option<Vec<Uuid>>,
+    /// Required when owner_type == "personal"
+    pub owner_id: Option<Uuid>,
+}
+
+pub async fn transfer_board(
+    State(state): State<AppState>,
+    user: AuthnUser,
+    Path(board_id): Path<Uuid>,
+    Json(body): Json<TransferBoardRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    // Fetch current board
+    let board = sqlx::query_as::<_, BoardRow>(
+        "SELECT * FROM boards WHERE id = $1 AND deleted_at IS NULL",
+    )
+    .bind(board_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("Board".into()))?;
+
+    let is_sysadmin = user.global_roles.contains(&GlobalRole::SystemAdmin);
+
+    // Authz:
+    //   - SystemAdmin: anything
+    //   - Otherwise: must be board admin (board_member.role_in_board = 'admin')
+    if !is_sysadmin {
+        let board_role: Option<(String,)> = sqlx::query_as(
+            "SELECT role_in_board FROM board_members WHERE board_id = $1 AND user_id = $2",
+        )
+        .bind(board_id)
+        .bind(user.user_id)
+        .fetch_optional(&state.pool)
+        .await?;
+        let is_board_admin = board_role.as_ref().map(|(r,)| r == "admin").unwrap_or(false);
+        if !is_board_admin {
+            return Err(AppError::PermissionDenied {
+                action: "transfer".into(),
+                resource: "boards".into(),
+            });
+        }
+    }
+
+    // Validate request body
+    let new_type = body.owner_type.as_str();
+    if !matches!(new_type, "department" | "personal") {
+        return Err(AppError::InvalidInput("owner_type must be 'department' or 'personal'".into()));
+    }
+
+    let mut tx = state.pool.begin().await?;
+
+    let before_json = serde_json::json!({
+        "owner_type": board.owner_type,
+        "owner_id": board.owner_id,
+    });
+
+    if new_type == "personal" {
+        let new_owner = body.owner_id.unwrap_or(board.owner_id);
+        // Non-sysadmin transferring to personal: must be transferring to themselves
+        if !is_sysadmin && new_owner != user.user_id {
+            return Err(AppError::PermissionDenied {
+                action: "transfer_to_other".into(),
+                resource: "boards".into(),
+            });
+        }
+        // Update board, clear board_departments
+        sqlx::query("DELETE FROM board_departments WHERE board_id = $1")
+            .bind(board_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("UPDATE boards SET owner_type = 'personal', owner_id = $2, updated_at = now() WHERE id = $1")
+            .bind(board_id)
+            .bind(new_owner)
+            .execute(&mut *tx)
+            .await?;
+        // Ensure new owner is admin
+        sqlx::query(
+            "INSERT INTO board_members (user_id, board_id, role_in_board) VALUES ($1, $2, 'admin') ON CONFLICT (user_id, board_id) DO UPDATE SET role_in_board = 'admin'",
+        )
+        .bind(new_owner)
+        .bind(board_id)
+        .execute(&mut *tx)
+        .await?;
+    } else {
+        // department
+        let dept_ids = body.department_ids.clone().unwrap_or_default();
+        if dept_ids.is_empty() {
+            return Err(AppError::InvalidInput("department_ids required for department transfer".into()));
+        }
+        if dept_ids.len() > 5 {
+            return Err(AppError::BoardDepartmentLimitExceeded);
+        }
+        // Non-sysadmin: all target depts must include user's depts
+        if !is_sysadmin {
+            let user_depts: std::collections::HashSet<Uuid> = user.department_ids.iter().copied().collect();
+            for d in &dept_ids {
+                if !user_depts.contains(d) {
+                    return Err(AppError::PermissionDenied {
+                        action: "transfer_to_external_dept".into(),
+                        resource: "boards".into(),
+                    });
+                }
+            }
+        }
+        sqlx::query("DELETE FROM board_departments WHERE board_id = $1")
+            .bind(board_id)
+            .execute(&mut *tx)
+            .await?;
+        for d in &dept_ids {
+            sqlx::query("INSERT INTO board_departments (board_id, department_id) VALUES ($1, $2)")
+                .bind(board_id)
+                .bind(d)
+                .execute(&mut *tx)
+                .await?;
+        }
+        sqlx::query("UPDATE boards SET owner_type = 'department', updated_at = now() WHERE id = $1")
+            .bind(board_id)
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    tx.commit().await?;
+
+    // Audit log
+    let after_json = serde_json::json!({
+        "owner_type": new_type,
+        "owner_id": body.owner_id,
+        "department_ids": body.department_ids,
+    });
+    record_audit_event(&state.pool, user.user_id, "board.transfer", "board", Some(board_id), Some(before_json), Some(after_json)).await;
+
+    Ok(Json(serde_json::json!({ "board_id": board_id, "owner_type": new_type })))
+}
+
+// ===========================================================================
+// ROLES.md §9: GET /api/audit-logs (SystemAdmin only)
+// ===========================================================================
+
+#[derive(serde::Deserialize, Debug)]
+pub struct AuditLogQuery {
+    pub limit: Option<i64>,
+    pub action: Option<String>,
+}
+
+pub async fn list_audit_logs(
+    State(state): State<AppState>,
+    user: AuthnUser,
+    Query(q): Query<AuditLogQuery>,
+) -> Result<impl IntoResponse, AppError> {
+    if !user.global_roles.contains(&GlobalRole::SystemAdmin) {
+        return Err(AppError::PermissionDenied {
+            action: "list_audit_logs".into(),
+            resource: "audit".into(),
+        });
+    }
+    let limit = q.limit.unwrap_or(100).clamp(1, 500);
+
+    let rows: Vec<(Uuid, Uuid, String, String, Option<Uuid>, Option<serde_json::Value>, Option<serde_json::Value>, chrono::DateTime<chrono::Utc>)> =
+        if let Some(action) = &q.action {
+            sqlx::query_as(
+                "SELECT id, actor_id, action, target_type, target_id, before, after, created_at FROM auth_audit_log WHERE action = $1 ORDER BY created_at DESC LIMIT $2",
+            )
+            .bind(action)
+            .bind(limit)
+            .fetch_all(&state.pool)
+            .await?
+        } else {
+            sqlx::query_as(
+                "SELECT id, actor_id, action, target_type, target_id, before, after, created_at FROM auth_audit_log ORDER BY created_at DESC LIMIT $1",
+            )
+            .bind(limit)
+            .fetch_all(&state.pool)
+            .await?
+        };
+
+    let items: Vec<serde_json::Value> = rows.into_iter().map(|(id, actor_id, action, target_type, target_id, before, after, created_at)| {
+        serde_json::json!({
+            "id": id,
+            "actor_id": actor_id,
+            "action": action,
+            "target_type": target_type,
+            "target_id": target_id,
+            "before": before,
+            "after": after,
+            "created_at": created_at,
+        })
+    }).collect();
+
+    Ok(Json(serde_json::json!({ "items": items })))
 }
 
 // ===========================================================================
