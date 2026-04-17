@@ -582,11 +582,33 @@ export default function TableView({
           />
         </td>
       )}
-      {orderedVisibleColumns.map((col) => (
-        <td key={col.id} className={`px-4 ${col.id === 'due_date' ? 'text-xs' : ''} ${rowPad}`} style={col.isCustomField || col.id === 'due_date' ? { color: 'var(--color-text-secondary)' } : undefined}>
-          {renderCell(col.id, task)}
-        </td>
-      ))}
+      {orderedVisibleColumns.map((col, i) => {
+        const sticky = i === 0;
+        const baseStyle =
+          col.isCustomField || col.id === 'due_date'
+            ? { color: 'var(--color-text-secondary)' as const }
+            : undefined;
+        return (
+          <td
+            key={col.id}
+            className={`px-4 ${col.id === 'due_date' ? 'text-xs' : ''} ${rowPad}`}
+            style={{
+              ...baseStyle,
+              ...(sticky
+                ? {
+                    position: 'sticky',
+                    left: (onBulkMove || onBulkDelete) ? 32 : 0,
+                    zIndex: 1,
+                    backgroundColor: 'var(--color-surface)',
+                    boxShadow: '2px 0 4px rgba(0, 0, 0, 0.04)',
+                  }
+                : {}),
+            }}
+          >
+            {renderCell(col.id, task)}
+          </td>
+        );
+      })}
     </tr>
   );
 
@@ -840,27 +862,42 @@ export default function TableView({
                   />
                 </th>
               )}
-              {orderedVisibleColumns.map((col) => (
-                <th
-                  key={col.id}
-                  onClick={col.sortable ? () => handleSort(col.id as SortKey) : undefined}
-                  className={`px-4 py-2.5 text-left font-medium relative group select-none ${col.sortable ? 'cursor-pointer hover:bg-[var(--color-surface-active)]' : ''}`}
-                  style={{
-                    color: 'var(--color-text-secondary)',
-                    width: columnWidths[col.id],
-                    minWidth: columnWidths[col.id],
-                  }}
-                >
-                  {col.label}
-                  {col.sortable && <SortIcon col={col.id as SortKey} />}
-                  <ColumnResizeHandle
-                    columnKey={col.id}
-                    onResize={(w) =>
-                      setColumnWidths((prev) => ({ ...prev, [col.id]: w }))
-                    }
-                  />
-                </th>
-              ))}
+              {orderedVisibleColumns.map((col, i) => {
+                // First visible column (usually "Title") stays fixed while
+                // the user scrolls horizontally — the wide-custom-field case
+                // otherwise loses context about which row they're reading.
+                const sticky = i === 0;
+                return (
+                  <th
+                    key={col.id}
+                    onClick={col.sortable ? () => handleSort(col.id as SortKey) : undefined}
+                    className={`px-4 py-2.5 text-left font-medium relative group select-none ${col.sortable ? 'cursor-pointer hover:bg-[var(--color-surface-active)]' : ''}`}
+                    style={{
+                      color: 'var(--color-text-secondary)',
+                      width: columnWidths[col.id],
+                      minWidth: columnWidths[col.id],
+                      ...(sticky
+                        ? {
+                            position: 'sticky',
+                            left: (onBulkMove || onBulkDelete) ? 32 : 0,
+                            zIndex: 2,
+                            backgroundColor: 'var(--color-surface-hover)',
+                            boxShadow: '2px 0 4px rgba(0, 0, 0, 0.04)',
+                          }
+                        : {}),
+                    }}
+                  >
+                    {col.label}
+                    {col.sortable && <SortIcon col={col.id as SortKey} />}
+                    <ColumnResizeHandle
+                      columnKey={col.id}
+                      onResize={(w) =>
+                        setColumnWidths((prev) => ({ ...prev, [col.id]: w }))
+                      }
+                    />
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody
@@ -972,7 +1009,7 @@ export default function TableView({
                     style={{ color: 'var(--color-text-secondary)' }}>
                   {/* Row count belongs next to the bulk-select column so it
                       lines up with the checkbox for every data row. */}
-                  {`${t('tableView.count')} ${sorted.length}`}
+                  {t('tableView.count', { count: sorted.length })}
                 </td>
               )}
               {orderedVisibleColumns.map((col, idx) => {
@@ -997,7 +1034,6 @@ export default function TableView({
                       })
                     }
                     leadingCount={showCountHere ? sorted.length : undefined}
-                    leadingCountLabel={t('tableView.count')}
                   />
                 );
               })}
@@ -1332,7 +1368,6 @@ function AggregationFooterCell({
   type,
   onChange,
   leadingCount,
-  leadingCountLabel,
 }: {
   columnId: string;
   tasks: TaskDto[];
@@ -1342,7 +1377,6 @@ function AggregationFooterCell({
   type: AggType;
   onChange: (next: AggType) => void;
   leadingCount?: number;
-  leadingCountLabel?: string;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -1371,7 +1405,7 @@ function AggregationFooterCell({
     >
       {leadingCount !== undefined && (
         <span className="mr-3 font-semibold uppercase tracking-wider">
-          {leadingCountLabel} {leadingCount}
+          {t('tableView.count', { count: leadingCount })}
         </span>
       )}
       <button
