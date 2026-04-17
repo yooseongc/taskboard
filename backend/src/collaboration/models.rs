@@ -134,12 +134,19 @@ pub struct TemplateRow {
 // Board DTOs (S-013)
 // ---------------------------------------------------------------------------
 
-/// S-013: Board creation request.
+/// S-013 (+ROLES.md §2): Board creation request.
+///
+/// `owner_type` chooses the ownership model:
+///   - "department" (default if department_ids non-empty): bound to 1+ depts
+///   - "personal": owned solely by the creator; department_ids ignored
 #[derive(Deserialize, Debug)]
 pub struct CreateBoardRequest {
     pub title: String,
     pub description: Option<String>,
+    #[serde(default)]
     pub department_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub owner_type: Option<String>,
 }
 
 /// S-013: Board patch request.
@@ -158,6 +165,7 @@ pub struct BoardResponse {
     pub title: String,
     pub description: Option<String>,
     pub owner_id: Uuid,
+    pub owner_type: String,
     pub department_ids: Vec<Uuid>,
     pub version: i64,
     pub created_at: DateTime<Utc>,
@@ -190,6 +198,7 @@ pub struct BoardDetail {
     pub title: String,
     pub description: Option<String>,
     pub owner_id: Uuid,
+    pub owner_type: String,
     pub department_ids: Vec<Uuid>,
     pub member_count: i64,
     pub column_count: i64,

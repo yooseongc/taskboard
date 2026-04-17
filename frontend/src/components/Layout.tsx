@@ -4,8 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../stores/authStore';
 import { getLogoutUrl } from '../auth/oidc';
 import { usePermissions } from '../hooks/usePermissions';
-import { useBoards } from '../api/boards';
-import { useDepartments } from '../api/departments';
+import { useMyBoards } from '../api/boards';
 import { useBoardViews, type ViewType } from '../api/views';
 import { ToastContainer } from './Toast';
 import CommandPalette from './CommandPalette';
@@ -40,30 +39,20 @@ export default function Layout() {
   const [boardsExpanded, setBoardsExpanded] = useState(true);
   const { isSystemAdmin } = usePermissions();
   const { t } = useTranslation();
-  const { data: boardsData } = useBoards(30);
-  const { data: deptsData } = useDepartments();
+  const { data: myBoardsData } = useMyBoards('all');
 
-  // Group boards by their first department for sidebar sections
-  const boardGroups = useMemo(() => {
-    const boards = boardsData?.items ?? [];
-    const depts = deptsData?.items ?? [];
-    const deptMap = new Map(depts.map((d) => [d.id, d.name]));
-    const groups = new Map<string, { name: string; boards: typeof boards }>();
-    const ungrouped: typeof boards = [];
-
-    for (const board of boards) {
-      const deptId = board.department_ids?.[0];
-      if (deptId && deptMap.has(deptId)) {
-        const name = deptMap.get(deptId)!;
-        const existing = groups.get(deptId);
-        if (existing) existing.boards.push(board);
-        else groups.set(deptId, { name, boards: [board] });
-      } else {
-        ungrouped.push(board);
-      }
-    }
-    return { groups: [...groups.values()], ungrouped };
-  }, [boardsData, deptsData]);
+  // ROLES.md §5: 4 buckets — favorites + department + personal + invited.
+  // A pinned board appears in both "Favorites" and its native bucket.
+  const boardBuckets = useMemo(() => {
+    const all = myBoardsData?.items ?? [];
+    return {
+      favorites: all.filter((b) => b.pinned),
+      department: all.filter((b) => b.bucket === 'department'),
+      personal: all.filter((b) => b.bucket === 'personal'),
+      invited: all.filter((b) => b.bucket === 'invited'),
+    };
+  }, [myBoardsData]);
+  const totalBoards = (myBoardsData?.items ?? []).length;
 
   // Ctrl+K / Cmd+K opens command palette
   useEffect(() => {
@@ -137,8 +126,8 @@ export default function Layout() {
             );
           })}
 
-          {/* My Boards — grouped by team/department */}
-          {(boardsData?.items?.length ?? 0) > 0 && (
+          {/* My Boards — 4-bucket grouping (ROLES.md §5) */}
+          {totalBoards > 0 && (
             <div className="mt-2">
               <button
                 onClick={() => setBoardsExpanded((v) => !v)}
@@ -157,31 +146,26 @@ export default function Layout() {
               </button>
               {boardsExpanded && (
                 <div>
-                  {/* Team/dept sections */}
-                  {boardGroups.groups.map((group) => (
-                    <div key={group.name}>
-                      <div
-                        className="px-4 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider truncate"
-                        style={{ color: 'var(--color-sidebar-text)', opacity: 0.5 }}
-                        title={group.name}
-                      >
-                        {group.name}
-                      </div>
-                      {group.boards.map((board) => {
-                        const active = location.pathname === `/boards/${board.id}`;
-                        return (
-                          <BoardNavLink key={board.id} boardId={board.id} title={board.title} active={active} />
-                        );
-                      })}
-                    </div>
-                  ))}
-                  {/* Ungrouped (no team association) */}
-                  {boardGroups.ungrouped.map((board) => {
-                    const active = location.pathname === `/boards/${board.id}`;
-                    return (
-                      <BoardNavLink key={board.id} boardId={board.id} title={board.title} active={active} />
-                    );
-                  })}
+                  <BoardBucketSection
+                    label={t('boards.bucket.favorites', '★ 즐겨찾기')}
+                    boards={boardBuckets.favorites}
+                    pathname={location.pathname}
+                  />
+                  <BoardBucketSection
+                    label={t('boards.bucket.department', '부서 보드')}
+                    boards={boardBuckets.department}
+                    pathname={location.pathname}
+                  />
+                  <BoardBucketSection
+                    label={t('boards.bucket.personal', '개인 보드')}
+                    boards={boardBuckets.personal}
+                    pathname={location.pathname}
+                  />
+                  <BoardBucketSection
+                    label={t('boards.bucket.invited', '초대받은 보드')}
+                    boards={boardBuckets.invited}
+                    pathname={location.pathname}
+                  />
                 </div>
               )}
             </div>
@@ -399,4 +383,34 @@ function viewTypeIcon(type: ViewType): string {
     case 'calendar':
       return '📅';
   }
+}
+
+/** Renders one of the four sidebar board sections (favorites/dept/personal/invited). */
+function BoardBucketSection({
+  label,
+  boards,
+  pathname,
+}: {
+  label: string;
+  boards: Array<{ id: string; title: string }>;
+  pathname: string;
+}) {
+  if (boards.length === 0) return null;
+  return (
+    <div>
+      <div
+        className="px-4 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider truncate"
+        style={{ color: 'var(--color-sidebar-text)', opacity: 0.5 }}
+        title={label}
+      >
+        {label} <span style={{ opacity: 0.6 }}>({boards.length})</span>
+      </div>
+      {boards.map((board) => {
+        const active = pathname === `/boards/${board.id}`;
+        return (
+          <BoardNavLink key={board.id} boardId={board.id} title={board.title} active={active} />
+        );
+      })}
+    </div>
+  );
 }

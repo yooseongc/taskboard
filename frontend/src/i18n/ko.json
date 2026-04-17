@@ -36,7 +36,13 @@
     "creating": "생성 중...",
     "createBoard": "보드 생성",
     "other": "기타",
-    "boardCount": "{{count}}개 보드"
+    "boardCount": "{{count}}개 보드",
+    "bucket": {
+      "favorites": "★ 즐겨찾기",
+      "department": "부서 보드",
+      "personal": "개인 보드",
+      "invited": "초대받은 보드"
+    }
   },
   "board": {
     "backToBoards": "보드 목록",

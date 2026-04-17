@@ -165,6 +165,7 @@ function BoardCard({ board }: { board: Board }) {
 function CreateBoardModal({ onClose }: { onClose: () => void }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [ownerType, setOwnerType] = useState<'department' | 'personal'>('personal');
   const [departmentId, setDepartmentId] = useState('');
   const [templateId, setTemplateId] = useState('');
   const createBoard = useCreateBoard();
@@ -176,11 +177,14 @@ function CreateBoardModal({ onClose }: { onClose: () => void }) {
   const departments = depts?.items ?? [];
   const sorted = [...departments].sort((a, b) => a.path.localeCompare(b.path));
 
+  const canSubmit = title.trim() && (ownerType === 'personal' || !!departmentId);
+
   const handleCreate = () => {
-    if (!title.trim() || !departmentId) return;
+    if (!canSubmit) return;
     const body: Parameters<typeof createBoard.mutate>[0] = {
       title,
-      department_ids: [departmentId],
+      owner_type: ownerType,
+      department_ids: ownerType === 'department' ? [departmentId] : [],
     };
     if (description) body.description = description;
     if (templateId) body.from_template = templateId;
@@ -209,7 +213,7 @@ function CreateBoardModal({ onClose }: { onClose: () => void }) {
           </Button>
           <Button
             onClick={handleCreate}
-            disabled={!title.trim() || !departmentId || createBoard.isPending}
+            disabled={!canSubmit || createBoard.isPending}
           >
             {createBoard.isPending ? 'Creating...' : 'Create Board'}
           </Button>
@@ -217,14 +221,51 @@ function CreateBoardModal({ onClose }: { onClose: () => void }) {
       }
     >
       <div className="space-y-4">
+        {/* Board ownership type — ROLES.md §2 */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            보드 종류
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setOwnerType('personal')}
+              className="p-3 rounded-lg text-left transition-all"
+              style={{
+                border: `2px solid ${ownerType === 'personal' ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                backgroundColor: ownerType === 'personal' ? 'var(--color-surface-active)' : 'var(--color-surface)',
+              }}
+            >
+              <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>👤 개인 보드</div>
+              <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                나만 관리, 멤버 초대 가능
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setOwnerType('department')}
+              className="p-3 rounded-lg text-left transition-all"
+              style={{
+                border: `2px solid ${ownerType === 'department' ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                backgroundColor: ownerType === 'department' ? 'var(--color-surface-active)' : 'var(--color-surface)',
+              }}
+            >
+              <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>🏢 부서 보드</div>
+              <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                부서 전체에 공유
+              </div>
+            </button>
+          </div>
+        </div>
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Title *
+            제목 *
           </label>
           <input
             autoFocus
             className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            placeholder="Board title"
+            placeholder="보드 이름"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
@@ -232,37 +273,39 @@ function CreateBoardModal({ onClose }: { onClose: () => void }) {
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Description
+            설명
           </label>
           <textarea
             className="w-full border rounded-lg px-3 py-2 text-sm min-h-[60px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            placeholder="Optional description"
+            placeholder="(선택)"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Department *
-          </label>
-          <select
-            className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            value={departmentId}
-            onChange={(e) => setDepartmentId(e.target.value)}
-          >
-            <option value="">Select department...</option>
-            {sorted.map((d) => (
-              <option key={d.id} value={d.id}>
-                {'\u00A0'.repeat(d.depth * 3)}{d.depth > 0 ? '└ ' : ''}{d.name}
-              </option>
-            ))}
-          </select>
-          {!departmentId && (
-            <p className="text-xs text-[var(--color-text-muted)] mt-1">
-              A department is required.
-            </p>
-          )}
-        </div>
+        {ownerType === 'department' && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              부서 *
+            </label>
+            <select
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              value={departmentId}
+              onChange={(e) => setDepartmentId(e.target.value)}
+            >
+              <option value="">부서 선택...</option>
+              {sorted.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {'\u00A0'.repeat(d.depth * 3)}{d.depth > 0 ? '└ ' : ''}{d.name}
+                </option>
+              ))}
+            </select>
+            {!departmentId && (
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                부서 보드는 부서가 필요합니다.
+              </p>
+            )}
+          </div>
+        )}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             From Template

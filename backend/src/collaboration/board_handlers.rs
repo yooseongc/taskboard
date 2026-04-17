@@ -164,12 +164,31 @@ pub async fn create_board(
     Query(query): Query<CreateBoardQuery>,
     Json(body): Json<CreateBoardRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    // Authz: Board Create permission against the requested departments
-    check_board_create_permission(&state.pool, &user, &body.department_ids).await?;
+    // Decide owner_type: explicit value wins; otherwise default to
+    // 'department' if department_ids non-empty, else 'personal'.
+    let owner_type = match body.owner_type.as_deref() {
+        Some("personal") => "personal",
+        Some("department") => "department",
+        Some(other) => {
+            return Err(AppError::InvalidInput(format!(
+                "owner_type must be 'department' or 'personal', got '{other}'"
+            )));
+        }
+        None if body.department_ids.is_empty() => "personal",
+        None => "department",
+    };
+
+    // Authz: department-bound boards still require permission; personal boards
+    // are open to any authenticated user (Member is the floor per ROLES.md §1).
+    if owner_type == "department" {
+        check_board_create_permission(&state.pool, &user, &body.department_ids).await?;
+    }
 
     // from_template -> materialize from template (S-023)
     if let Some(template_id) = query.from_template {
-        validate_department_ids(&body.department_ids)?;
+        if owner_type == "department" {
+            validate_department_ids(&body.department_ids)?;
+        }
         let resp = crate::collaboration::template_handlers::materialize_from_template(
             &state,
             &user,
@@ -182,17 +201,19 @@ pub async fn create_board(
         return Ok((StatusCode::CREATED, [(etag_name, etag_val)], Json(resp)));
     }
 
-    validate_department_ids(&body.department_ids)?;
+    if owner_type == "department" {
+        validate_department_ids(&body.department_ids)?;
+    }
     validate_description(&body.description)?;
 
     let board_id = uuid7::now_v7();
     let mut tx = state.pool.begin().await?;
 
-    // Insert board
+    // Insert board with owner_type
     let row = sqlx::query_as::<_, BoardRow>(
         r#"
-        INSERT INTO boards (id, title, description, owner_id, version)
-        VALUES ($1, $2, $3, $4, 0)
+        INSERT INTO boards (id, title, description, owner_id, owner_type, version)
+        VALUES ($1, $2, $3, $4, $5, 0)
         RETURNING *
         "#,
     )
@@ -200,26 +221,29 @@ pub async fn create_board(
     .bind(&body.title)
     .bind(&body.description)
     .bind(user.user_id)
+    .bind(owner_type)
     .fetch_one(&mut *tx)
     .await?;
 
-    // Insert board_departments
-    for dept_id in &body.department_ids {
-        sqlx::query(
-            "INSERT INTO board_departments (board_id, department_id) VALUES ($1, $2)",
-        )
-        .bind(board_id)
-        .bind(dept_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| {
-            if let sqlx::Error::Database(ref db_err) = e {
-                if db_err.is_foreign_key_violation() {
-                    return AppError::NotFound(format!("Department {dept_id}"));
+    // Insert board_departments only for department boards
+    if owner_type == "department" {
+        for dept_id in &body.department_ids {
+            sqlx::query(
+                "INSERT INTO board_departments (board_id, department_id) VALUES ($1, $2)",
+            )
+            .bind(board_id)
+            .bind(dept_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                if let sqlx::Error::Database(ref db_err) = e {
+                    if db_err.is_foreign_key_violation() {
+                        return AppError::NotFound(format!("Department {dept_id}"));
+                    }
                 }
-            }
-            AppError::from(e)
-        })?;
+                AppError::from(e)
+            })?;
+        }
     }
 
     // Insert creator as admin
@@ -256,6 +280,7 @@ pub async fn create_board(
         title: row.title,
         description: row.description,
         owner_id: row.owner_id,
+        owner_type: row.owner_type,
         department_ids: body.department_ids,
         version: row.version,
         created_at: row.created_at,
@@ -541,6 +566,7 @@ pub async fn get_board(
         title: board.title,
         description: board.description,
         owner_id: board.owner_id,
+        owner_type: board.owner_type,
         department_ids: dept_ids,
         member_count,
         column_count,
@@ -670,6 +696,7 @@ pub async fn patch_board(
         title: row.title,
         description: row.description,
         owner_id: row.owner_id,
+        owner_type: row.owner_type,
         department_ids: dept_ids,
         version: row.version,
         created_at: row.created_at,

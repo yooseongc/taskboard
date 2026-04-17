@@ -1174,6 +1174,7 @@ pub async fn materialize_from_template(
         title: board_row.title,
         description: board_row.description,
         owner_id: board_row.owner_id,
+        owner_type: board_row.owner_type,
         department_ids: department_ids.to_vec(),
         version: board_row.version,
         created_at: board_row.created_at,

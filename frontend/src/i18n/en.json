@@ -36,7 +36,13 @@
     "creating": "Creating...",
     "createBoard": "Create Board",
     "other": "Other",
-    "boardCount": "{{count}} board(s)"
+    "boardCount": "{{count}} board(s)",
+    "bucket": {
+      "favorites": "★ Favorites",
+      "department": "Department Boards",
+      "personal": "Personal Boards",
+      "invited": "Invited Boards"
+    }
   },
   "board": {
     "backToBoards": "Boards",

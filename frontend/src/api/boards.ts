@@ -78,6 +78,7 @@ export function useCreateBoard() {
       title: string;
       description?: string;
       department_ids?: string[];
+      owner_type?: 'department' | 'personal';
       from_template?: string;
     }) => {
       const payload = {
@@ -92,8 +93,47 @@ export function useCreateBoard() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['boards'] });
+      qc.invalidateQueries({ queryKey: ['my-boards'] });
     },
   });
+}
+
+/** ROLES.md §5: bucketed listing for the current user. */
+export function useMyBoards(bucket?: 'favorites' | 'department' | 'personal' | 'invited' | 'all') {
+  return useQuery({
+    queryKey: ['my-boards', bucket ?? 'all'],
+    queryFn: () => {
+      const q = bucket ? `?bucket=${bucket}` : '';
+      return apiFetch<{ items: BoardSummaryWithBucket[] }>(`/api/users/me/boards${q}`);
+    },
+  });
+}
+
+/** ROLES.md §8: pin/unpin a board. */
+export function useToggleBoardPin() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (boardId: string) =>
+      apiFetch<{ board_id: string; pinned: boolean }>(`/api/users/me/pins/${boardId}`, {
+        method: 'PUT',
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['my-boards'] });
+    },
+  });
+}
+
+export interface BoardSummaryWithBucket {
+  id: string;
+  title: string;
+  description: string | null;
+  owner_id: string;
+  owner_type: 'department' | 'personal';
+  version: number;
+  created_at: string;
+  updated_at: string;
+  pinned: boolean;
+  bucket: 'department' | 'personal' | 'invited';
 }
 
 export function usePatchBoard() {
