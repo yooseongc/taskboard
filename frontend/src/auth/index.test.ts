@@ -1,41 +1,42 @@
 // ---------------------------------------------------------------------------
-// Regression guard: Finding #1 — Token MUST NOT be stored in localStorage.
-// D-024: Access tokens stored in JS memory only.
+// Contract: access / refresh tokens persist in localStorage so that a page
+// reload does not force a full re-authentication round-trip. The historical
+// D-024 "memory-only" design was reversed (2026-04-17) — the UX cost of
+// losing the session on every refresh outweighed the marginal XSS hardening,
+// and Keycloak refresh tokens are themselves revocable server-side.
 // ---------------------------------------------------------------------------
 import { describe, it, expect, beforeEach } from 'vitest';
 import { getToken, setToken, clearToken, isAuthenticated } from './index';
 
-describe('auth token storage (D-024 regression guard)', () => {
+const TOKEN_KEY = 'taskboard_token';
+
+describe('auth token storage', () => {
   beforeEach(() => {
     clearToken();
     localStorage.clear();
     sessionStorage.clear();
   });
 
-  it('stores token in JS memory, not localStorage', () => {
+  it('persists the token in localStorage under the canonical key', () => {
     setToken('test-jwt-token');
-    // Token must be retrievable via getToken()
     expect(getToken()).toBe('test-jwt-token');
-    // But must NOT be in localStorage (Finding #1)
-    expect(localStorage.getItem('access_token')).toBeNull();
-    expect(localStorage.getItem('token')).toBeNull();
-    // Check all localStorage keys
-    expect(localStorage.length).toBe(0);
+    expect(localStorage.getItem(TOKEN_KEY)).toBe('test-jwt-token');
   });
 
-  it('stores token in JS memory, not sessionStorage', () => {
+  it('does not leak to sessionStorage', () => {
     setToken('test-jwt-token');
     expect(sessionStorage.length).toBe(0);
   });
 
-  it('clearToken removes the token from memory', () => {
+  it('clearToken removes the token', () => {
     setToken('test-jwt-token');
     clearToken();
     expect(getToken()).toBeNull();
+    expect(localStorage.getItem(TOKEN_KEY)).toBeNull();
     expect(isAuthenticated()).toBe(false);
   });
 
-  it('isAuthenticated returns false initially', () => {
+  it('isAuthenticated returns false when no token is stored', () => {
     expect(isAuthenticated()).toBe(false);
   });
 
@@ -44,7 +45,7 @@ describe('auth token storage (D-024 regression guard)', () => {
     expect(isAuthenticated()).toBe(true);
   });
 
-  it('getToken returns null initially', () => {
+  it('getToken returns null when no token is stored', () => {
     expect(getToken()).toBeNull();
   });
 });

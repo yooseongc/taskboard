@@ -176,6 +176,8 @@ mod tests {
             jwks_grace_ttl_secs: 600,
             seed_on_start: false,
             system_admin_emails: vec![],
+            oidc_dept_claim: "groups".into(),
+            oidc_dept_sync_enabled: true,
             #[cfg(feature = "dev-auth")]
             dev_auth_enabled: false,
             #[cfg(feature = "dev-auth")]
@@ -202,6 +204,8 @@ mod tests {
             jwks_grace_ttl_secs: 600,
             seed_on_start: false,
             system_admin_emails: vec![],
+            oidc_dept_claim: "groups".into(),
+            oidc_dept_sync_enabled: true,
             #[cfg(feature = "dev-auth")]
             dev_auth_enabled: false,
             #[cfg(feature = "dev-auth")]

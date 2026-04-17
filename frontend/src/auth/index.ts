@@ -1,5 +1,6 @@
-// Token storage in localStorage for session persistence across page navigations.
-// OIDC refresh is handled by Keycloak silent refresh or re-login on expiry.
+// Access-token storage in localStorage for session persistence across reloads.
+// Refresh flow lives in ./refresh.ts; on 401 the apiFetch wrapper calls
+// tryRefreshToken() and retries once. See doc/API_CONTRACT.md §4.5.
 
 const TOKEN_KEY = 'taskboard_token';
 

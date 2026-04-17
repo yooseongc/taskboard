@@ -66,9 +66,12 @@ docker compose ps                       # healthy 대기
 확인:
 
 ```bash
-curl -fsS http://localhost:${BACKEND_PORT:-8080}/api/health
-curl -fsS http://localhost:${FRONTEND_PORT:-80}/
+curl -fsS http://localhost:${FRONTEND_PORT:-80}/api/health     # 프론트 nginx 경유 (권장)
+curl -fsS http://localhost:${BACKEND_PORT:-8080}/api/health    # 백엔드 직접 (내부망)
+curl -fsS http://localhost:${FRONTEND_PORT:-80}/               # SPA 엔트리
 ```
+
+> 참고: `/api/health` 는 공개 엔드포인트(인증 없음, `200 OK`, `ok`). 외부 reverse proxy 에서 노출하지 않으려면 L7 레벨에서 차단하세요.
 
 ---
 

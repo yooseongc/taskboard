@@ -73,6 +73,7 @@ taskboard/
 | [doc/SPEC.md](doc/SPEC.md) | 초기 요구사항 스펙 (베이스라인) |
 | [doc/PROCESS.md](doc/PROCESS.md) | 구현 진행 현황 |
 | [doc/ROLES.md](doc/ROLES.md) | 권한 매트릭스 |
+| [doc/API_CONTRACT.md](doc/API_CONTRACT.md) | Backend ↔ Frontend API 계약 |
 | [doc/DEVELOPMENT.md](doc/DEVELOPMENT.md) | 로컬 개발 환경 세팅 |
 | [doc/DEPLOYMENT.md](doc/DEPLOYMENT.md) | 운영 배포 절차 |
 | [doc/AUTH.md](doc/AUTH.md) | Keycloak + AD 연동 상세 |

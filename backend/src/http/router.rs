@@ -222,8 +222,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/templates/{id}", patch(collab::patch_template))
         .route("/api/templates/{id}", delete(collab::delete_template));
 
-    // Health check (not in spec but standard practice -- no auth required)
-    let health = Router::new().route("/health", get(health_check));
+    // Health check — public, no auth. Same-origin reachable via nginx proxy.
+    let health = Router::new().route("/api/health", get(health_check));
 
     Router::new()
         .merge(health)

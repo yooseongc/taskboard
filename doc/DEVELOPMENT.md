@@ -35,6 +35,14 @@ docker compose -f docker-compose.dev.yml --env-file .env.dev up -d --build
 | ldap (glauth) | ldap://localhost:3893 | AD 대용 |
 | postgres | localhost:5433 | `taskboard` / `taskboard` |
 
+빠른 헬스 체크:
+
+```bash
+curl -fsS http://localhost:5174/api/health                                 # -> "ok" (frontend nginx 경유)
+curl -fsS http://localhost:8080/api/health                                 # -> "ok" (backend 직접, dev에서만 포트 노출)
+curl -fsS http://localhost:8180/realms/taskboard/.well-known/openid-configuration | head -c 200
+```
+
 로그 확인:
 
 ```bash
@@ -134,7 +142,7 @@ pnpm dev     # http://localhost:5173 (Vite dev server)
 ```bash
 curl -X POST http://localhost:8080/api/dev/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"alice@example.com"}'
+  -d '{"user_email":"alice@example.com"}'
 ```
 
 응답의 `token`을 프론트 localStorage `taskboard_token` 에 넣으면 그대로 로그인됩니다.

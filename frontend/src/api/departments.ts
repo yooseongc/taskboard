@@ -51,20 +51,15 @@ export function useCreateDepartment() {
   });
 }
 
+// Only `name` is mutable — `slug` is an immutable identifier that must match
+// the AD group name exactly (see authz/authn.rs::sync_user_departments_from_claims).
 export function usePatchDepartment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      id,
-      ...body
-    }: {
-      id: string;
-      name?: string;
-      slug?: string;
-    }) =>
+    mutationFn: ({ id, name }: { id: string; name?: string }) =>
       apiFetch<Department>(`/api/departments/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify(body),
+        body: JSON.stringify({ name }),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['departments'] });

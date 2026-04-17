@@ -10,6 +10,7 @@ Mattermost Boards 유사 UX (Board/Table/Calendar/Activity View + Template + 역
 - [doc/PROCESS.md](./doc/PROCESS.md) — 구현 진행 현황과 완료 기능
 - [doc/ROLES.md](./doc/ROLES.md) — 권한 매트릭스 (Global × Board 2-tier)
 - [doc/STYLE_GUIDE.md](./doc/STYLE_GUIDE.md) — 프론트엔드 디자인 토큰
+- [doc/API_CONTRACT.md](./doc/API_CONTRACT.md) — Backend ↔ Frontend 계약 (엔드포인트·타입·드리프트)
 - [doc/DEVELOPMENT.md](./doc/DEVELOPMENT.md) — 로컬 개발 환경
 - [doc/DEPLOYMENT.md](./doc/DEPLOYMENT.md) — 운영 배포
 - [doc/AUTH.md](./doc/AUTH.md) — Keycloak + AD 연동 상세
