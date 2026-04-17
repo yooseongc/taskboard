@@ -1710,7 +1710,7 @@ function KanbanColumn({
                     );
                   })}
                 </div>
-                <label className="flex items-center gap-2 text-xs">
+                <div className="flex items-center gap-2 text-xs">
                   <span style={{ color: 'var(--color-text-muted)' }}>
                     {t('board.columnColorCustom', 'Custom')}
                   </span>
@@ -1720,7 +1720,17 @@ function KanbanColumn({
                     onChange={(e) => onRecolorColumn(e.target.value)}
                     className="h-6 w-10 cursor-pointer rounded"
                   />
-                </label>
+                  <button
+                    onClick={() => setShowColorPicker(false)}
+                    className="ml-auto text-xs px-2 py-0.5 rounded"
+                    style={{
+                      backgroundColor: 'var(--color-primary)',
+                      color: 'var(--color-text-inverse)',
+                    }}
+                  >
+                    {t('common.confirm', 'OK')}
+                  </button>
+                </div>
               </div>
             )}
           </div>
