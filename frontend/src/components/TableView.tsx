@@ -4,18 +4,16 @@ import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-p
 import type {
   TaskDto,
   BoardColumn,
-  Priority,
   TaskStatus,
   GroupByKey,
   ViewDensity,
   UserRef,
   LabelRef,
 } from '../types/api';
-import Badge from './ui/Badge';
 import Button from './ui/Button';
 import AvatarStack from './AvatarStack';
 import TaskMetaBadges from './TaskMetaBadges';
-import { useTagTheme, tagClass, type TagVariant } from '../theme/constants';
+import { tagClass, type TagVariant } from '../theme/constants';
 import {
   useBoardCustomFields,
   useBoardFieldValues,
@@ -36,7 +34,7 @@ export interface TableViewState {
   columnOrder?: string[];
 }
 
-const ALL_COLUMN_IDS = ['title', 'column', 'priority', 'due_date', 'assignees', 'info'] as const;
+const ALL_COLUMN_IDS = ['title', 'column', 'due_date', 'assignees', 'info'] as const;
 type ColumnId = (typeof ALL_COLUMN_IDS)[number];
 
 interface TableViewProps {
@@ -67,7 +65,7 @@ interface TableViewProps {
  * `value` is stored as a string for select labels and text needles, ignored
  * for empty/is_true/is_false.
  */
-interface FilterChip {
+export interface FilterChip {
   id: string; // local UUID for React key
   fieldId: string;
   operator: string;
@@ -78,15 +76,8 @@ interface FilterChip {
 
 type FilterMode = 'and' | 'or';
 
-type SortKey = 'title' | 'priority' | 'due_date' | 'column';
+type SortKey = 'title' | 'due_date' | 'column';
 type SortDir = 'asc' | 'desc';
-
-const priorityOrder: Record<Priority, number> = {
-  urgent: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-};
 
 /**
  * Evaluate a single FilterChip against one task's value for that field.
@@ -105,7 +96,7 @@ const priorityOrder: Record<Priority, number> = {
  * Unset value (undefined/null) only matches `empty`; all other operators
  * treat it as a fail so partial data doesn't accidentally satisfy filters.
  */
-function evaluateFilter(
+export function evaluateFilter(
   chip: FilterChip,
   field: CustomField,
   value: unknown,
@@ -171,7 +162,7 @@ function evaluateFilter(
 }
 
 /** Operators offered for a given field type. Order matters — first is default. */
-function operatorsFor(fieldType: string): string[] {
+export function operatorsFor(fieldType: string): string[] {
   if (fieldType === 'checkbox') return ['is_true', 'is_false', 'empty'];
   if (fieldType === 'select' || fieldType === 'multi_select') return ['equals', 'empty'];
   if (fieldType === 'number') return ['equals', 'gt', 'lt', 'gte', 'lte', 'between', 'empty'];
@@ -242,7 +233,6 @@ export default function TableView({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortKey, sortDir, filters, filterMode, hiddenColumns, columnWidths, columnOrder]);
   const { t } = useTranslation();
-  const { priorityClass } = useTagTheme();
 
   // Custom fields and their values for the entire board — feeds the filter
   // builder. Field defs let us populate the operator/value pickers; values
@@ -256,16 +246,9 @@ export default function TableView({
   // IDs are prefixed with `__builtin:` so the evaluator can dispatch them
   // to a per-field extractor without colliding with real UUIDs.
   const builtInFields: CustomField[] = useMemo(() => {
-    const priorityOpts = [
-      { label: 'urgent' },
-      { label: 'high' },
-      { label: 'medium' },
-      { label: 'low' },
-    ];
     const columnOpts = columns.map((c) => ({ label: c.id }));
     return [
       { id: '__builtin:title', board_id: boardId, name: 'Title', field_type: 'text', options: [], position: -100, required: false, show_on_card: false, created_at: '' },
-      { id: '__builtin:priority', board_id: boardId, name: 'Priority (built-in)', field_type: 'select', options: priorityOpts, position: -98, required: false, show_on_card: false, created_at: '' },
       { id: '__builtin:due_date', board_id: boardId, name: 'Due date', field_type: 'date', options: [], position: -97, required: false, show_on_card: false, created_at: '' },
       { id: '__builtin:start_date', board_id: boardId, name: 'Start date', field_type: 'date', options: [], position: -96, required: false, show_on_card: false, created_at: '' },
       { id: '__builtin:column', board_id: boardId, name: 'Status', field_type: 'select', options: columnOpts, position: -95, required: false, show_on_card: false, created_at: '' },
@@ -285,10 +268,6 @@ export default function TableView({
     switch (fieldId) {
       case '__builtin:title':
         return task.title;
-      case '__builtin:status':
-        return task.status;
-      case '__builtin:priority':
-        return task.priority;
       case '__builtin:due_date':
         return task.due_date ?? null;
       case '__builtin:start_date':
@@ -323,11 +302,10 @@ export default function TableView({
   // Ordered list of visible columns for rendering headers and cells.
   // Merges built-in columns + custom fields, sorted by columnOrder, filtered by hiddenColumns.
   const orderedVisibleColumns = useMemo(() => {
-    const sortableIds = new Set<string>(['title', 'column', 'priority', 'due_date']);
+    const sortableIds = new Set<string>(['title', 'column', 'due_date']);
     const labelMap: Record<string, string> = {
       title: t('tableView.colTitle'),
       column: t('tableView.colColumn'),
-      priority: t('tableView.colPriority'),
       due_date: t('tableView.colDueDate'),
       assignees: t('tableView.colAssignees'),
       info: t('tableView.colInfo'),
@@ -399,8 +377,6 @@ export default function TableView({
       switch (sortKey) {
         case 'title':
           return dir * a.title.localeCompare(b.title);
-        case 'priority':
-          return dir * (priorityOrder[a.priority] - priorityOrder[b.priority]);
         case 'due_date': {
           const da = a.due_date ?? '';
           const db = b.due_date ?? '';
@@ -546,8 +522,6 @@ export default function TableView({
           </span>
         );
       }
-      case 'priority':
-        return <Badge className={priorityClass(task.priority)}>{task.priority}</Badge>;
       case 'due_date':
         return task.due_date ? new Date(task.due_date).toLocaleDateString() : '-';
       case 'assignees':
@@ -887,7 +861,7 @@ export default function TableView({
                       }
                     >
                       <td
-                        colSpan={(onBulkMove || onBulkDelete ? 1 : 0) + (6 + realFields.length - hiddenColumns.size)}
+                        colSpan={(onBulkMove || onBulkDelete ? 1 : 0) + (5 + realFields.length - hiddenColumns.size)}
                         className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider"
                         style={{ color: 'var(--color-text-secondary)' }}
                       >
@@ -922,7 +896,7 @@ export default function TableView({
               (!grouped && sorted.length === 0)) && (
               <tr>
                 <td
-                  colSpan={(onBulkMove || onBulkDelete ? 1 : 0) + (6 + realFields.length - hiddenColumns.size)}
+                  colSpan={(onBulkMove || onBulkDelete ? 1 : 0) + (5 + realFields.length - hiddenColumns.size)}
                   className="px-4 py-8 text-center"
                   style={{ color: 'var(--color-text-muted)' }}
                 >
@@ -1162,7 +1136,6 @@ function PropertiesDndList({
     switch (id) {
       case 'title': return t('tableView.colTitle');
       case 'column': return t('tableView.colColumn');
-      case 'priority': return t('tableView.colPriority');
       case 'due_date': return t('tableView.colDueDate');
       case 'assignees': return t('tableView.colAssignees');
       case 'info': return t('tableView.colInfo');
