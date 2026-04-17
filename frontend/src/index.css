@@ -230,20 +230,33 @@ code, pre, .font-mono {
   border-radius: var(--radius-lg);
 }
 
-/* ---- Scrollbar styling ---- */
+/* ---- Scrollbar styling ----
+ * A bit thicker than the minimal 6px — the horizontal scrollbar at the
+ * bottom of wide tables / kanban boards was easy to miss at 6px. 10px +
+ * a slightly darker thumb makes "there's more to the right" obvious
+ * without looking chunky.
+ */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-text-muted) 45%, transparent);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-muted);
+  background: color-mix(in srgb, var(--color-text-muted) 75%, transparent);
+  background-clip: padding-box;
+}
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-text-muted) 45%, transparent) transparent;
 }
 
 /* ---- Markdown body ----
