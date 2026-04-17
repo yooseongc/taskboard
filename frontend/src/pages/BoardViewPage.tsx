@@ -2000,6 +2000,11 @@ function TaskCardContent({
         className="text-sm font-medium leading-snug"
         style={{ color: 'var(--color-text)' }}
       >
+        {task.icon && (
+          <span className="mr-1.5" aria-hidden="true">
+            {task.icon}
+          </span>
+        )}
         {task.title}
       </p>
       {!compact && task.summary && (

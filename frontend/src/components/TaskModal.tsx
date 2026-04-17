@@ -31,6 +31,7 @@ import { useEscapeKey } from '../hooks/useEscapeKey';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { Spinner } from './Spinner';
 import Button from './ui/Button';
+import EmojiPickerButton from './EmojiPickerButton';
 import { tagClass, type TagVariant } from '../theme/constants';
 // NOTE: hardcoded `Priority` / `TaskStatus` enums are no longer consumed by
 // this component — the Custom Fields block at the bottom of the right
@@ -189,36 +190,46 @@ export default function TaskModal({ taskId, boardId, onClose }: TaskModalProps) 
           </select>
         </div>
 
-        {editingTitle ? (
-          <input
-            autoFocus
-            className="w-full text-2xl font-bold outline-none pb-1 bg-transparent"
-            style={{
-              color: 'var(--color-text)',
-              borderBottom: '2px solid var(--color-primary)',
-            }}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onBlur={() => {
-              if (title.trim() && title !== task.title) save({ title });
-              setEditingTitle(false);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                if (title.trim() && title !== task.title) save({ title });
-                setEditingTitle(false);
-              }
-            }}
+        <div className="flex items-start gap-2">
+          <EmojiPickerButton
+            value={task.icon ?? null}
+            size={36}
+            title={t('task.pickIcon', 'Pick icon')}
+            onChange={(next) => save({ icon: next })}
           />
-        ) : (
-          <h2
-            className="text-2xl font-bold cursor-text hover:bg-[var(--color-surface-hover)] rounded px-1 -mx-1 leading-tight"
-            style={{ color: 'var(--color-text)' }}
-            onClick={() => { setTitle(task.title); setEditingTitle(true); }}
-          >
-            {task.title}
-          </h2>
-        )}
+          <div className="flex-1 min-w-0">
+            {editingTitle ? (
+              <input
+                autoFocus
+                className="w-full text-2xl font-bold outline-none pb-1 bg-transparent"
+                style={{
+                  color: 'var(--color-text)',
+                  borderBottom: '2px solid var(--color-primary)',
+                }}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                onBlur={() => {
+                  if (title.trim() && title !== task.title) save({ title });
+                  setEditingTitle(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (title.trim() && title !== task.title) save({ title });
+                    setEditingTitle(false);
+                  }
+                }}
+              />
+            ) : (
+              <h2
+                className="text-2xl font-bold cursor-text hover:bg-[var(--color-surface-hover)] rounded px-1 -mx-1 leading-tight"
+                style={{ color: 'var(--color-text)' }}
+                onClick={() => { setTitle(task.title); setEditingTitle(true); }}
+              >
+                {task.title}
+              </h2>
+            )}
+          </div>
+        </div>
         <input
           type="text"
           maxLength={256}
@@ -1176,7 +1187,7 @@ function CustomFieldInput({
 }: {
   field: { field_type: string; options: { label: string; color?: string }[] };
   value: unknown;
-  users?: { id: string; name: string; email: string }[];
+  users?: { id: string; name: string; email: string; department_names?: string[] }[];
   onChange: (v: unknown) => void;
 }) {
   switch (field.field_type) {
@@ -1222,8 +1233,14 @@ function CustomFieldInput({
         />
       );
     case 'person': {
-      // Stores a user ID; displays the resolved name
+      // Stores a user ID; displays resolved name + primary dept so
+      // homonymous users are distinguishable. Same formatter used by
+      // the assignee chips to keep the workspace consistent.
       const selectedId = (value as string) ?? '';
+      const formatUser = (u: (typeof users)[number]) => {
+        const dept = u.department_names?.[0];
+        return dept ? `${u.name} · ${dept}` : u.name;
+      };
       return (
         <select
           className="w-full text-xs border rounded px-1.5 py-1"
@@ -1232,7 +1249,9 @@ function CustomFieldInput({
         >
           <option value="">— None —</option>
           {users.map((u) => (
-            <option key={u.id} value={u.id}>{u.name}</option>
+            <option key={u.id} value={u.id}>
+              {formatUser(u)}
+            </option>
           ))}
         </select>
       );

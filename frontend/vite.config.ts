@@ -24,6 +24,7 @@ export default defineConfig({
           state: ['zustand'],
           calendar: ['react-big-calendar', 'date-fns'],
           markdown: ['react-markdown'],
+          emoji: ['emoji-mart', '@emoji-mart/react', '@emoji-mart/data'],
         },
       },
     },

@@ -513,7 +513,14 @@ export default function TableView({
                 ))}
               </div>
             )}
-            <span className="font-medium" style={{ color: 'var(--color-text)' }}>{task.title}</span>
+            <span className="font-medium" style={{ color: 'var(--color-text)' }}>
+              {task.icon && (
+                <span className="mr-1.5" aria-hidden="true">
+                  {task.icon}
+                </span>
+              )}
+              {task.title}
+            </span>
             {density !== 'compact' && task.summary && (
               <span className="text-xs ml-2" style={{ color: 'var(--color-text-secondary)' }}>{task.summary}</span>
             )}

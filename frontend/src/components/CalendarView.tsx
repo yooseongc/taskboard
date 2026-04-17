@@ -146,7 +146,7 @@ export default function CalendarView({
       return [
         {
           id: t.id,
-          title: t.title,
+          title: t.icon ? `${t.icon} ${t.title}` : t.title,
           start: dates.start,
           end: dates.end,
           color: eventColor(t, groupBy, customFields, allFieldValues),
