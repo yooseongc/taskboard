@@ -21,6 +21,14 @@ import {
   type TaskFieldValue,
 } from '../api/customFields';
 import { groupTasks, type GroupContext } from '../lib/groupBy';
+import {
+  buildAggColumn,
+  computeAggregate,
+  supportedAggTypes,
+  aggTypeLabel,
+  type AggType,
+  type AggContext,
+} from '../lib/aggregation';
 import ViewToolbar from './ViewToolbar';
 import Modal from './ui/Modal';
 
@@ -32,6 +40,8 @@ export interface TableViewState {
   hiddenColumns?: string[];
   columnWidths?: Record<string, number>;
   columnOrder?: string[];
+  /** Per-column aggregation picked from the "Calculate" footer popover. */
+  aggregations?: Record<string, AggType>;
 }
 
 const ALL_COLUMN_IDS = ['title', 'column', 'due_date', 'assignees', 'info'] as const;
@@ -218,6 +228,9 @@ export default function TableView({
   const [columnOrder, setColumnOrder] = useState<string[]>(
     defaultConfig?.columnOrder ?? [...ALL_COLUMN_IDS],
   );
+  const [aggregations, setAggregations] = useState<Record<string, AggType>>(
+    defaultConfig?.aggregations ?? {},
+  );
 
   // Report state changes to parent so BoardViewPage can snapshot for SavedViewBar.
   useEffect(() => {
@@ -229,9 +242,10 @@ export default function TableView({
       hiddenColumns: Array.from(hiddenColumns),
       columnWidths,
       columnOrder,
+      aggregations,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortKey, sortDir, filters, filterMode, hiddenColumns, columnWidths, columnOrder]);
+  }, [sortKey, sortDir, filters, filterMode, hiddenColumns, columnWidths, columnOrder, aggregations]);
   const { t } = useTranslation();
 
   // Custom fields and their values for the entire board — feeds the filter
@@ -595,39 +609,46 @@ export default function TableView({
         customFields={customFields.filter((f) => !f.id.startsWith('__builtin:'))}
         density={density}
         onDensityChange={onDensityChange}
+        filter={{
+          count: filters.length,
+          onClick: () => {
+            // Clicking Filter either adds a first chip or focuses the
+            // existing chip row — keeping the action idempotent means the
+            // user never has to think "was it already open?".
+            if (filters.length > 0) return;
+            const firstField = customFields[0];
+            if (!firstField) return;
+            setFilters([
+              {
+                id: crypto.randomUUID(),
+                fieldId: firstField.id,
+                operator: operatorsFor(firstField.field_type)[0],
+                value: '',
+              },
+            ]);
+          },
+        }}
+        sort={{
+          key: sortKey,
+          dir: sortDir,
+          options: [
+            { id: 'title', label: t('tableView.colTitle') },
+            { id: 'column', label: t('tableView.colColumn') },
+            { id: 'due_date', label: t('tableView.colDueDate') },
+          ],
+          onChange: (key, dir) => {
+            setSortKey(key as SortKey);
+            setSortDir(dir);
+          },
+        }}
         leftExtras={
-          <>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => {
-                const firstField = customFields[0];
-                if (!firstField) return;
-                setFilters([
-                  ...filters,
-                  {
-                    id: crypto.randomUUID(),
-                    fieldId: firstField.id,
-                    operator: operatorsFor(firstField.field_type)[0],
-                    value: '',
-                  },
-                ]);
-              }}
-              disabled={filterAddDisabled}
-            >
-              + {t('tableView.addFilter')}
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => setPropertiesOpen(true)}
-            >
-              {t('tableView.properties')}
-            </Button>
-            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-              {t('tableView.count', { count: sorted.length })}
-            </span>
-          </>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setPropertiesOpen(true)}
+          >
+            {t('tableView.properties')}
+          </Button>
         }
         rightExtras={
           onCreateTask ? (
@@ -841,6 +862,10 @@ export default function TableView({
             {grouped
               ? grouped.flatMap((group) => {
                   const collapsed = collapsedGroups.has(group.key);
+                  // "+" only for column grouping — other group types would
+                  // need a post-create field mutation (assignee/label/select
+                  // value) and the inline-add flow here only prefills column.
+                  const canAddInGroup = groupBy.type === 'column' && !!onCreateTask;
                   const rows: React.ReactNode[] = [
                     <tr
                       key={`group-${group.key}`}
@@ -881,6 +906,28 @@ export default function TableView({
                         >
                           · {group.tasks.length}
                         </span>
+                        {canAddInGroup && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              // Stop the row's collapse-toggle handler from firing.
+                              e.stopPropagation();
+                              setNewColumnId(group.key);
+                              setAdding(true);
+                              setCollapsedGroups((prev) => {
+                                const next = new Set(prev);
+                                next.delete(group.key);
+                                return next;
+                              });
+                            }}
+                            className="ml-3 inline-flex items-center justify-center w-5 h-5 rounded hover:bg-[var(--color-surface)]"
+                            style={{ color: 'var(--color-text-muted)' }}
+                            aria-label={t('tableView.addTaskToGroup', 'Add task to group')}
+                            title={t('tableView.addTaskToGroup', 'Add task to group')}
+                          >
+                            +
+                          </button>
+                        )}
                       </td>
                     </tr>,
                   ];
@@ -905,6 +952,50 @@ export default function TableView({
               </tr>
             )}
           </tbody>
+          <tfoot
+            className="sticky bottom-0"
+            style={{
+              backgroundColor: 'var(--color-surface-hover)',
+              borderTop: '1px solid var(--color-border)',
+            }}
+          >
+            <tr>
+              {(onBulkMove || onBulkDelete) && (
+                <td className="px-3 py-2 text-xs font-semibold uppercase tracking-wider"
+                    style={{ color: 'var(--color-text-secondary)' }}>
+                  {/* Row count belongs next to the bulk-select column so it
+                      lines up with the checkbox for every data row. */}
+                  {`${t('tableView.count')} ${sorted.length}`}
+                </td>
+              )}
+              {orderedVisibleColumns.map((col, idx) => {
+                // Without the bulk-select column we place the overall count
+                // in the first visible column's footer cell.
+                const showCountHere = !(onBulkMove || onBulkDelete) && idx === 0;
+                return (
+                  <AggregationFooterCell
+                    key={`agg-${col.id}`}
+                    columnId={col.id}
+                    tasks={sorted}
+                    customFields={realFields}
+                    columns={columns}
+                    fieldValues={fieldValuesData?.items ?? []}
+                    type={aggregations[col.id] ?? 'none'}
+                    onChange={(next) =>
+                      setAggregations((prev) => {
+                        const out = { ...prev };
+                        if (next === 'none') delete out[col.id];
+                        else out[col.id] = next;
+                        return out;
+                      })
+                    }
+                    leadingCount={showCountHere ? sorted.length : undefined}
+                    leadingCountLabel={t('tableView.count')}
+                  />
+                );
+              })}
+            </tr>
+          </tfoot>
         </table>
       </div>
 
@@ -1217,6 +1308,114 @@ function PropertiesDndList({
         )}
       </Droppable>
     </DragDropContext>
+  );
+}
+
+/**
+ * Per-column footer cell: shows a "Calculate" affordance by default. Clicking
+ * opens a popover of aggregations supported for this column's type. Chosen
+ * aggregations persist via the parent's onChange (→ saved view config).
+ */
+function AggregationFooterCell({
+  columnId,
+  tasks,
+  customFields,
+  columns,
+  fieldValues,
+  type,
+  onChange,
+  leadingCount,
+  leadingCountLabel,
+}: {
+  columnId: string;
+  tasks: TaskDto[];
+  customFields: CustomField[];
+  columns: BoardColumn[];
+  fieldValues: TaskFieldValue[];
+  type: AggType;
+  onChange: (next: AggType) => void;
+  leadingCount?: number;
+  leadingCountLabel?: string;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLTableCellElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const field = customFields.find((f) => f.id === columnId);
+  const aggCol = buildAggColumn(columnId, field);
+  const ctx: AggContext = { columns, fieldValues };
+  const options = supportedAggTypes(aggCol);
+  const result = computeAggregate(tasks, aggCol, type, ctx);
+
+  return (
+    <td
+      ref={ref}
+      className="relative px-3 py-2 text-xs whitespace-nowrap"
+      style={{ color: 'var(--color-text-secondary)' }}
+    >
+      {leadingCount !== undefined && (
+        <span className="mr-3 font-semibold uppercase tracking-wider">
+          {leadingCountLabel} {leadingCount}
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-[var(--color-surface)]"
+        style={{ color: type === 'none' ? 'var(--color-text-muted)' : 'var(--color-text)' }}
+      >
+        {type === 'none' ? (
+          <span className="opacity-0 group-hover:opacity-100">
+            {t('tableView.calculate', 'Calculate')}
+          </span>
+        ) : (
+          <>
+            <span className="text-[10px] uppercase tracking-wider opacity-70">
+              {aggTypeLabel(type)}
+            </span>
+            <span className="font-semibold">{result.value}</span>
+          </>
+        )}
+        <span className="opacity-60">▾</span>
+      </button>
+      {open && (
+        <div
+          className="absolute bottom-full right-2 mb-1 z-20 min-w-[160px] rounded-lg py-1 shadow-lg"
+          style={{
+            backgroundColor: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+          }}
+        >
+          {(['none', ...options] as AggType[]).map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => {
+                onChange(opt);
+                setOpen(false);
+              }}
+              className="w-full text-left px-3 py-1.5 text-sm hover:bg-[var(--color-surface-hover)] flex items-center justify-between"
+              style={{
+                color: 'var(--color-text)',
+                fontWeight: opt === type ? 600 : 400,
+              }}
+            >
+              <span>{aggTypeLabel(opt)}</span>
+              {opt === type && <span style={{ color: 'var(--color-primary)' }}>✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </td>
   );
 }
 

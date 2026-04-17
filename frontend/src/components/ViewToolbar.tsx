@@ -17,7 +17,21 @@ interface Props {
   density?: ViewDensity;
   onDensityChange?: (d: ViewDensity) => void;
 
-  /** Slot for view-specific controls (Properties, Filter, Sort). */
+  /** First-class Filter button (TableView). Showing a count badge makes
+   *  active filters discoverable without scrolling. */
+  filter?: {
+    count: number;
+    onClick: () => void;
+  };
+  /** First-class Sort menu (TableView). `null` key means "no sort". */
+  sort?: {
+    key: string | null;
+    dir: 'asc' | 'desc';
+    options: { id: string; label: string }[];
+    onChange: (key: string, dir: 'asc' | 'desc') => void;
+  };
+
+  /** Slot for view-specific controls (Properties, ad-hoc actions). */
   leftExtras?: ReactNode;
   /** Slot for right-side content (SavedView bar, + New). */
   rightExtras?: ReactNode;
@@ -43,6 +57,8 @@ export default function ViewToolbar({
   customFields = [],
   density,
   onDensityChange,
+  filter,
+  sort,
   leftExtras,
   rightExtras,
 }: Props) {
@@ -72,6 +88,8 @@ export default function ViewToolbar({
           customFields={customFields}
         />
       )}
+      {filter && <FilterButton count={filter.count} onClick={filter.onClick} />}
+      {sort && <SortMenu sort={sort} />}
       {leftExtras}
       <div className="ml-auto flex items-center gap-2">
         {onDensityChange && density && (
@@ -79,6 +97,127 @@ export default function ViewToolbar({
         )}
         {rightExtras}
       </div>
+    </div>
+  );
+}
+
+function FilterButton({ count, onClick }: { count: number; onClick: () => void }) {
+  const { t } = useTranslation();
+  const active = count > 0;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm hover:bg-[var(--color-surface-hover)]"
+      style={{
+        backgroundColor: active ? 'var(--color-primary-light)' : 'var(--color-surface)',
+        border: `1px solid ${active ? 'var(--color-primary)' : 'var(--color-border)'}`,
+        color: active ? 'var(--color-primary-text)' : 'var(--color-text)',
+      }}
+    >
+      <span>{t('toolbar.filter', 'Filter')}</span>
+      {active && (
+        <span
+          className="inline-flex items-center justify-center rounded-full text-[10px] font-bold px-1.5 min-w-[18px]"
+          style={{
+            backgroundColor: 'var(--color-primary)',
+            color: 'var(--color-text-inverse)',
+          }}
+        >
+          {count}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function SortMenu({
+  sort,
+}: {
+  sort: {
+    key: string | null;
+    dir: 'asc' | 'desc';
+    options: { id: string; label: string }[];
+    onChange: (key: string, dir: 'asc' | 'desc') => void;
+  };
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const active = sort.options.find((o) => o.id === sort.key);
+  const activeLabel = active ? active.label : t('toolbar.sortUnset', 'Unsorted');
+  const arrow = sort.dir === 'asc' ? '↑' : '↓';
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm hover:bg-[var(--color-surface-hover)]"
+        style={{
+          backgroundColor: 'var(--color-surface)',
+          border: '1px solid var(--color-border)',
+          color: 'var(--color-text)',
+        }}
+      >
+        <span className="text-[var(--color-text-muted)]">
+          {t('toolbar.sort', 'Sort')}:
+        </span>
+        <span className="font-medium">
+          {activeLabel} {active && arrow}
+        </span>
+        <span className="text-[var(--color-text-muted)]">▾</span>
+      </button>
+      {open && (
+        <div
+          className="absolute left-0 top-full mt-1 z-20 min-w-[200px] rounded-lg py-1 shadow-lg"
+          style={{
+            backgroundColor: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+          }}
+        >
+          {sort.options.map((opt) => {
+            const isActive = opt.id === sort.key;
+            return (
+              <div key={opt.id} className="flex items-stretch">
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Click on the row = toggle dir when already sorted, else
+                    // asc on first click.
+                    const next: 'asc' | 'desc' =
+                      isActive && sort.dir === 'asc' ? 'desc' : 'asc';
+                    sort.onChange(opt.id, next);
+                    setOpen(false);
+                  }}
+                  className="flex-1 text-left px-3 py-1.5 text-sm hover:bg-[var(--color-surface-hover)] flex items-center justify-between"
+                  style={{
+                    color: 'var(--color-text)',
+                    fontWeight: isActive ? 600 : 400,
+                  }}
+                >
+                  <span>{opt.label}</span>
+                  {isActive && (
+                    <span style={{ color: 'var(--color-primary)' }}>
+                      {arrow}
+                    </span>
+                  )}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
