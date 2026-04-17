@@ -105,10 +105,11 @@ export default function Layout() {
         }}
       >
         {/* NavBrand — flex-shrink-0 pins it to the top regardless of how
-            many items are in the nav below. Without it the whole sidebar
-            scrolled as one block when the board list grew past the viewport. */}
+            many items are in the nav below. `select-none` so dragging from
+            the brand (e.g. while adjusting the sidebar) doesn't accidentally
+            highlight the app name. */}
         <div
-          className="flex-shrink-0 flex items-center gap-2 px-4 py-4"
+          className="flex-shrink-0 flex items-center gap-2 px-4 py-4 select-none"
           style={{ borderBottom: '1px solid var(--color-sidebar-border)' }}
         >
           <span className="text-lg font-bold" style={{ color: 'var(--color-sidebar-text-active)' }}>
