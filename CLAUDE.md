@@ -48,6 +48,9 @@ scripts/          시드/운영 스크립트
 - **OIDC groups → 부서 자동 동기화** 는 `groups` 클레임 문자열을 `departments.slug`와 **exact match**로만 매칭 (`authz/authn.rs:sync_user_departments_from_claims`). AD 그룹을 `dc=...` 같이 DN으로 그대로 보내면 매칭 실패.
 - **Board / Table / Calendar / Activity** 는 동일한 Task 모델을 공유한다. 각 View 전용 필드/테이블을 새로 만들지 말 것.
 - **Template → Board materialize** 는 custom field 정의까지 복사한다 (`template_handlers.rs`). 템플릿 로직을 바꾸면 이 트랜잭션 범위를 확인할 것.
+- **테이블 가로 스크롤은 페이지 레벨로.** 테이블 자체에 `overflow-x-auto` 를 두지 않는다. `<table>` 에 `min-w-[Npx]` 만 주고 `<main>` 의 `overflow-auto` 가 전체 페이지를 좌우로 스크롤. 토큰 재사용 위해 모든 관리/테이블 페이지가 이 패턴을 공유 (`doc/STYLE_GUIDE.md` 참조).
+- **하드코드 Tailwind 색 금지** (`bg-blue-*`, `text-gray-*` 등). `var(--color-*)` 토큰만 사용 — 라이트/다크 자동 전환이 깨짐.
+- **사이드바 색상 preference** 는 `AccentColorSync` 에서 WCAG 명도 기준으로 text 토큰을 자동 오버라이드 — 사용자가 어떤 hex 를 골라도 가독성 유지됨.
 
 ## 코딩 스타일
 

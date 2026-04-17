@@ -1,7 +1,7 @@
 # PROCESS.md — Task Board 구현 진행 현황
 
-> 마지막 업데이트: 2026-04-17  
-> 최신 커밋: 3e195e1 (멤버 모달 분리, 보드 메뉴 4-bucket, 관리 페이지 버그)
+> 마지막 업데이트: 2026-04-18  
+> 최신 커밋: 2da5b8c (관리 페이지 2-col + detail modal + NavBrand no-select)
 
 ---
 
@@ -83,6 +83,35 @@ Mattermost Boards 유사 Task Board 시스템. Frontend(React/Vite) + Backend(Ru
 | **환경변수 템플릿** | `.env.example` (운영) + `.env.dev.example` (개발) 로 분리. 루트 배치. |
 | **infra/ 유지** | `infra/nginx.conf`, `infra/keycloak/realm-export.json`, `infra/glauth/glauth.cfg` |
 | **문서 재편** | `CLAUDE.md` → Claude Code 안내서로 재작성, 원본 스펙은 `doc/SPEC.md` 로 이전. `README.md` / `doc/DEVELOPMENT.md` / `doc/DEPLOYMENT.md` / `doc/AUTH.md` 신규 작성. |
+
+### Mattermost Boards 참조 기능 (2026-04-18)
+
+스크린샷으로 본 Focalboard 유사 UI 에서 도출한 6개 기능 반영.
+
+| 항목 | 커밋 | 내용 |
+|---|---|---|
+| **열 집계 푸터** | `01ae5e6` | `lib/aggregation.ts` 신규. AggType 11종 (count / count_empty / sum / avg / min / max / …) × 타입별 supported 매트릭스. `<tfoot>` 에 AggregationFooterCell popover. `BoardView.config.aggregations` 로 퍼시스트. 13 unit tests |
+| **그룹 헤더 `+`** | `01ae5e6` | `groupBy.type === 'column'` 일 때 각 그룹 행 헤더에 `+` — 해당 column 에 prefill 된 inline add row 오픈 |
+| **툴바 Filter/Sort 승격** | `01ae5e6` | `ViewToolbar` 에 `filter`, `sort` props 1급화. Filter 는 active count 배지, Sort 는 정렬 가능 필드 + asc/desc 토글 popover |
+| **Task 이모지 prefix** | `81476c5` | migration `0018_task_icon.sql` + `TaskRow.icon` / `TaskDto.icon`. emoji-mart 풀 피커 (`EmojiPickerButton`, lazy). TaskModal · Kanban card · Table title · Calendar event 에 prefix 렌더. `bundle 'emoji' chunk` 분리 |
+| **담당자 부서 칩** | `81476c5` | `AssigneeInfo.department_names` JOIN + `UserRef.department_names` 전파. AvatarStack 칩에 첫 부서명, tooltip 에 전체 |
+| **Sort custom field** | `0499553` | SortKey 를 string 으로 확장. 제네릭 comparator (숫자/불리언/문자열/빈값). custom field 전부 정렬 가능, assignees/info 만 제외 |
+
+### Notion-inspired 스타일 개편 (2026-04-18)
+
+| 항목 | 커밋 | 내용 |
+|---|---|---|
+| **Warm palette** | `5c2046e` | 서피스 `#f7f6f3`, 텍스트 `#37352f` (warm charcoal), 보더 `rgba(55,53,47,0.12)` 반투명 taupe. 다크 모드는 warm near-black `#191918/#252523` |
+| **라이트 사이드바** | `5c2046e` | 기존 dark sidebar → light warm 으로 전환. 기존 Tailwind hardcode (`bg-blue-*`, `text-gray-*`) 모두 `var(--color-*)` 토큰 참조 |
+| **Radius/Shadow** | `5c2046e` | 3/6/8/12px 타이트, shadow 는 soft low-contrast |
+| **모바일 drawer + 반응형 패딩** | `cebc77b` | `px-4 md:px-6 py-6 md:py-8` 패턴. 사이드바 off-canvas (ESC · 라우트 변경 · backdrop 으로 close) |
+| **i18n 플레이스홀더 수정** | `57be592` | `tableView.count` 에 항상 `{count}` 파라미터 전달 |
+| **사이드바 가독성 자동** | `0499553` | `AccentColorSync` 가 저장된 `sidebarColor` 의 WCAG 상대 명도를 계산해 어두운 bg→밝은 text / 밝은 bg→warm charcoal text 로 토큰 오버라이드 |
+| **테이블 페이지 레벨 스크롤** | `0499553` | 테이블 자체 `overflow-x-auto` 제거 + `<table>` 에 `min-w-[720px]`. `<main>` + Layout 메인 영역에 `min-w-0` 로 flex 축소 허용. sticky first column 제거 (toolbar 와 분리 스크롤 깨지는 문제) |
+| **스크롤바 두께** | `f7a8ea1` | 6 → 10px, 썸 색 `color-mix(text-muted 45%)` 로 대비 강화 |
+| **관리 페이지 2-col 재설계** | `2da5b8c` | `lg:grid-cols-[14rem_1fr]` 좌측 scope tree + 우측 사용자 테이블 (5컬럼). 행 클릭 → Modal 로 detail. 기존 3-pane 의 가운데 list 가 좁던 문제 해결 |
+| **NavBrand no-select** | `2da5b8c` | 사이드바 앱 이름 드래그 선택 방지 |
+| **STYLE_GUIDE 전면 개편** | `cebc77b` | Design ethos · Responsive breakpoints · Horizontal overflow 섹션 신규. Sidebar light 전환 반영. |
 
 ---
 
@@ -215,13 +244,24 @@ workspace/infra/
 | i18n (한국어/영어) | ✅ |
 | 다크모드 | ✅ |
 | Command Palette (Cmd+K) | ✅ |
+| 열 집계 푸터 (COUNT/SUM/AVG/%/Unique 등) | ✅ |
+| 그룹 헤더 `+` (column 그룹 prefill add row) | ✅ |
+| 툴바 Filter/Sort 1급화 + custom field 정렬 | ✅ |
+| Task 이모지 prefix (emoji-mart 풀 피커) | ✅ |
+| 담당자 부서 칩 표시 | ✅ |
+| Notion-inspired warm palette (light sidebar) | ✅ |
+| 모바일 off-canvas drawer + 반응형 패딩 | ✅ |
+| 관리 페이지 2-col + detail modal | ✅ |
 
 ---
 
 ## 알려진 기술 부채
 
-- index 청크 398KB (500KB 경고 해제됨, 추가 분리 여지 있으나 낮은 우선순위)
-- `person` 필드가 kanban 카드에서 UUID 앞 8자리만 표시 (카드에는 users 목록이 없음)
+- emoji-mart 청크 510KB (gzip 110KB) — lazy import 로 분리됨. 더 가벼운 피커로 교체 여지
+- index 청크 460KB 내외 (500KB 경고 임계 근처) — 추가 code-split 여지 있으나 우선순위 낮음
+- `person` 필드가 kanban 카드에서 UUID 앞 8자리만 표시 (카드에는 users 목록이 없음) — 담당자 칩과 별개 경로
 - `useUsers()` 호출이 TaskDrawer 내부에서 발생 — React Query 캐시로 중복 요청은 없으나 구조적 개선 여지
-- BoardSettingsModal `MembersPanel`의 사용자 검색이 클라이언트 필터링 (100명 이상 시 API 쿼리 필요)
+- BoardSettingsModal `MembersPanel` 의 사용자 검색이 클라이언트 필터링 (100명 이상 시 API 쿼리 필요)
 - Activity 탭이 최신 50건만 표시 (pagination UI 없음)
+- `PATCH /api/users/{id}` 는 `active` 만 수용, `PATCH /api/departments/{id}` 는 `name` 만 수용 — name/roles/slug 은 OIDC 클레임 기준이므로 의도적 제약. 프론트 훅 시그니처도 이에 맞춤
+- 테이블 sticky first column 미구현 — 페이지 레벨 가로 스크롤로 대체 (toolbar 와 분리 스크롤되는 UX 문제 회피). 재도입 시 toolbar 도 sticky 처리 필요

@@ -195,12 +195,24 @@ Task {
   priority: "low"|"medium"|"high"|"urgent";
   status: "open"|"in_progress"|"done"|"archived";
   start_date?: ISO; due_date?: ISO;
-  labels: LabelRef[]; assignees: UserRef[];
+  icon?: string | null;                // emoji prefix (migration 0018)
+  labels: LabelRef[]; assignees: AssigneeInfo[];
   checklist_summary: { total: number; checked: number };
   comment_count: number;
   created_by: UUID; version: number;
   created_at: ISO; updated_at: ISO;
 }
+
+AssigneeInfo / UserRef {
+  id: UUID; name: string; email: string;
+  department_names: string[];          // JOIN-populated, used by AvatarStack chip
+}
+
+// PatchTaskRequest.icon uses three-way semantics via double_option:
+//   absent  → leave current icon alone
+//   "🚀"   → set to value
+//   null    → clear the icon
+// See backend http::serde_helpers::double_option.
 
 CustomField {
   id; board_id; name; field_type;

@@ -8,8 +8,11 @@ Mattermost Boards 유사 팀 협업 Task Board. **Rust(axum)** 백엔드 + **Rea
 - **Custom Fields**: text, number, select, date, checkbox, url, email, phone, person 등 10+ 타입
 - **Template**: 컬럼·라벨·체크리스트·custom field 정의까지 복사하는 보드 템플릿
 - **Saved Views**: Board/Table 별 필터·정렬·컬럼 가시성 퍼시스트
+- **Table 열 집계 푸터**: 열마다 COUNT/SUM/AVG/%/Unique 등 선택해 하단에 표시
+- **Task 이모지 prefix**: emoji-mart 풀 피커로 카드·표·캘린더에 emoji 시각화
 - **2-tier 권한**: Global Role (SystemAdmin / DeptAdmin / TeamAdmin / Member / Viewer) × Board Role
-- **조직 자동 동기화**: OIDC `groups` 클레임 → 부서 멤버십 자동 반영
+- **조직 자동 동기화**: OIDC `groups` 클레임 → 부서 멤버십 자동 반영 + 담당자 칩에 부서명 표시
+- **Notion-inspired UI**: warm palette, 라이트 사이드바, 모바일 off-canvas drawer, 페이지 레벨 가로 스크롤
 - **i18n** 한국어/영어, 다크모드, Cmd+K 커맨드 팔레트
 
 ## 기술 스택
