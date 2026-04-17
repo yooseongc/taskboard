@@ -18,6 +18,13 @@ pub struct BoardRow {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
+    /// 'department' or 'personal' (migration 0017).
+    #[serde(default = "default_owner_type")]
+    pub owner_type: String,
+}
+
+fn default_owner_type() -> String {
+    "personal".to_string()
 }
 
 /// Row type for the `board_columns` table.
@@ -164,10 +171,16 @@ pub struct BoardSummary {
     pub title: String,
     pub description: Option<String>,
     pub owner_id: Uuid,
+    pub owner_type: String,
     pub version: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
+    /// True if the requesting user has pinned this board (ROLES.md §8).
+    pub pinned: bool,
+    /// Which bucket this board falls into for the requesting user.
+    /// One of: "department", "personal", "invited".
+    pub bucket: String,
 }
 
 /// S-013: Board detail for get_board.

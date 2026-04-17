@@ -270,6 +270,63 @@ pub async fn create_board(
 // S-013: GET /api/boards
 // ---------------------------------------------------------------------------
 
+/// Fetch the set of board IDs (from a candidate list) the user has pinned.
+async fn fetch_pinned_set(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+    board_ids: &[Uuid],
+) -> Result<std::collections::HashSet<Uuid>, AppError> {
+    if board_ids.is_empty() {
+        return Ok(std::collections::HashSet::new());
+    }
+    let rows: Vec<(Uuid,)> = sqlx::query_as(
+        "SELECT board_id FROM board_pins WHERE user_id = $1 AND board_id = ANY($2)",
+    )
+    .bind(user_id)
+    .bind(board_ids)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|(id,)| id).collect())
+}
+
+/// Fetch board IDs (from a candidate list) that are department boards the
+/// user has dept-membership access to. Used to distinguish "department"
+/// vs "invited" buckets when the user is also a board_member.
+async fn fetch_dept_board_ids_for_user(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+    board_ids: &[Uuid],
+) -> Result<std::collections::HashSet<Uuid>, AppError> {
+    if board_ids.is_empty() {
+        return Ok(std::collections::HashSet::new());
+    }
+    let rows: Vec<(Uuid,)> = sqlx::query_as(
+        r#"
+        SELECT DISTINCT bd.board_id
+        FROM board_departments bd
+        JOIN department_members dm ON dm.department_id = bd.department_id
+        WHERE dm.user_id = $1 AND bd.board_id = ANY($2)
+        "#,
+    )
+    .bind(user_id)
+    .bind(board_ids)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|(id,)| id).collect())
+}
+
+/// Determine which bucket a board belongs to from the user's perspective.
+/// Order: personal > department > invited.
+fn compute_bucket(board: &BoardRow, user_id: Uuid, dept_boards: &std::collections::HashSet<Uuid>) -> String {
+    if board.owner_type == "personal" && board.owner_id == user_id {
+        return "personal".to_string();
+    }
+    if board.owner_type == "department" && dept_boards.contains(&board.id) {
+        return "department".to_string();
+    }
+    "invited".to_string()
+}
+
 pub async fn list_boards(
     State(state): State<AppState>,
     user: AuthnUser,
@@ -413,17 +470,28 @@ pub async fn list_boards(
         rows.pop();
     }
 
+    // Bucket-aware enrichment for the legacy list_boards endpoint.
+    let board_ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
+    let pins = fetch_pinned_set(&state.pool, user.user_id, &board_ids).await?;
+    let dept_board_ids = fetch_dept_board_ids_for_user(&state.pool, user.user_id, &board_ids).await?;
+
     let items: Vec<BoardSummary> = rows
         .iter()
-        .map(|r| BoardSummary {
-            id: r.id,
-            title: r.title.clone(),
-            description: r.description.clone(),
-            owner_id: r.owner_id,
-            version: r.version,
-            created_at: r.created_at,
-            updated_at: r.updated_at,
-            deleted_at: r.deleted_at,
+        .map(|r| {
+            let bucket = compute_bucket(r, user.user_id, &dept_board_ids);
+            BoardSummary {
+                id: r.id,
+                title: r.title.clone(),
+                description: r.description.clone(),
+                owner_id: r.owner_id,
+                owner_type: r.owner_type.clone(),
+                version: r.version,
+                created_at: r.created_at,
+                updated_at: r.updated_at,
+                deleted_at: r.deleted_at,
+                pinned: pins.contains(&r.id),
+                bucket,
+            }
         })
         .collect();
 
@@ -1053,4 +1121,115 @@ pub async fn list_board_departments(
     .await?;
 
     Ok(Json(serde_json::json!({ "items": items })))
+}
+
+// ===========================================================================
+// ROLES.md §5: GET /api/users/me/boards?bucket=...
+// ===========================================================================
+
+#[derive(serde::Deserialize, Debug)]
+pub struct MyBoardsQuery {
+    /// "favorites" | "department" | "personal" | "invited" | "all" (default).
+    pub bucket: Option<String>,
+}
+
+pub async fn list_my_boards(
+    State(state): State<AppState>,
+    user: AuthnUser,
+    Query(q): Query<MyBoardsQuery>,
+) -> Result<impl IntoResponse, AppError> {
+    let bucket = q.bucket.as_deref().unwrap_or("all");
+
+    // Fetch the candidate set: every board the user can see.
+    let rows: Vec<BoardRow> = sqlx::query_as::<_, BoardRow>(
+        r#"
+        SELECT b.* FROM boards b
+        WHERE b.deleted_at IS NULL
+        AND (
+            b.id IN (SELECT board_id FROM board_members WHERE user_id = $1)
+            OR b.id IN (
+                SELECT bd.board_id FROM board_departments bd
+                JOIN department_members dm ON bd.department_id = dm.department_id
+                WHERE dm.user_id = $1
+            )
+            OR (b.owner_type = 'personal' AND b.owner_id = $1)
+        )
+        ORDER BY b.updated_at DESC
+        "#,
+    )
+    .bind(user.user_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let board_ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
+    let pins = fetch_pinned_set(&state.pool, user.user_id, &board_ids).await?;
+    let dept_boards = fetch_dept_board_ids_for_user(&state.pool, user.user_id, &board_ids).await?;
+
+    let summaries: Vec<BoardSummary> = rows
+        .iter()
+        .map(|r| {
+            let computed = compute_bucket(r, user.user_id, &dept_boards);
+            BoardSummary {
+                id: r.id,
+                title: r.title.clone(),
+                description: r.description.clone(),
+                owner_id: r.owner_id,
+                owner_type: r.owner_type.clone(),
+                version: r.version,
+                created_at: r.created_at,
+                updated_at: r.updated_at,
+                deleted_at: r.deleted_at,
+                pinned: pins.contains(&r.id),
+                bucket: computed,
+            }
+        })
+        .collect();
+
+    let filtered: Vec<&BoardSummary> = match bucket {
+        "favorites" => summaries.iter().filter(|b| b.pinned).collect(),
+        "department" => summaries.iter().filter(|b| b.bucket == "department").collect(),
+        "personal" => summaries.iter().filter(|b| b.bucket == "personal").collect(),
+        "invited" => summaries.iter().filter(|b| b.bucket == "invited").collect(),
+        _ => summaries.iter().collect(),
+    };
+
+    Ok(Json(serde_json::json!({ "items": filtered })))
+}
+
+// ===========================================================================
+// ROLES.md §8: PUT /api/users/me/pins/:board_id (toggle)
+// ===========================================================================
+
+pub async fn toggle_board_pin(
+    State(state): State<AppState>,
+    user: AuthnUser,
+    Path(board_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    // Ensure user can read the board (basic ACL).
+    check_board_permission(&state.pool, &user, board_id, Action::Read, ResourceType::Board).await?;
+
+    // Try delete first; if no row, insert (toggle semantics).
+    let deleted = sqlx::query(
+        "DELETE FROM board_pins WHERE user_id = $1 AND board_id = $2",
+    )
+    .bind(user.user_id)
+    .bind(board_id)
+    .execute(&state.pool)
+    .await?
+    .rows_affected();
+
+    let pinned = if deleted == 0 {
+        sqlx::query(
+            "INSERT INTO board_pins (user_id, board_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        )
+        .bind(user.user_id)
+        .bind(board_id)
+        .execute(&state.pool)
+        .await?;
+        true
+    } else {
+        false
+    };
+
+    Ok(Json(serde_json::json!({ "board_id": board_id, "pinned": pinned })))
 }

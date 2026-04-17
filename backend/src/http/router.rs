@@ -59,6 +59,10 @@ pub fn build_router(state: AppState) -> Router {
     let board_routes = Router::new()
         .route("/api/boards", post(collab::create_board))
         .route("/api/boards", get(collab::list_boards))
+        // ROLES.md §5: bucketed board listing for the current user
+        .route("/api/users/me/boards", get(collab::list_my_boards))
+        // ROLES.md §8: pin/unpin a board
+        .route("/api/users/me/pins/{board_id}", put(collab::toggle_board_pin))
         .route("/api/boards/{id}", get(collab::get_board))
         .route("/api/boards/{id}", patch(collab::patch_board))
         .route("/api/boards/{id}", delete(collab::delete_board))
