@@ -66,6 +66,23 @@ export default function Layout() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
   const location = useLocation();
+
+  // Close the mobile drawer when the route changes so a navigation click
+  // doesn't leave the backdrop blocking the page. Desktop layouts
+  // (`>= md`) ignore the change because the sidebar is static there.
+  useEffect(() => {
+    if (window.innerWidth < 768) setSidebarOpen(false);
+  }, [location.pathname]);
+
+  // Close drawer on ESC (mobile only).
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && window.innerWidth < 768) setSidebarOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sidebarOpen]);
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
 
@@ -172,20 +189,36 @@ export default function Layout() {
           )}
         </nav>
         {/* User section */}
-        <div className="border-t border-gray-800 p-3">
+        <div
+          className="p-3"
+          style={{ borderTop: '1px solid var(--color-sidebar-border)' }}
+        >
           <div className="flex items-center gap-2">
             <Link
               to="/profile"
-              className="flex items-center gap-2 flex-1 min-w-0 text-sm hover:text-white"
+              className="flex items-center gap-2 flex-1 min-w-0 text-sm"
+              style={{ color: 'var(--color-sidebar-text)' }}
             >
-              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                style={{
+                  backgroundColor: 'var(--color-primary)',
+                  color: 'var(--color-text-inverse)',
+                }}
+              >
                 {user?.name?.charAt(0)?.toUpperCase() ?? '?'}
               </div>
               <div className="truncate">
-                <div className="text-sm font-medium text-white truncate">
+                <div
+                  className="text-sm font-medium truncate"
+                  style={{ color: 'var(--color-sidebar-text-active)' }}
+                >
                   {user?.name ?? 'User'}
                 </div>
-                <div className="text-xs text-gray-400 truncate">
+                <div
+                  className="text-xs truncate"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
                   {user?.email}
                 </div>
               </div>
@@ -195,7 +228,8 @@ export default function Layout() {
                 logout();
                 window.location.href = getLogoutUrl();
               }}
-              className="p-1.5 text-gray-500 hover:text-white hover:bg-gray-800 rounded flex-shrink-0"
+              className="p-1.5 rounded flex-shrink-0 hover:bg-[var(--color-sidebar-hover)]"
+              style={{ color: 'var(--color-text-muted)' }}
               title="Logout"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

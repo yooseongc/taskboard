@@ -381,7 +381,13 @@ export function MembersPanel({ boardId }: { boardId: string }) {
               className="flex items-center gap-3 p-2 rounded-lg"
               style={{ backgroundColor: 'var(--color-surface-hover)' }}
             >
-              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                style={{
+                  backgroundColor: 'var(--color-primary)',
+                  color: 'var(--color-text-inverse)',
+                }}
+              >
                 {m.user_name.charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
@@ -409,7 +415,7 @@ export function MembersPanel({ boardId }: { boardId: string }) {
                     onError: () => addToast('error', 'Failed to remove member'),
                   })
                 }
-                className="p-1 rounded hover:bg-red-100 hover:text-red-600 flex-shrink-0"
+                className="p-1 rounded flex-shrink-0 hover:bg-[var(--tag-danger-bg)] hover:text-[var(--tag-danger-text)]"
                 title="Remove member"
                 style={{ color: 'var(--color-text-muted)' }}
               >
@@ -469,7 +475,13 @@ export function MembersPanel({ boardId }: { boardId: string }) {
                     )
                   }
                 >
-                  <div className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center flex-shrink-0">
+                  <div
+                    className="w-6 h-6 rounded-full text-xs flex items-center justify-center flex-shrink-0"
+                    style={{
+                      backgroundColor: 'var(--color-primary)',
+                      color: 'var(--color-text-inverse)',
+                    }}
+                  >
                     {u.name.charAt(0).toUpperCase()}
                   </div>
                   <span className="flex-1 truncate">{u.name}</span>

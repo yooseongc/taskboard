@@ -15,36 +15,42 @@
  */
 
 :root {
+  /* Notion-inspired "warm minimalism" palette. Body color leans a warm
+   * charcoal-brown (#37352f) — its signature — paired with off-white
+   * surfaces and soft translucent borders so UI surfaces feel less
+   * clinical than the cool-gray originals.
+   */
+
   /* ---- Brand ---- */
   --color-primary: #2563eb;
   --color-primary-hover: #1d4ed8;
   --color-primary-light: #dbeafe;
   --color-primary-text: #1e40af;
 
-  /* ---- Surfaces ---- */
-  --color-bg: #f9fafb;
+  /* ---- Surfaces (warm off-white) ---- */
+  --color-bg: #f7f6f3;
   --color-surface: #ffffff;
-  --color-surface-hover: #f3f4f6;
-  --color-surface-active: #eff6ff;
+  --color-surface-hover: #f1efec;
+  --color-surface-active: #ebeae4;
   --color-surface-raised: #ffffff;
 
-  /* ---- Sidebar ---- */
-  --color-sidebar-bg: #111827;
-  --color-sidebar-text: #d1d5db;
-  --color-sidebar-text-active: #ffffff;
-  --color-sidebar-hover: #1f2937;
-  --color-sidebar-border: #1f2937;
+  /* ---- Sidebar (light warm, matches body background) ---- */
+  --color-sidebar-bg: #f7f6f3;
+  --color-sidebar-text: #37352f;
+  --color-sidebar-text-active: #37352f;
+  --color-sidebar-hover: #efece7;
+  --color-sidebar-border: rgba(55, 53, 47, 0.09);
 
-  /* ---- Text ---- */
-  --color-text: #111827;
-  --color-text-secondary: #6b7280;
-  --color-text-muted: #9ca3af;
-  --color-text-placeholder: #9ca3af;
+  /* ---- Text (warm charcoal) ---- */
+  --color-text: #37352f;
+  --color-text-secondary: #6f6e69;
+  --color-text-muted: #9b9a97;
+  --color-text-placeholder: #9b9a97;
   --color-text-inverse: #ffffff;
 
-  /* ---- Borders ---- */
-  --color-border: #e5e7eb;
-  --color-border-light: #f3f4f6;
+  /* ---- Borders (soft translucent taupe) ---- */
+  --color-border: rgba(55, 53, 47, 0.12);
+  --color-border-light: rgba(55, 53, 47, 0.065);
   --color-border-focus: #2563eb;
 
   /* ---- Semantic ---- */
@@ -94,15 +100,19 @@
   --color-priority-low-bg: var(--tag-success-bg);
   --color-priority-low-text: var(--tag-success-text);
 
-  /* ---- Dimensions ---- */
-  --radius-sm: 0.25rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
+  /* ---- Dimensions (tighter, Notion-like) ---- */
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
 
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  /* Softer, lower-contrast shadows than the original. Most surfaces rely on
+   * borders rather than elevation; only popovers/modals get perceptible
+   * drop-shadow, and even that stays gentle.
+   */
+  --shadow-sm: 0 1px 2px rgba(15, 15, 15, 0.04);
+  --shadow-md: 0 6px 14px rgba(15, 15, 15, 0.08);
+  --shadow-lg: 0 12px 32px rgba(15, 15, 15, 0.14);
 
   --sidebar-width: 14rem;
 
@@ -119,33 +129,34 @@
   --text-2xl: 1.5rem;    /* 24px */
 }
 
-/* ---- Dark Theme ---- */
+/* ---- Dark Theme (warm dark, matches Notion's dark mode) ---- */
 .dark {
   --color-primary: #3b82f6;
   --color-primary-hover: #2563eb;
   --color-primary-light: #1e3a5f;
   --color-primary-text: #93c5fd;
 
-  --color-bg: #0f172a;
-  --color-surface: #1e293b;
-  --color-surface-hover: #334155;
-  --color-surface-active: #1e3a5f;
-  --color-surface-raised: #334155;
+  /* Warm near-blacks instead of blue-ish slate. */
+  --color-bg: #191918;
+  --color-surface: #252523;
+  --color-surface-hover: #2f2f2d;
+  --color-surface-active: #373735;
+  --color-surface-raised: #2f2f2d;
 
-  --color-sidebar-bg: #020617;
-  --color-sidebar-text: #94a3b8;
-  --color-sidebar-text-active: #f1f5f9;
-  --color-sidebar-hover: #1e293b;
-  --color-sidebar-border: #1e293b;
+  --color-sidebar-bg: #202020;
+  --color-sidebar-text: #c4c4c2;
+  --color-sidebar-text-active: #f1f1ef;
+  --color-sidebar-hover: #2d2d2a;
+  --color-sidebar-border: rgba(255, 255, 252, 0.09);
 
-  --color-text: #f1f5f9;
-  --color-text-secondary: #94a3b8;
-  --color-text-muted: #64748b;
-  --color-text-placeholder: #475569;
-  --color-text-inverse: #0f172a;
+  --color-text: #d4d4d4;
+  --color-text-secondary: #a3a29e;
+  --color-text-muted: #787774;
+  --color-text-placeholder: #6f6e69;
+  --color-text-inverse: #191918;
 
-  --color-border: #334155;
-  --color-border-light: #1e293b;
+  --color-border: rgba(255, 255, 252, 0.09);
+  --color-border-light: rgba(255, 255, 252, 0.055);
   --color-border-focus: #3b82f6;
 
   --color-success: #22c55e;
@@ -184,9 +195,11 @@
   /* Legacy priority tokens remain aliased to the unified palette; no override
    * needed here since the `--tag-*` vars already redefine above. */
 
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5);
+  /* Slightly stronger shadows in dark mode — pure-color shadows lose
+   * definition against dark backgrounds, so we bump alpha. */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 6px 14px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
 }
 
 /* ---- Base Styles (using tokens) ---- */
