@@ -2,19 +2,18 @@ use std::env;
 use std::net::SocketAddr;
 
 /// Application configuration loaded from environment variables (S-029).
-/// All 11 backend core keys + 2 dev-auth keys.
 ///
-/// `log_level`, `log_format`, `jwks_grace_ttl_secs`, and `seed_on_start` are
-/// parsed and validated from the environment for fail-fast startup, but are
-/// not yet wired to their consumers (tracing subscriber, JWKS cache grace
-/// window, seed-on-start runner). Keeping them on the struct means an
-/// operator deploying a malformed value still crashes at boot rather than
-/// silently ignoring it, and the consuming code can adopt them without a
-/// config surface change.
+/// `log_level`, `log_format`, and `jwks_grace_ttl_secs` are parsed and
+/// validated for fail-fast startup but are not yet wired to their consumers
+/// (tracing subscriber, JWKS cache grace window). Keeping them on the struct
+/// means an operator deploying a malformed value still crashes at boot.
+///
+/// Demo data seeding is performed by `scripts/seed-demo.py`, not by the
+/// backend — the historical `SEED_ON_START` flag was never implemented.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct AppConfig {
-    // Backend core (11 keys)
+    // Backend core
     pub database_url: String,
     pub keycloak_issuer: String,
     pub keycloak_jwks_url: Option<String>,
@@ -25,7 +24,6 @@ pub struct AppConfig {
     pub log_format: String,
     pub jwks_cache_ttl_secs: u64,
     pub jwks_grace_ttl_secs: u64,
-    pub seed_on_start: bool,
 
     // System admin emails (comma-separated env SYSTEM_ADMIN_EMAILS)
     pub system_admin_emails: Vec<String>,
@@ -77,11 +75,6 @@ impl AppConfig {
             .parse()
             .expect("JWKS_GRACE_TTL_SECS must be a valid u64");
 
-        let seed_on_start: bool = env::var("SEED_ON_START")
-            .unwrap_or_else(|_| "false".to_string())
-            .parse()
-            .expect("SEED_ON_START must be true or false");
-
         // System admin emails
         let system_admin_emails: Vec<String> = env::var("SYSTEM_ADMIN_EMAILS")
             .unwrap_or_default()
@@ -124,7 +117,6 @@ impl AppConfig {
             log_format,
             jwks_cache_ttl_secs,
             jwks_grace_ttl_secs,
-            seed_on_start,
             system_admin_emails,
             oidc_dept_claim,
             oidc_dept_sync_enabled,
@@ -174,7 +166,6 @@ mod tests {
             log_format: "json".into(),
             jwks_cache_ttl_secs: 600,
             jwks_grace_ttl_secs: 600,
-            seed_on_start: false,
             system_admin_emails: vec![],
             oidc_dept_claim: "groups".into(),
             oidc_dept_sync_enabled: true,
@@ -202,7 +193,6 @@ mod tests {
             log_format: "json".into(),
             jwks_cache_ttl_secs: 600,
             jwks_grace_ttl_secs: 600,
-            seed_on_start: false,
             system_admin_emails: vec![],
             oidc_dept_claim: "groups".into(),
             oidc_dept_sync_enabled: true,

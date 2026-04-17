@@ -248,14 +248,30 @@ export function useDeleteComment(taskId: string) {
   });
 }
 
+// -- raw API fns — usable without a hook (e.g. from DnD handlers) ----------
+export const addTaskLabel = (taskId: string, labelId: string) =>
+  apiFetch<void>(`/api/tasks/${taskId}/labels`, {
+    method: 'POST',
+    body: JSON.stringify({ label_id: labelId }),
+  });
+
+export const removeTaskLabel = (taskId: string, labelId: string) =>
+  apiFetch<void>(`/api/tasks/${taskId}/labels/${labelId}`, { method: 'DELETE' });
+
+export const addTaskAssignee = (taskId: string, userId: string) =>
+  apiFetch<void>(`/api/tasks/${taskId}/assignees`, {
+    method: 'POST',
+    body: JSON.stringify({ user_id: userId }),
+  });
+
+export const removeTaskAssignee = (taskId: string, userId: string) =>
+  apiFetch<void>(`/api/tasks/${taskId}/assignees/${userId}`, { method: 'DELETE' });
+
+// -- React Query hook wrappers for the common "fixed taskId" case ---------
 export function useAddLabel(taskId: string, boardId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (labelId: string) =>
-      apiFetch<void>(`/api/tasks/${taskId}/labels`, {
-        method: 'POST',
-        body: JSON.stringify({ label_id: labelId }),
-      }),
+    mutationFn: (labelId: string) => addTaskLabel(taskId, labelId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['task', taskId] });
       qc.invalidateQueries({ queryKey: ['board', boardId, 'tasks'] });
@@ -266,10 +282,7 @@ export function useAddLabel(taskId: string, boardId: string) {
 export function useRemoveLabel(taskId: string, boardId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (labelId: string) =>
-      apiFetch<void>(`/api/tasks/${taskId}/labels/${labelId}`, {
-        method: 'DELETE',
-      }),
+    mutationFn: (labelId: string) => removeTaskLabel(taskId, labelId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['task', taskId] });
       qc.invalidateQueries({ queryKey: ['board', boardId, 'tasks'] });
@@ -280,11 +293,7 @@ export function useRemoveLabel(taskId: string, boardId: string) {
 export function useAddAssignee(taskId: string, boardId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (userId: string) =>
-      apiFetch<void>(`/api/tasks/${taskId}/assignees`, {
-        method: 'POST',
-        body: JSON.stringify({ user_id: userId }),
-      }),
+    mutationFn: (userId: string) => addTaskAssignee(taskId, userId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['task', taskId] });
       qc.invalidateQueries({ queryKey: ['board', boardId, 'tasks'] });
@@ -295,10 +304,7 @@ export function useAddAssignee(taskId: string, boardId: string) {
 export function useRemoveAssignee(taskId: string, boardId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (userId: string) =>
-      apiFetch<void>(`/api/tasks/${taskId}/assignees/${userId}`, {
-        method: 'DELETE',
-      }),
+    mutationFn: (userId: string) => removeTaskAssignee(taskId, userId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['task', taskId] });
       qc.invalidateQueries({ queryKey: ['board', boardId, 'tasks'] });

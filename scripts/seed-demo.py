@@ -1,226 +1,450 @@
 #!/usr/bin/env python3
-"""Seed demo boards from all templates with rich task data."""
-import json, requests, sys
+"""Seed demo data: departments, templates, boards, and tasks.
+
+Fully self-contained — safe to run on a fresh database.
+Re-running is mostly idempotent: boards/tasks will be duplicated if run twice,
+but departments and templates match by slug/name and are skipped when present.
+
+Pre-req: dev backend running at http://localhost:8080 with TASKBOARD_DEV_AUTH=1.
+Typical flow:
+
+    python scripts/seed-users.py      # JIT-provision glauth users
+    python scripts/seed-demo.py       # then seed the demo workspace
+"""
+from __future__ import annotations
+import sys
+from typing import Any
+
+import requests
 
 API = "http://localhost:8080/api"
-DEPT = "019d8210-0002-7000-8000-000000000002"
 
-# Login
-r = requests.post(f"{API}/dev/login", json={"user_email": "alice@example.com"})
-TOKEN = r.json()["token"]
-H = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
 
-def board(title, desc, tmpl):
-    r = requests.post(f"{API}/boards?from_template={tmpl}", headers=H,
-                       json={"title": title, "description": desc, "department_ids": [DEPT]})
+# ---------------------------------------------------------------------------
+# HTTP helpers
+# ---------------------------------------------------------------------------
+def login(email: str = "admin@example.com") -> dict[str, str]:
+    r = requests.post(f"{API}/dev/login", json={"user_email": email})
     r.raise_for_status()
-    bid = r.json()["id"]
-    print(f"  Board: {title} -> {bid}")
-    return bid
+    return {"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"}
 
-def get_columns(bid):
-    r = requests.get(f"{API}/boards/{bid}/columns", headers=H)
-    return {c["title"]: c["id"] for c in r.json()["items"]}
 
-def get_fields(bid):
-    r = requests.get(f"{API}/boards/{bid}/fields", headers=H)
-    return {f["name"]: f["id"] for f in r.json()["items"]}
+def get(path: str, headers: dict[str, str]) -> Any:
+    r = requests.get(f"{API}{path}", headers=headers)
+    r.raise_for_status()
+    return r.json()
 
-def get_labels(bid):
-    r = requests.get(f"{API}/boards/{bid}/labels", headers=H)
-    return {l["name"]: l["id"] for l in r.json()["items"]}
 
-def task(bid, title, col_id, **kw):
-    body = {"board_id": bid, "title": title, "column_id": col_id}
-    for k in ["priority", "summary"]:
-        if k in kw:
-            body[k] = kw[k]
-    if "due_date" in kw:
-        body["due_date"] = kw["due_date"] + "T23:59:59Z"
-    if "start_date" in kw:
-        body["start_date"] = kw["start_date"] + "T00:00:00Z"
-    r = requests.post(f"{API}/boards/{bid}/tasks", headers=H, json=body)
+def post(path: str, headers: dict[str, str], body: dict[str, Any]) -> Any:
+    r = requests.post(f"{API}{path}", headers=headers, json=body)
     if not r.ok:
-        print(f"  TASK ERR: {r.status_code} {r.text[:200]}", file=sys.stderr)
+        print(f"  POST {path} -> {r.status_code} {r.text[:300]}", file=sys.stderr)
         r.raise_for_status()
-    return r.json()["id"]
+    return r.json() if r.content else {}
 
-def fv(tid, fid, val):
-    requests.put(f"{API}/tasks/{tid}/fields/{fid}", headers=H, json={"value": val})
 
-def label(tid, lid):
-    requests.post(f"{API}/tasks/{tid}/labels", headers=H, json={"label_id": lid})
+def put(path: str, headers: dict[str, str], body: dict[str, Any]) -> None:
+    r = requests.put(f"{API}{path}", headers=headers, json=body)
+    r.raise_for_status()
 
-print("=== Creating boards ===")
 
-# Sprint Board
-b = board("Sprint 2026-Q2", "2026 Q2 Sprint Board", "019d8230-0002-7000-8000-000000000002")
-cols = get_columns(b); flds = get_fields(b); lbls = get_labels(b)
-P, SP, SR = flds.get("Priority",""), flds.get("Story Points",""), flds.get("Sprint","")
+# ---------------------------------------------------------------------------
+# Departments
+# ---------------------------------------------------------------------------
+DEPARTMENTS = [
+    # (slug, name) — slug MUST match the AD/glauth group name for OIDC sync
+    ("engineering", "Engineering"),
+    ("eng-backend", "Backend"),
+    ("eng-frontend", "Frontend"),
+    ("design", "Design"),
+    ("design-ux", "UX Design"),
+    ("management", "Management"),
+    ("qa", "QA"),
+]
 
-t = task(b, "JWT -> OAuth2 Migration", cols["In Progress"], priority="urgent", summary="Auth system refactoring", due_date="2026-04-25")
-fv(t, P, "Urgent"); fv(t, SP, 8); fv(t, SR, "Sprint 1")
-if "Story" in lbls: label(t, lbls["Story"])
 
-t = task(b, "Dashboard Chart Upgrade", cols["Sprint"], priority="high", summary="Real-time data visualization", due_date="2026-04-30")
-fv(t, P, "High"); fv(t, SP, 5); fv(t, SR, "Sprint 1")
-if "Story" in lbls: label(t, lbls["Story"])
+def ensure_departments(H: dict[str, str]) -> dict[str, str]:
+    existing = {d["slug"]: d["id"] for d in get("/departments?limit=100", H)["items"]}
+    out: dict[str, str] = {}
+    for slug, name in DEPARTMENTS:
+        if slug in existing:
+            out[slug] = existing[slug]
+            continue
+        r = post("/departments", H, {"slug": slug, "name": name})
+        out[slug] = r["id"]
+        print(f"  dept: {slug} -> {r['id']}")
+    return out
 
-t = task(b, "API Response Caching", cols["Review"], priority="medium", summary="Add Redis cache layer")
-fv(t, P, "Medium"); fv(t, SP, 3); fv(t, SR, "Sprint 1")
-if "Task" in lbls: label(t, lbls["Task"])
 
-t = task(b, "Login Error Message UX", cols["Done"], priority="low")
-fv(t, P, "Low"); fv(t, SP, 2); fv(t, SR, "Sprint 1")
-if "Bug" in lbls: label(t, lbls["Bug"])
+# ---------------------------------------------------------------------------
+# Templates — (name, description, payload)
+# payload = { columns, labels, custom_fields, default_tasks }
+# ---------------------------------------------------------------------------
+def sel(values: list[str], colors: list[str] | None = None) -> list[dict[str, Any]]:
+    opts = []
+    for i, v in enumerate(values):
+        opt: dict[str, Any] = {"label": v}
+        if colors and i < len(colors):
+            opt["color"] = colors[i]
+        opts.append(opt)
+    return opts
 
-t = task(b, "Mobile Responsive Layout", cols["Backlog"], priority="high", summary="Tablet/mobile support", due_date="2026-05-10")
-fv(t, P, "High"); fv(t, SP, 8); fv(t, SR, "Sprint 2")
 
-t = task(b, "Performance Profiling", cols["Backlog"], priority="medium", summary="Bottleneck analysis")
-fv(t, P, "Medium"); fv(t, SP, 3); fv(t, SR, "Sprint 2")
-if "Spike" in lbls: label(t, lbls["Spike"])
-print("  Sprint: 6 tasks")
+TEMPLATES = [
+    dict(
+        name="Sprint Board",
+        description="Kanban sprint tracking with story points",
+        payload={
+            "columns": [{"title": t} for t in ["Backlog", "Sprint", "In Progress", "Review", "Done"]],
+            "labels": [
+                {"name": "Story", "color": "#3b82f6"},
+                {"name": "Task", "color": "#10b981"},
+                {"name": "Bug", "color": "#ef4444"},
+                {"name": "Spike", "color": "#f59e0b"},
+            ],
+            "custom_fields": [
+                {"name": "Priority", "field_type": "select",
+                 "options": sel(["Urgent", "High", "Medium", "Low"],
+                                ["#ef4444", "#f59e0b", "#3b82f6", "#94a3b8"]),
+                 "show_on_card": True},
+                {"name": "Story Points", "field_type": "number"},
+                {"name": "Sprint", "field_type": "select",
+                 "options": sel(["Sprint 1", "Sprint 2", "Sprint 3"])},
+            ],
+        },
+    ),
+    dict(
+        name="Team Task Board",
+        description="Weekly team task management",
+        payload={
+            "columns": [{"title": t} for t in ["Inbox", "This Week", "In Progress", "Blocked", "Complete"]],
+            "labels": [
+                {"name": "Urgent", "color": "#ef4444"},
+                {"name": "Normal", "color": "#3b82f6"},
+            ],
+            "custom_fields": [
+                {"name": "Priority", "field_type": "select",
+                 "options": sel(["High", "Medium", "Low"],
+                                ["#ef4444", "#3b82f6", "#94a3b8"]),
+                 "show_on_card": True},
+                {"name": "Area", "field_type": "select",
+                 "options": sel(["Frontend", "Backend", "Design", "QA"])},
+            ],
+        },
+    ),
+    dict(
+        name="Roadmap",
+        description="Long-range product roadmap",
+        payload={
+            "columns": [{"title": t} for t in ["Icebox", "Q1", "Q2", "Q3", "Q4"]],
+            "labels": [
+                {"name": "Epic", "color": "#8b5cf6"},
+                {"name": "Must-have", "color": "#ef4444"},
+                {"name": "Nice-to-have", "color": "#10b981"},
+                {"name": "Tech Debt", "color": "#6b7280"},
+            ],
+            "custom_fields": [
+                {"name": "Priority", "field_type": "select",
+                 "options": sel(["Urgent", "High", "Medium", "Low"])},
+                {"name": "Target Release", "field_type": "text"},
+                {"name": "Progress", "field_type": "number"},
+            ],
+        },
+    ),
+    dict(
+        name="Schedule Calendar",
+        description="Meetings and milestones",
+        payload={
+            "columns": [{"title": t} for t in ["Planned", "Scheduled", "Cancelled"]],
+            "labels": [
+                {"name": "Meeting", "color": "#3b82f6"},
+                {"name": "Milestone", "color": "#f59e0b"},
+                {"name": "Deadline", "color": "#ef4444"},
+                {"name": "Review", "color": "#8b5cf6"},
+            ],
+            "custom_fields": [
+                {"name": "Location", "field_type": "text"},
+            ],
+        },
+    ),
+    dict(
+        name="Vacation Tracker",
+        description="Team vacation status",
+        payload={
+            "columns": [{"title": t} for t in ["Requested", "Approved", "On Leave"]],
+            "labels": [
+                {"name": "Annual", "color": "#3b82f6"},
+                {"name": "Personal", "color": "#8b5cf6"},
+                {"name": "Comp Day", "color": "#10b981"},
+            ],
+            "custom_fields": [
+                {"name": "Reason", "field_type": "text"},
+            ],
+        },
+    ),
+    dict(
+        name="Bug Triage",
+        description="Product bug tracking",
+        payload={
+            "columns": [{"title": t} for t in ["Reported", "Confirmed", "Fixing", "Testing", "Closed"]],
+            "labels": [
+                {"name": "Crash", "color": "#ef4444"},
+                {"name": "Performance", "color": "#f59e0b"},
+                {"name": "UI", "color": "#3b82f6"},
+                {"name": "Security", "color": "#8b5cf6"},
+            ],
+            "custom_fields": [
+                {"name": "Priority", "field_type": "select",
+                 "options": sel(["P0-Critical", "P1-High", "P2-Medium", "P3-Low"],
+                                ["#ef4444", "#f59e0b", "#3b82f6", "#94a3b8"]),
+                 "show_on_card": True},
+                {"name": "Reproducibility", "field_type": "select",
+                 "options": sel(["Always", "Sometimes", "Rare"])},
+                {"name": "Impact Area", "field_type": "text"},
+            ],
+        },
+    ),
+    dict(
+        name="Project Tracker",
+        description="End-to-end project lifecycle",
+        payload={
+            "columns": [{"title": t} for t in ["Planning", "Design", "Development", "Testing", "Deployed"]],
+            "labels": [],
+            "custom_fields": [
+                {"name": "Priority", "field_type": "select",
+                 "options": sel(["Urgent", "High", "Medium", "Low"]),
+                 "show_on_card": True},
+                {"name": "Progress", "field_type": "number"},
+                {"name": "Team", "field_type": "select",
+                 "options": sel(["PM", "Dev", "Design", "QA"])},
+            ],
+        },
+    ),
+]
 
-# Team Task Board
-b = board("Team Task Board", "Weekly team task management", "019d8230-0003-7000-8000-000000000003")
-cols = get_columns(b); flds = get_fields(b); lbls = get_labels(b)
-P, A = flds.get("Priority",""), flds.get("Area","")
 
-t = task(b, "Weekly Meeting Prep", cols["This Week"], priority="medium", due_date="2026-04-21")
-fv(t, P, "Medium"); fv(t, A, "Frontend")
+def ensure_templates(H: dict[str, str]) -> dict[str, str]:
+    """Return {template_name: template_id}. Idempotent by name."""
+    existing = {t["name"]: t["id"] for t in get("/templates?limit=100", H)["items"]}
+    out: dict[str, str] = {}
+    for spec in TEMPLATES:
+        name = spec["name"]
+        if name in existing:
+            out[name] = existing[name]
+            continue
+        r = post("/templates", H,
+                 {"kind": "board", "name": name,
+                  "description": spec["description"],
+                  "scope": "global", "payload": spec["payload"]})
+        out[name] = r["id"]
+        print(f"  template: {name} -> {r['id']}")
+    return out
 
-t = task(b, "Code Review PR #482", cols["In Progress"], priority="high", summary="Auth module review")
-fv(t, P, "High"); fv(t, A, "Backend")
 
-t = task(b, "Design Mockup Review", cols["Blocked"], priority="medium", summary="Waiting UX feedback")
-fv(t, P, "Medium"); fv(t, A, "Design")
-if "Normal" in lbls: label(t, lbls["Normal"])
+# ---------------------------------------------------------------------------
+# Demo boards — each entry is (template_name, board_title, [tasks...])
+# task = (title, column_title, {field_name: value, ...}, [label_names])
+# ---------------------------------------------------------------------------
+BOARDS: list[tuple[str, str, list[tuple[str, str, dict[str, Any], list[str]]]]] = [
+    ("Sprint Board", "Sprint 2026-Q2", [
+        ("JWT -> OAuth2 Migration", "In Progress",
+         {"Priority": "Urgent", "Story Points": 8, "Sprint": "Sprint 1",
+          "_summary": "Auth system refactoring", "_priority": "urgent",
+          "_due_date": "2026-04-25"},
+         ["Story"]),
+        ("Dashboard Chart Upgrade", "Sprint",
+         {"Priority": "High", "Story Points": 5, "Sprint": "Sprint 1",
+          "_summary": "Real-time data visualization", "_priority": "high",
+          "_due_date": "2026-04-30"}, ["Story"]),
+        ("API Response Caching", "Review",
+         {"Priority": "Medium", "Story Points": 3, "Sprint": "Sprint 1",
+          "_summary": "Add Redis cache layer", "_priority": "medium"}, ["Task"]),
+        ("Login Error Message UX", "Done",
+         {"Priority": "Low", "Story Points": 2, "Sprint": "Sprint 1",
+          "_priority": "low"}, ["Bug"]),
+        ("Mobile Responsive Layout", "Backlog",
+         {"Priority": "High", "Story Points": 8, "Sprint": "Sprint 2",
+          "_summary": "Tablet/mobile support", "_priority": "high",
+          "_due_date": "2026-05-10"}, []),
+        ("Performance Profiling", "Backlog",
+         {"Priority": "Medium", "Story Points": 3, "Sprint": "Sprint 2",
+          "_summary": "Bottleneck analysis", "_priority": "medium"}, ["Spike"]),
+    ]),
+    ("Team Task Board", "Team Task Board", [
+        ("Weekly Meeting Prep", "This Week",
+         {"Priority": "Medium", "Area": "Frontend",
+          "_priority": "medium", "_due_date": "2026-04-21"}, []),
+        ("Code Review PR #482", "In Progress",
+         {"Priority": "High", "Area": "Backend",
+          "_summary": "Auth module review", "_priority": "high"}, []),
+        ("Design Mockup Review", "Blocked",
+         {"Priority": "Medium", "Area": "Design",
+          "_summary": "Waiting UX feedback", "_priority": "medium"}, ["Normal"]),
+        ("E2E Test Automation", "Inbox",
+         {"Priority": "Low", "Area": "QA",
+          "_summary": "Extend E2E coverage", "_priority": "low"}, []),
+        ("Infra Monitoring Setup", "Complete",
+         {"Priority": "High", "Area": "Backend", "_priority": "high"}, ["Urgent"]),
+    ]),
+    ("Roadmap", "2026 Roadmap", [
+        ("Multi-tenancy Support", "Q3",
+         {"Priority": "Urgent", "Target Release": "v3.0", "Progress": 20,
+          "_summary": "Per-org data isolation", "_priority": "urgent"},
+         ["Epic", "Must-have"]),
+        ("Real-time Collaboration", "Q2",
+         {"Priority": "High", "Target Release": "v2.5", "Progress": 65,
+          "_summary": "WebSocket co-editing", "_priority": "high",
+          "_start_date": "2026-04-01", "_due_date": "2026-06-30"}, ["Epic"]),
+        ("Mobile App MVP", "Q4",
+         {"Priority": "Medium", "Target Release": "v4.0", "Progress": 0,
+          "_summary": "iOS/Android native app", "_priority": "medium"},
+         ["Nice-to-have"]),
+        ("Legacy API Migration", "Q1",
+         {"Priority": "High", "Target Release": "v2.0", "Progress": 100,
+          "_priority": "high", "_start_date": "2026-01-15",
+          "_due_date": "2026-03-31"}, ["Tech Debt"]),
+        ("AI Recommendation Engine", "Icebox",
+         {"Priority": "Low", "Progress": 0,
+          "_summary": "Auto task classification", "_priority": "low"},
+         ["Nice-to-have"]),
+    ]),
+    ("Schedule Calendar", "Team Schedule", [
+        ("Sprint Retrospective", "Scheduled",
+         {"Location": "Meeting Room A", "_summary": "Sprint 1 retro",
+          "_start_date": "2026-04-18", "_due_date": "2026-04-18"}, ["Meeting"]),
+        ("Product Demo Day", "Planned",
+         {"Location": "Main Hall", "_summary": "Q2 mid-quarter demo",
+          "_start_date": "2026-04-25", "_due_date": "2026-04-25"}, ["Milestone"]),
+        ("Code Freeze", "Planned",
+         {"_start_date": "2026-05-01", "_due_date": "2026-05-01"}, ["Deadline"]),
+        ("Design Review Session", "Scheduled",
+         {"Location": "Zoom (Online)", "_summary": "UX improvement review",
+          "_start_date": "2026-04-22", "_due_date": "2026-04-22"}, ["Review"]),
+    ]),
+    ("Vacation Tracker", "Vacation Tracker", [
+        ("Kim Minsu - Annual Leave", "Approved",
+         {"Reason": "Family trip",
+          "_start_date": "2026-04-28", "_due_date": "2026-04-30"}, ["Annual"]),
+        ("Park Jiyoung - Half Day", "On Leave",
+         {"Reason": "Hospital visit",
+          "_start_date": "2026-04-17", "_due_date": "2026-04-17"}, ["Personal"]),
+        ("Lee Junho - Comp Day", "Requested",
+         {"Reason": "Overtime compensation",
+          "_start_date": "2026-05-05", "_due_date": "2026-05-05"}, ["Comp Day"]),
+    ]),
+    ("Bug Triage", "Bug Triage", [
+        ("Infinite redirect after login", "Fixing",
+         {"Priority": "P0-Critical", "Reproducibility": "Always",
+          "Impact Area": "Authentication",
+          "_summary": "Production critical", "_priority": "urgent"}, ["Crash"]),
+        ("OOM on large file upload", "Confirmed",
+         {"Priority": "P1-High", "Reproducibility": "Always",
+          "Impact Area": "File Upload",
+          "_summary": "Files > 100MB", "_priority": "high"}, ["Performance"]),
+        ("Dark mode text invisible", "Reported",
+         {"Priority": "P2-Medium", "Reproducibility": "Sometimes",
+          "Impact Area": "UI/Theme",
+          "_summary": "After theme change", "_priority": "medium"}, ["UI"]),
+        ("Password change API XSS", "Fixing",
+         {"Priority": "P0-Critical", "Reproducibility": "Always",
+          "Impact Area": "Security",
+          "_summary": "Security vulnerability", "_priority": "urgent"}, ["Security"]),
+        ("Search pagination error", "Testing",
+         {"Priority": "P3-Low", "Reproducibility": "Rare",
+          "Impact Area": "Search", "_priority": "low"}, []),
+        ("Duplicate notification emails", "Closed",
+         {"Priority": "P2-Medium", "Reproducibility": "Sometimes",
+          "_summary": "Fixed in v2.1.3", "_priority": "medium"}, []),
+    ]),
+    ("Project Tracker", "New Service Launch", [
+        ("Requirements Definition", "Planning",
+         {"Priority": "High", "Progress": 80, "Team": "PM",
+          "_summary": "PRD writing", "_priority": "high",
+          "_due_date": "2026-04-25"}, []),
+        ("UI/UX Design", "Design",
+         {"Priority": "High", "Progress": 40, "Team": "PM",
+          "_summary": "Wireframes + prototype", "_priority": "high",
+          "_start_date": "2026-04-20", "_due_date": "2026-05-10"}, []),
+        ("Backend API Development", "Development",
+         {"Priority": "Urgent", "Progress": 25, "Team": "Dev",
+          "_summary": "Core API endpoints", "_priority": "urgent",
+          "_start_date": "2026-05-01", "_due_date": "2026-06-15"}, []),
+        ("Frontend Implementation", "Development",
+         {"Priority": "High", "Progress": 10, "Team": "Dev",
+          "_summary": "React components", "_priority": "high",
+          "_start_date": "2026-05-10", "_due_date": "2026-06-20"}, []),
+        ("Integration Testing", "Testing",
+         {"Priority": "Medium", "Progress": 0, "Team": "QA",
+          "_summary": "E2E + perf tests", "_priority": "medium",
+          "_due_date": "2026-06-30"}, []),
+        ("Deploy Pipeline Setup", "Planning",
+         {"Priority": "Medium", "Progress": 60, "Team": "Dev",
+          "_summary": "CI/CD + staging", "_priority": "medium"}, []),
+    ]),
+]
 
-t = task(b, "E2E Test Automation", cols["Inbox"], priority="low", summary="Extend E2E coverage")
-fv(t, P, "Low"); fv(t, A, "QA")
 
-t = task(b, "Infra Monitoring Setup", cols["Complete"], priority="high")
-fv(t, P, "High"); fv(t, A, "Backend")
-if "Urgent" in lbls: label(t, lbls["Urgent"])
-print("  Team: 5 tasks")
+def _iso(date: str, end: bool) -> str:
+    return f"{date}T{'23:59:59' if end else '00:00:00'}Z"
 
-# Roadmap
-b = board("2026 Roadmap", "Product roadmap for 2026", "019d8230-0004-7000-8000-000000000004")
-cols = get_columns(b); flds = get_fields(b); lbls = get_labels(b)
-P, TR, PR = flds.get("Priority",""), flds.get("Target Release",""), flds.get("Progress","")
 
-t = task(b, "Multi-tenancy Support", cols["Q3"], priority="urgent", summary="Per-org data isolation")
-fv(t, P, "Urgent"); fv(t, TR, "v3.0"); fv(t, PR, 20)
-if "Epic" in lbls: label(t, lbls["Epic"])
-if "Must-have" in lbls: label(t, lbls["Must-have"])
+def seed_boards(H: dict[str, str], tmpls: dict[str, str], dept_id: str) -> int:
+    total_tasks = 0
+    for tmpl_name, board_title, tasks in BOARDS:
+        tmpl_id = tmpls[tmpl_name]
+        board = post(f"/boards?from_template={tmpl_id}", H,
+                     {"title": board_title, "description": f"Demo board: {board_title}",
+                      "department_ids": [dept_id]})
+        bid = board["id"]
+        cols = {c["title"]: c["id"] for c in get(f"/boards/{bid}/columns", H)["items"]}
+        flds = {f["name"]: f["id"] for f in get(f"/boards/{bid}/fields", H)["items"]}
+        lbls = {l["name"]: l["id"] for l in get(f"/boards/{bid}/labels", H)["items"]}
+        print(f"  board: {board_title} -> {bid}")
 
-t = task(b, "Real-time Collaboration", cols["Q2"], priority="high", summary="WebSocket co-editing", start_date="2026-04-01", due_date="2026-06-30")
-fv(t, P, "High"); fv(t, TR, "v2.5"); fv(t, PR, 65)
-if "Epic" in lbls: label(t, lbls["Epic"])
+        for title, col, fields, labels in tasks:
+            body: dict[str, Any] = {"title": title, "column_id": cols[col]}
+            if "_priority" in fields:
+                body["priority"] = fields["_priority"]
+            if "_summary" in fields:
+                body["summary"] = fields["_summary"]
+            if "_due_date" in fields:
+                body["due_date"] = _iso(fields["_due_date"], end=True)
+            if "_start_date" in fields:
+                body["start_date"] = _iso(fields["_start_date"], end=False)
+            tr = post(f"/boards/{bid}/tasks", H, body)
+            tid = tr["id"]
+            total_tasks += 1
 
-t = task(b, "Mobile App MVP", cols["Q4"], priority="medium", summary="iOS/Android native app")
-fv(t, P, "Medium"); fv(t, TR, "v4.0"); fv(t, PR, 0)
-if "Nice-to-have" in lbls: label(t, lbls["Nice-to-have"])
+            for fname, fval in fields.items():
+                if fname.startswith("_") or fname not in flds:
+                    continue
+                put(f"/tasks/{tid}/fields/{flds[fname]}", H, {"value": str(fval)})
+            for lname in labels:
+                if lname in lbls:
+                    post(f"/tasks/{tid}/labels", H, {"label_id": lbls[lname]})
+    return total_tasks
 
-t = task(b, "Legacy API Migration", cols["Q1"], priority="high", start_date="2026-01-15", due_date="2026-03-31")
-fv(t, P, "High"); fv(t, TR, "v2.0"); fv(t, PR, 100)
-if "Tech Debt" in lbls: label(t, lbls["Tech Debt"])
 
-t = task(b, "AI Recommendation Engine", cols["Icebox"], priority="low", summary="Auto task classification")
-fv(t, P, "Low"); fv(t, PR, 0)
-if "Nice-to-have" in lbls: label(t, lbls["Nice-to-have"])
-print("  Roadmap: 5 tasks")
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+def main() -> int:
+    H = login("admin@example.com")
+    print("=== Ensuring departments ===")
+    depts = ensure_departments(H)
+    print(f"  {len(depts)} departments ready")
 
-# Schedule Calendar
-b = board("Team Schedule", "Meetings and milestones", "019d8230-0005-7000-8000-000000000005")
-cols = get_columns(b); flds = get_fields(b); lbls = get_labels(b)
-LOC = flds.get("Location","")
+    print("=== Ensuring templates ===")
+    tmpls = ensure_templates(H)
+    print(f"  {len(tmpls)} templates ready")
 
-t = task(b, "Sprint Retrospective", cols["Scheduled"], summary="Sprint 1 retro", start_date="2026-04-18", due_date="2026-04-18")
-fv(t, LOC, "Meeting Room A")
-if "Meeting" in lbls: label(t, lbls["Meeting"])
+    print("=== Creating boards ===")
+    dept_id = depts["engineering"]
+    total_tasks = seed_boards(H, tmpls, dept_id)
 
-t = task(b, "Product Demo Day", cols["Planned"], summary="Q2 mid-quarter demo", start_date="2026-04-25", due_date="2026-04-25")
-fv(t, LOC, "Main Hall")
-if "Milestone" in lbls: label(t, lbls["Milestone"])
+    print(f"\n=== Done. {len(BOARDS)} boards with {total_tasks} tasks. ===")
+    return 0
 
-t = task(b, "Code Freeze", cols["Planned"], start_date="2026-05-01", due_date="2026-05-01")
-if "Deadline" in lbls: label(t, lbls["Deadline"])
 
-t = task(b, "Design Review Session", cols["Scheduled"], summary="UX improvement review", start_date="2026-04-22", due_date="2026-04-22")
-fv(t, LOC, "Zoom (Online)")
-if "Review" in lbls: label(t, lbls["Review"])
-print("  Schedule: 4 tasks")
-
-# Vacation Calendar
-b = board("Vacation Tracker", "Team vacation status", "019d8230-0006-7000-8000-000000000006")
-cols = get_columns(b); flds = get_fields(b); lbls = get_labels(b)
-RSN = flds.get("Reason","")
-
-t = task(b, "Kim Minsu - Annual Leave", cols["Approved"], start_date="2026-04-28", due_date="2026-04-30")
-fv(t, RSN, "Family trip")
-if "Annual" in lbls: label(t, lbls["Annual"])
-
-t = task(b, "Park Jiyoung - Half Day", cols["On Leave"], start_date="2026-04-17", due_date="2026-04-17")
-fv(t, RSN, "Hospital visit")
-if "Personal" in lbls: label(t, lbls["Personal"])
-
-t = task(b, "Lee Junho - Comp Day", cols["Requested"], start_date="2026-05-05", due_date="2026-05-05")
-fv(t, RSN, "Overtime compensation")
-if "Comp Day" in lbls: label(t, lbls["Comp Day"])
-print("  Vacation: 3 tasks")
-
-# Bug Triage
-b = board("Bug Triage", "Product bug tracking", "019d8230-0007-7000-8000-000000000007")
-cols = get_columns(b); flds = get_fields(b); lbls = get_labels(b)
-P, RP, IM = flds.get("Priority",""), flds.get("Reproducibility",""), flds.get("Impact Area","")
-
-t = task(b, "Infinite redirect after login", cols["Fixing"], priority="urgent", summary="Production critical")
-fv(t, P, "P0-Critical"); fv(t, RP, "Always"); fv(t, IM, "Authentication")
-if "Crash" in lbls: label(t, lbls["Crash"])
-
-t = task(b, "OOM on large file upload", cols["Confirmed"], priority="high", summary="Files > 100MB")
-fv(t, P, "P1-High"); fv(t, RP, "Always"); fv(t, IM, "File Upload")
-if "Performance" in lbls: label(t, lbls["Performance"])
-
-t = task(b, "Dark mode text invisible", cols["Reported"], priority="medium", summary="After theme change")
-fv(t, P, "P2-Medium"); fv(t, RP, "Sometimes"); fv(t, IM, "UI/Theme")
-if "UI" in lbls: label(t, lbls["UI"])
-
-t = task(b, "Password change API XSS", cols["Fixing"], priority="urgent", summary="Security vulnerability")
-fv(t, P, "P0-Critical"); fv(t, RP, "Always"); fv(t, IM, "Security")
-if "Security" in lbls: label(t, lbls["Security"])
-
-t = task(b, "Search pagination error", cols["Testing"], priority="low")
-fv(t, P, "P3-Low"); fv(t, RP, "Rare"); fv(t, IM, "Search")
-
-t = task(b, "Duplicate notification emails", cols["Closed"], priority="medium", summary="Fixed in v2.1.3")
-fv(t, P, "P2-Medium"); fv(t, RP, "Sometimes")
-print("  Bug: 6 tasks")
-
-# Project Tracker
-b = board("New Service Launch", "Q3 new service project", "019d8230-0008-7000-8000-000000000008")
-cols = get_columns(b); flds = get_fields(b); lbls = get_labels(b)
-P, PR, TM = flds.get("Priority",""), flds.get("Progress",""), flds.get("Team","")
-
-t = task(b, "Requirements Definition", cols["Planning"], priority="high", summary="PRD writing", due_date="2026-04-25")
-fv(t, P, "High"); fv(t, PR, 80); fv(t, TM, "PM")
-
-t = task(b, "UI/UX Design", cols["Design"], priority="high", summary="Wireframes + prototype", start_date="2026-04-20", due_date="2026-05-10")
-fv(t, P, "High"); fv(t, PR, 40); fv(t, TM, "PM")
-
-t = task(b, "Backend API Development", cols["Development"], priority="urgent", summary="Core API endpoints", start_date="2026-05-01", due_date="2026-06-15")
-fv(t, P, "Urgent"); fv(t, PR, 25); fv(t, TM, "Dev")
-
-t = task(b, "Frontend Implementation", cols["Development"], priority="high", summary="React components", start_date="2026-05-10", due_date="2026-06-20")
-fv(t, P, "High"); fv(t, PR, 10); fv(t, TM, "Dev")
-
-t = task(b, "Integration Testing", cols["Testing"], priority="medium", summary="E2E + perf tests", due_date="2026-06-30")
-fv(t, P, "Medium"); fv(t, PR, 0); fv(t, TM, "QA")
-
-t = task(b, "Deploy Pipeline Setup", cols["Planning"], priority="medium", summary="CI/CD + staging")
-fv(t, P, "Medium"); fv(t, PR, 60); fv(t, TM, "Dev")
-print("  Project: 6 tasks")
-
-print("\n=== Done! 7 boards with 35 tasks ===")
+if __name__ == "__main__":
+    sys.exit(main())

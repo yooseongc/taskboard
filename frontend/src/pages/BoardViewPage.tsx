@@ -22,8 +22,12 @@ import {
   useMoveTask,
   useDeleteTask,
   usePatchTask,
+  addTaskAssignee,
+  removeTaskAssignee,
+  addTaskLabel,
+  removeTaskLabel,
 } from '../api/tasks';
-import { apiFetch } from '../api/client';
+import { setTaskFieldValue } from '../api/customFields';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useBoardCustomFields,
@@ -471,15 +475,9 @@ export default function BoardViewPage() {
         (async () => {
           try {
             if (mutation.previousUserId) {
-              await apiFetch(
-                `/api/tasks/${draggableId}/assignees/${mutation.previousUserId}`,
-                { method: 'DELETE' },
-              );
+              await removeTaskAssignee(draggableId, mutation.previousUserId);
             }
-            await apiFetch(`/api/tasks/${draggableId}/assignees`, {
-              method: 'POST',
-              body: JSON.stringify({ user_id: mutation.userId }),
-            });
+            await addTaskAssignee(draggableId, mutation.userId);
             invalidate();
           } catch {
             addToast('error', 'Failed to update assignee');
@@ -490,15 +488,9 @@ export default function BoardViewPage() {
         (async () => {
           try {
             if (mutation.previousLabelId) {
-              await apiFetch(
-                `/api/tasks/${draggableId}/labels/${mutation.previousLabelId}`,
-                { method: 'DELETE' },
-              );
+              await removeTaskLabel(draggableId, mutation.previousLabelId);
             }
-            await apiFetch(`/api/tasks/${draggableId}/labels`, {
-              method: 'POST',
-              body: JSON.stringify({ label_id: mutation.labelId }),
-            });
+            await addTaskLabel(draggableId, mutation.labelId);
             invalidate();
           } catch {
             addToast('error', 'Failed to update label');
@@ -508,13 +500,7 @@ export default function BoardViewPage() {
       case 'set-field':
         (async () => {
           try {
-            await apiFetch(
-              `/api/tasks/${draggableId}/fields/${mutation.fieldId}`,
-              {
-                method: 'PUT',
-                body: JSON.stringify({ value: mutation.value }),
-              },
-            );
+            await setTaskFieldValue(draggableId, mutation.fieldId, mutation.value);
             qc.invalidateQueries({
               queryKey: ['board', id!, 'field-values'],
             });

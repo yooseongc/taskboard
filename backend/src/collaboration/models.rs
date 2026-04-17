@@ -18,13 +18,8 @@ pub struct BoardRow {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
-    /// 'department' or 'personal' (migration 0017).
-    #[serde(default = "default_owner_type")]
+    /// 'department' or 'personal' (migration 0017 — NOT NULL, default 'personal').
     pub owner_type: String,
-}
-
-fn default_owner_type() -> String {
-    "personal".to_string()
 }
 
 /// Row type for the `board_columns` table.

@@ -63,7 +63,6 @@ services:
       CORS_ALLOWED_ORIGINS: http://localhost:5173,http://localhost:5174
       TASKBOARD_DEV_AUTH: "1"
       TASKBOARD_DEV_AUTH_HMAC_KEY: "dev-hmac-key-at-least-32-bytes-long!!"
-      SEED_ON_START: "true"
       SYSTEM_ADMIN_EMAILS: "alice@example.com,admin@example.com"
     ports:
       - "8080:8080"

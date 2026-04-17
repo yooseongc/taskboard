@@ -53,8 +53,9 @@ impl GlobalRole {
             .unwrap_or(Self::Member)
     }
 
-    /// Parse a role from its string form, returning `None` for unknown
-    /// values. Used by legacy tests; production flow deserializes via serde.
+    /// Parse a role from its string form, returning `None` for unknown values.
+    /// Production flow deserializes via serde; this helper is test-only.
+    #[cfg(test)]
     pub fn from_str_opt(s: &str) -> Option<Self> {
         match s {
             "SystemAdmin" => Some(Self::SystemAdmin),

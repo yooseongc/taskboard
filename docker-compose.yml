@@ -34,7 +34,6 @@ services:
       BACKEND_BIND_ADDR: 0.0.0.0:8080
       LOG_LEVEL: ${LOG_LEVEL:-warn}
       LOG_FORMAT: ${LOG_FORMAT:-json}
-      SEED_ON_START: "false"
       SYSTEM_ADMIN_EMAILS: ${SYSTEM_ADMIN_EMAILS:-admin@example.com}
       OIDC_DEPT_CLAIM: ${OIDC_DEPT_CLAIM:-groups}
       OIDC_DEPT_SYNC_ENABLED: ${OIDC_DEPT_SYNC_ENABLED:-true}

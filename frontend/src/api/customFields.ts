@@ -114,14 +114,22 @@ export function useTaskFieldValues(taskId: string) {
   });
 }
 
+// Raw fn — usable without a hook (DnD handlers, imperative flows).
+export const setTaskFieldValue = (
+  taskId: string,
+  fieldId: string,
+  value: unknown,
+) =>
+  apiFetch<TaskFieldValue>(`/api/tasks/${taskId}/fields/${fieldId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ value }),
+  });
+
 export function useSetTaskFieldValue(taskId: string, boardId?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ fieldId, value }: { fieldId: string; value: unknown }) =>
-      apiFetch<TaskFieldValue>(`/api/tasks/${taskId}/fields/${fieldId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ value }),
-      }),
+      setTaskFieldValue(taskId, fieldId, value),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['task', taskId, 'fields'] });
       if (boardId) {

@@ -183,7 +183,7 @@ User Federation 의 **Mappers** 탭에서 `group-ldap-mapper` 추가:
 | management | 5003 | management |
 | qa | 5004 | qa |
 
-부서 슬러그는 시드(`SEED_ON_START=true`) 또는 최초 관리자 수동 생성으로 DB에 준비됩니다. glauth 그룹을 추가·수정할 경우:
+부서 슬러그는 `scripts/seed-demo.py` 로 생성하거나 최초 관리자가 수동으로 만듭니다. glauth 그룹을 추가·수정할 경우:
 
 1. `infra/glauth/glauth.cfg` 수정
 2. `docker compose -f docker-compose.dev.yml restart ldap`

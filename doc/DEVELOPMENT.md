@@ -81,8 +81,6 @@ export CORS_ALLOWED_ORIGINS="http://localhost:5173"
 export SYSTEM_ADMIN_EMAILS="alice@example.com,admin@example.com"
 export TASKBOARD_DEV_AUTH=1
 export TASKBOARD_DEV_AUTH_HMAC_KEY="dev-hmac-key-at-least-32-bytes-long!!"
-export SEED_ON_START=true
-
 cargo run --features dev-auth
 ```
 
@@ -164,7 +162,7 @@ curl -X POST http://localhost:8080/api/dev/login \
 |---|---|
 | 사람 친화적 백엔드 로그 | `LOG_FORMAT=pretty cargo run --features dev-auth` |
 | 특정 모듈만 디버그 로그 | `RUST_LOG=taskboard_backend::authz=debug,info cargo run …` |
-| 시드 데이터 재생성 | `SEED_ON_START=true` 로 기동 (idempotent — 중복 시 스킵) |
+| 시드 데이터 생성 | `python scripts/seed-users.py && python scripts/seed-demo.py` (부서·템플릿·보드) |
 | SQL 로깅 | `RUST_LOG=sqlx=debug` |
 | CORS 문제 | 백엔드 `CORS_ALLOWED_ORIGINS` 가 정확한 프론트 오리진인지 확인 (쉼표 구분, 와일드카드 금지) |
 

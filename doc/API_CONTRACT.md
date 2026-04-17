@@ -104,10 +104,10 @@
 | PATCH | `/api/tasks/{id}` | `task_handlers.rs` (patch_task) | `usePatchTask` | ✅ |
 | DELETE | `/api/tasks/{id}` | `task_handlers.rs` (delete_task) | `useDeleteTask` | ✅ |
 | PATCH | `/api/tasks/{id}/move` | `task_handlers.rs` (move_task) | `useMoveTask` | ✅ |
-| POST | `/api/tasks/{task_id}/labels` | `task_handlers.rs` (add_task_label) | `useAddLabel` + `BoardViewPage.tsx:498` (직접 호출) | ⚠️ 동일 기능이 2곳 — 정리 여지 |
-| DELETE | `/api/tasks/{task_id}/labels/{label_id}` | `task_handlers.rs` (remove_task_label) | `useRemoveLabel` + `BoardViewPage.tsx:493` | ⚠️ 위와 동일 |
-| POST | `/api/tasks/{task_id}/assignees` | `task_handlers.rs` (add_task_assignee) | `useAddAssignee` + `BoardViewPage.tsx:479` | ⚠️ 동일 |
-| DELETE | `/api/tasks/{task_id}/assignees/{user_id}` | `task_handlers.rs` (remove_task_assignee) | `useRemoveAssignee` + `BoardViewPage.tsx:474` | ⚠️ 동일 |
+| POST | `/api/tasks/{task_id}/labels` | `task_handlers.rs` (add_task_label) | `useAddLabel` / `addTaskLabel` | ✅ |
+| DELETE | `/api/tasks/{task_id}/labels/{label_id}` | `task_handlers.rs` (remove_task_label) | `useRemoveLabel` / `removeTaskLabel` | ✅ |
+| POST | `/api/tasks/{task_id}/assignees` | `task_handlers.rs` (add_task_assignee) | `useAddAssignee` / `addTaskAssignee` | ✅ |
+| DELETE | `/api/tasks/{task_id}/assignees/{user_id}` | `task_handlers.rs` (remove_task_assignee) | `useRemoveAssignee` / `removeTaskAssignee` | ✅ |
 | GET | `/api/tasks/{task_id}/checklists` | `task_handlers.rs` (list_checklists) | `useTaskChecklists` | ✅ |
 | POST | `/api/tasks/{task_id}/checklists` | `task_handlers.rs` (create_checklist) | `useCreateChecklist` | ✅ |
 | POST | `/api/tasks/{task_id}/checklists/{cl_id}/items` | `task_handlers.rs` (add_checklist_item) | `useAddChecklistItem` | ✅ |
@@ -139,7 +139,7 @@
 | DELETE | `/api/boards/{id}/fields/{field_id}` | `custom_field_handlers.rs:125` | `useDeleteCustomField` | ✅ |
 | GET | `/api/boards/{id}/field-values` | `custom_field_handlers.rs:155` | `useBoardFieldValues` | ✅ |
 | GET | `/api/tasks/{task_id}/fields` | `custom_field_handlers.rs:181` | `useTaskFieldValues` | ✅ |
-| PUT | `/api/tasks/{task_id}/fields/{field_id}` | `custom_field_handlers.rs:200` | `useSetTaskFieldValue` + `BoardViewPage.tsx:511` | ⚠️ 동일 기능 중복 |
+| PUT | `/api/tasks/{task_id}/fields/{field_id}` | `custom_field_handlers.rs:200` | `useSetTaskFieldValue` / `setTaskFieldValue` | ✅ |
 
 ### 2.10 Board Views (Saved Views)
 
@@ -231,17 +231,16 @@ BoardView {
 
 > 결정 근거: 사용자·부서는 진실의 원천이 Keycloak/AD. 내부 UI 로 수정하면 다음 로그인에 덮어써져 UX 가 깨지므로, Taskboard 는 `active` 토글과 부서 표시명(name) 만 자체 관리.
 
-### 4.2 직접 `fetch` vs 훅 중복
+### 4.2 직접 `fetch` vs 훅 중복 — 해소 (2026-04-17)
 
-`BoardViewPage.tsx` 의 4곳이 훅 대신 직접 `apiFetch` 호출:
+DnD 핸들러에서 동적 `taskId` 로 API 를 호출하는 5 지점이 훅 대신 `apiFetch` 를 직접 쓰고 있었다.
+다음 raw 함수를 `api/tasks.ts` 와 `api/customFields.ts` 에 추가해 URL/메서드/바디 구성을 한 곳에 모았다.
 
-- `pages/BoardViewPage.tsx:474` (assignee 제거)
-- `pages/BoardViewPage.tsx:479` (assignee 추가)
-- `pages/BoardViewPage.tsx:493` (label 제거)
-- `pages/BoardViewPage.tsx:498` (label 추가)
-- `pages/BoardViewPage.tsx:511` (custom field 값 PUT)
+- `addTaskAssignee(taskId, userId)`, `removeTaskAssignee(taskId, userId)`
+- `addTaskLabel(taskId, labelId)`, `removeTaskLabel(taskId, labelId)`
+- `setTaskFieldValue(taskId, fieldId, value)`
 
-동일 엔드포인트를 호출하는 훅(`useAddAssignee`, `useAddLabel`, `useSetTaskFieldValue`)이 이미 존재함. React Query 캐시 무효화 전략 차이로 일부러 분리했을 수도 있으나, 유지보수 측면에서 일원화 후보.
+기존 hook (`useAddAssignee` 등) 도 위 raw 함수를 감싸는 형태로 재구성했다. 고정 `taskId` 가 있는 consumer 는 hook, 드래그처럼 `taskId` 가 매번 바뀌는 flow 는 raw 함수 + 명시적 `invalidate()` 사용.
 
 ### 4.3 백엔드만 존재 (프론트 미사용)
 
