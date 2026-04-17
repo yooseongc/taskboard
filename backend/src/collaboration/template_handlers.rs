@@ -1024,6 +1024,7 @@ pub async fn materialize_from_template(
             .get("title")
             .and_then(|v| v.as_str())
             .unwrap_or("Untitled Task");
+        let task_icon = task_def.get("icon").and_then(|v| v.as_str());
         let col_index = task_def
             .get("column_index")
             .and_then(|v| v.as_u64())
@@ -1035,8 +1036,8 @@ pub async fn materialize_from_template(
 
         sqlx::query(
             r#"
-            INSERT INTO tasks (id, board_id, column_id, position, title, priority, status, created_by, version)
-            VALUES ($1, $2, $3, $4, $5, 'medium', 'open', $6, 0)
+            INSERT INTO tasks (id, board_id, column_id, position, title, priority, status, created_by, version, icon)
+            VALUES ($1, $2, $3, $4, $5, 'medium', 'open', $6, 0, $7)
             "#,
         )
         .bind(task_id)
@@ -1045,6 +1046,7 @@ pub async fn materialize_from_template(
         .bind(position)
         .bind(task_title)
         .bind(user.user_id)
+        .bind(task_icon)
         .execute(&mut *tx)
         .await?;
     }

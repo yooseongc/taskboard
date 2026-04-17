@@ -55,6 +55,8 @@ pub struct TaskRow {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
+    /// Optional emoji prefix (migration 0018).
+    pub icon: Option<String>,
 }
 
 /// Row type for the `board_members` table.
@@ -336,6 +338,7 @@ pub struct CreateTaskRequest {
     pub status: Option<String>,
     pub start_date: Option<DateTime<Utc>>,
     pub due_date: Option<DateTime<Utc>>,
+    pub icon: Option<String>,
 }
 
 /// S-017: Patch task request.
@@ -351,6 +354,12 @@ pub struct PatchTaskRequest {
     pub column_id: Option<Uuid>,
     pub position: Option<f64>,
     pub version: Option<i64>,
+    /// Three-way semantics via the `double_option` helper:
+    /// - `Some(Some(emoji))`: set a new icon
+    /// - `Some(None)` (JSON `null`): clear the icon
+    /// - absent field: leave the current icon untouched
+    #[serde(default, deserialize_with = "crate::http::serde_helpers::double_option::deserialize")]
+    pub icon: Option<Option<String>>,
 }
 
 /// S-018: Move task request.
@@ -375,6 +384,7 @@ pub struct TaskDto {
     pub status: String,
     pub start_date: Option<DateTime<Utc>>,
     pub due_date: Option<DateTime<Utc>>,
+    pub icon: Option<String>,
     pub created_by: Uuid,
     pub version: i64,
     pub created_at: DateTime<Utc>,
@@ -399,6 +409,8 @@ pub struct AssigneeInfo {
     pub id: Uuid,
     pub name: String,
     pub email: String,
+    #[serde(default)]
+    pub department_names: Vec<String>,
 }
 
 /// Checklist summary for task detail.

@@ -47,6 +47,7 @@ export function useCreateTask(boardId: string) {
       column_id: string;
       description?: string;
       priority?: string;
+      icon?: string;
     }) =>
       apiFetch<TaskDto>(`/api/boards/${boardId}/tasks`, {
         method: 'POST',
@@ -72,6 +73,8 @@ export function usePatchTask(boardId: string) {
       status?: string;
       start_date?: string | null;
       due_date?: string | null;
+      /** Pass `null` to clear an existing emoji; omit to leave unchanged. */
+      icon?: string | null;
       version: number;
     }) =>
       apiFetch<TaskDto>(`/api/tasks/${taskId}`, {

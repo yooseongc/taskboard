@@ -342,11 +342,25 @@ pub async fn list_users(
         rows.pop();
     }
 
-    // Build summaries with department_ids and roles per user
+    // Build summaries with department info and roles per user.
+    // One batched (id, name) fetch per user replaces the old pure-ids call so
+    // the frontend gets human-readable department_names in the same payload.
     let mut items = Vec::with_capacity(rows.len());
     for row in &rows {
-        let dept_ids =
-            crate::authz::authn::get_user_department_ids(&state.pool, row.id).await?;
+        let dept_rows: Vec<(Uuid, String)> = sqlx::query_as(
+            r#"
+            SELECT d.id, d.name
+            FROM department_members dm
+            JOIN departments d ON d.id = dm.department_id
+            WHERE dm.user_id = $1
+            ORDER BY d.name
+            "#,
+        )
+        .bind(row.id)
+        .fetch_all(&state.pool)
+        .await?;
+        let (dept_ids, department_names): (Vec<Uuid>, Vec<String>) =
+            dept_rows.into_iter().unzip();
         let roles = crate::authz::authn::get_user_roles(
             &state.pool,
             row.id,
@@ -359,6 +373,7 @@ pub async fn list_users(
             name: row.name.clone(),
             email: row.email.clone(),
             department_ids: dept_ids,
+            department_names,
             roles: roles.iter().map(|r| r.to_string()).collect(),
             active: row.active,
             created_at: row.created_at,

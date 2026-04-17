@@ -37,6 +37,10 @@ pub struct UserSummary {
     pub name: String,
     pub email: String,
     pub department_ids: Vec<Uuid>,
+    /// Human-readable department names, parallel to department_ids.
+    /// Populated by a JOIN so the frontend can render "name · dept" without
+    /// a separate /api/departments roundtrip.
+    pub department_names: Vec<String>,
     pub roles: Vec<String>,
     pub active: bool,
     pub created_at: DateTime<Utc>,

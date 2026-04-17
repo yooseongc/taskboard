@@ -503,8 +503,8 @@ pub async fn create_task(
 
     let row = sqlx::query_as::<_, TaskRow>(
         r#"
-        INSERT INTO tasks (id, board_id, column_id, position, title, summary, description, priority, status, start_date, due_date, created_by, version)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 0)
+        INSERT INTO tasks (id, board_id, column_id, position, title, summary, description, priority, status, start_date, due_date, created_by, version, icon)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 0, $13)
         RETURNING *
         "#,
     )
@@ -520,6 +520,7 @@ pub async fn create_task(
     .bind(body.start_date)
     .bind(body.due_date)
     .bind(user.user_id)
+    .bind(body.icon.as_deref())
     .fetch_one(&mut *tx)
     .await?;
 
@@ -548,6 +549,7 @@ pub async fn create_task(
         "status": row.status,
         "start_date": row.start_date,
         "due_date": row.due_date,
+        "icon": row.icon,
         "created_by": row.created_by,
         "version": row.version,
         "created_at": row.created_at,
@@ -589,16 +591,8 @@ pub async fn get_task(
     .map(|(lid, name, color)| LabelInfo { id: lid, name, color })
     .collect();
 
-    // Assignees
-    let assignees: Vec<AssigneeInfo> = sqlx::query_as::<_, (Uuid, String, String)>(
-        "SELECT u.id, u.name, u.email FROM users u JOIN task_assignees ta ON ta.user_id = u.id WHERE ta.task_id = $1",
-    )
-    .bind(id)
-    .fetch_all(&state.pool)
-    .await?
-    .into_iter()
-    .map(|(uid, name, email)| AssigneeInfo { id: uid, name, email })
-    .collect();
+    // Assignees (with department names joined in)
+    let assignees = fetch_assignees_for_task(&state.pool, id).await?;
 
     // Checklist summary
     let (cl_total, cl_checked): (i64, i64) = sqlx::query_as(
@@ -633,6 +627,7 @@ pub async fn get_task(
         status: task.status,
         start_date: task.start_date,
         due_date: task.due_date,
+        icon: task.icon,
         created_by: task.created_by,
         version: task.version,
         created_at: task.created_at,
@@ -723,6 +718,20 @@ pub async fn patch_task(
         }
     }
 
+    // Icon three-way resolution. Mirrors the column `color` pattern in
+    // patch_column: an (apply_flag, value) pair lets the UPDATE `CASE WHEN`
+    // clear, overwrite, or leave alone without a second query.
+    if let Some(Some(ref s)) = body.icon {
+        let len = s.len();
+        if len == 0 || len > 16 {
+            return Err(AppError::InvalidInput(
+                "icon must be 1–16 bytes (a single emoji)".into(),
+            ));
+        }
+    }
+    let apply_icon = body.icon.is_some();
+    let icon_value: Option<String> = body.icon.as_ref().and_then(|o| o.clone());
+
     let mut tx = state.pool.begin().await?;
 
     // Build changed_fields for activity log
@@ -748,6 +757,9 @@ pub async fn patch_task(
     if body.due_date.is_some() {
         changed_fields.push("due_date");
     }
+    if apply_icon {
+        changed_fields.push("icon");
+    }
 
     // We need to handle Option<Option<DateTime>> for start_date and due_date.
     // If outer Option is None -> no change (COALESCE keeps current).
@@ -765,6 +777,7 @@ pub async fn patch_task(
             description = COALESCE($4, description),
             priority = COALESCE($5, priority),
             status = COALESCE($6, status),
+            icon = CASE WHEN $8 THEN $9 ELSE icon END,
             version = version + 1,
             updated_at = now()
         WHERE id = $1 AND version = $7 AND deleted_at IS NULL
@@ -778,6 +791,8 @@ pub async fn patch_task(
     .bind(&body.priority)
     .bind(&body.status)
     .bind(expected_version)
+    .bind(apply_icon)
+    .bind(icon_value.as_deref())
     .fetch_optional(&mut *tx)
     .await?;
 
@@ -2129,17 +2144,36 @@ async fn enrich_tasks(
         labels_map.entry(task_id).or_default().push(LabelInfo { id: lid, name, color });
     }
 
-    // Batch-fetch assignees
-    let assignee_rows: Vec<(Uuid, Uuid, String, String)> = sqlx::query_as(
-        "SELECT ta.task_id, u.id, u.name, u.email FROM users u JOIN task_assignees ta ON ta.user_id = u.id WHERE ta.task_id = ANY($1)",
+    // Batch-fetch assignees with department names (LEFT JOIN + ARRAY_AGG).
+    // `FILTER (WHERE d.id IS NOT NULL)` keeps the array empty instead of
+    // {NULL} when a user has no department memberships.
+    let assignee_rows: Vec<(Uuid, Uuid, String, String, Vec<String>)> = sqlx::query_as(
+        r#"
+        SELECT ta.task_id, u.id, u.name, u.email,
+               COALESCE(
+                   ARRAY_AGG(d.name ORDER BY d.name) FILTER (WHERE d.id IS NOT NULL),
+                   ARRAY[]::TEXT[]
+               ) AS department_names
+        FROM users u
+        JOIN task_assignees ta ON ta.user_id = u.id
+        LEFT JOIN department_members dm ON dm.user_id = u.id
+        LEFT JOIN departments d ON d.id = dm.department_id
+        WHERE ta.task_id = ANY($1)
+        GROUP BY ta.task_id, u.id, u.name, u.email
+        "#,
     )
     .bind(&task_ids)
     .fetch_all(pool)
     .await?;
 
     let mut assignees_map: std::collections::HashMap<Uuid, Vec<AssigneeInfo>> = std::collections::HashMap::new();
-    for (task_id, uid, name, email) in assignee_rows {
-        assignees_map.entry(task_id).or_default().push(AssigneeInfo { id: uid, name, email });
+    for (task_id, uid, name, email, department_names) in assignee_rows {
+        assignees_map.entry(task_id).or_default().push(AssigneeInfo {
+            id: uid,
+            name,
+            email,
+            department_names,
+        });
     }
 
     // Batch-fetch checklist summaries
@@ -2193,6 +2227,7 @@ async fn enrich_tasks(
                 status: task.status,
                 start_date: task.start_date,
                 due_date: task.due_date,
+                icon: task.icon,
                 created_by: task.created_by,
                 version: task.version,
                 created_at: task.created_at,
@@ -2209,6 +2244,43 @@ async fn enrich_tasks(
         .collect();
 
     Ok(dtos)
+}
+
+/// Fetch all assignees for a single task, including their department names.
+/// Used by `get_task` for the single-task DTO; `enrich_tasks` uses an
+/// ANY($1) batched equivalent.
+async fn fetch_assignees_for_task(
+    pool: &sqlx::PgPool,
+    task_id: Uuid,
+) -> Result<Vec<AssigneeInfo>, AppError> {
+    let rows: Vec<(Uuid, String, String, Vec<String>)> = sqlx::query_as(
+        r#"
+        SELECT u.id, u.name, u.email,
+               COALESCE(
+                   ARRAY_AGG(d.name ORDER BY d.name) FILTER (WHERE d.id IS NOT NULL),
+                   ARRAY[]::TEXT[]
+               ) AS department_names
+        FROM users u
+        JOIN task_assignees ta ON ta.user_id = u.id
+        LEFT JOIN department_members dm ON dm.user_id = u.id
+        LEFT JOIN departments d ON d.id = dm.department_id
+        WHERE ta.task_id = $1
+        GROUP BY u.id, u.name, u.email
+        ORDER BY u.name
+        "#,
+    )
+    .bind(task_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(id, name, email, department_names)| AssigneeInfo {
+            id,
+            name,
+            email,
+            department_names,
+        })
+        .collect())
 }
 
 // ---------------------------------------------------------------------------

@@ -68,6 +68,8 @@ export interface TaskDto {
   status: TaskStatus;
   start_date: string | null;
   due_date: string | null;
+  /** Optional emoji prefix rendered on cards/rows/calendar events. */
+  icon: string | null;
   labels: LabelRef[];
   assignees: UserRef[];
   checklist_summary: { total: number; checked: number };
@@ -88,6 +90,9 @@ export interface UserRef {
   id: string;
   name: string;
   email: string;
+  /** Department names the user is a member of. Rendered as a small chip
+   *  next to the name in assignee / person-field widgets. */
+  department_names?: string[];
 }
 
 /** S-016: Column */
@@ -228,6 +233,8 @@ export interface User {
   email: string;
   email_verified: boolean;
   department_ids: string[];
+  /** Human-readable department names, parallel to department_ids. */
+  department_names?: string[];
   roles: GlobalRole[];
   active: boolean;
   created_at: string;
