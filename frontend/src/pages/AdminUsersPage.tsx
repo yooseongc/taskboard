@@ -40,11 +40,20 @@ export default function AdminUsersPage() {
     return list;
   }, [users, search, filterRole]);
 
+  const inputStyle = {
+    backgroundColor: 'var(--color-surface)',
+    border: '1px solid var(--color-border)',
+    color: 'var(--color-text)',
+  } as const;
+
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8">
+    <div className="mx-auto max-w-6xl px-4 md:px-6 py-6 md:py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">User Administration</h1>
-        <p className="text-sm text-gray-400 mt-1">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight"
+            style={{ color: 'var(--color-text)' }}>
+          User Administration
+        </h1>
+        <p className="text-sm mt-1" style={{ color: 'var(--color-text-muted)' }}>
           User accounts are managed via Active Directory. This view is read-only.
         </p>
       </div>
@@ -54,63 +63,70 @@ export default function AdminUsersPage() {
         <input
           type="text"
           placeholder="Search by name or email..."
-          className="border rounded-lg px-3 py-2 text-sm w-72 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          className="rounded-md px-3 py-2 text-sm w-full sm:w-72 outline-none focus:ring-2"
+          style={inputStyle}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
         <select
           value={filterRole}
           onChange={(e) => setFilterRole(e.target.value)}
-          className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          className="rounded-md px-3 py-2 text-sm outline-none focus:ring-2"
+          style={inputStyle}
         >
           <option value="">All roles</option>
           <option value="SystemAdmin">SystemAdmin</option>
           <option value="DepartmentAdmin">DepartmentAdmin</option>
           <option value="Member">Member</option>
         </select>
-        <span className="self-center text-sm text-gray-400">
+        <span className="self-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
           {filtered.length} user(s)
         </span>
       </div>
 
       {isLoading && <Spinner />}
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
+      {/* No internal overflow-x wrapper — <main> handles page-level
+          horizontal scroll when the table exceeds viewport width. */}
+      <div
+        className="rounded-lg"
+        style={{
+          backgroundColor: 'var(--color-surface)',
+          border: '1px solid var(--color-border)',
+        }}
+      >
+        <table className="w-full min-w-[720px] text-sm">
+          <thead style={{ backgroundColor: 'var(--color-surface-hover)' }}>
             <tr>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">
-                User
-              </th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">
-                Email
-              </th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">
-                Roles
-              </th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">
-                Departments
-              </th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">
-                Status
-              </th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">
-                Joined
-              </th>
+              {['User', 'Email', 'Roles', 'Departments', 'Status', 'Joined'].map((h) => (
+                <th
+                  key={h}
+                  className="px-4 py-3 text-left font-medium"
+                  style={{ color: 'var(--color-text-secondary)' }}
+                >
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y" style={{ backgroundColor: 'var(--color-surface)' }}>
             {filtered.map((user) => (
-              <tr key={user.id} className="hover:bg-gray-50">
+              <tr key={user.id} className="hover:bg-[var(--color-surface-hover)]">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
+                      style={{
+                        backgroundColor: 'var(--color-primary)',
+                        color: 'var(--color-text-inverse)',
+                      }}
+                    >
                       {user.name.charAt(0).toUpperCase()}
                     </div>
-                    <span className="font-medium">{user.name}</span>
+                    <span className="font-medium" style={{ color: 'var(--color-text)' }}>{user.name}</span>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-gray-500">{user.email}</td>
+                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{user.email}</td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">
                     {user.roles.map((r) => (
@@ -143,7 +159,7 @@ export default function AdminUsersPage() {
                     {user.active ? 'Active' : 'Inactive'}
                   </Badge>
                 </td>
-                <td className="px-4 py-3 text-gray-400 text-xs">
+                <td className="px-4 py-3 text-xs" style={{ color: 'var(--color-text-muted)' }}>
                   {new Date(user.created_at).toLocaleDateString()}
                 </td>
               </tr>
@@ -152,7 +168,8 @@ export default function AdminUsersPage() {
               <tr>
                 <td
                   colSpan={6}
-                  className="px-4 py-8 text-center text-gray-400"
+                  className="px-4 py-8 text-center"
+                  style={{ color: 'var(--color-text-muted)' }}
                 >
                   No users found.
                 </td>

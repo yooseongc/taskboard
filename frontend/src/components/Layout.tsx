@@ -104,15 +104,20 @@ export default function Layout() {
           color: 'var(--color-sidebar-text)',
         }}
       >
+        {/* NavBrand — flex-shrink-0 pins it to the top regardless of how
+            many items are in the nav below. Without it the whole sidebar
+            scrolled as one block when the board list grew past the viewport. */}
         <div
-          className="flex items-center gap-2 px-4 py-4"
+          className="flex-shrink-0 flex items-center gap-2 px-4 py-4"
           style={{ borderBottom: '1px solid var(--color-sidebar-border)' }}
         >
           <span className="text-lg font-bold" style={{ color: 'var(--color-sidebar-text-active)' }}>
             {t('app.name')}
           </span>
         </div>
-        <nav className="flex-1 py-2 overflow-y-auto" aria-label="Main navigation">
+        {/* `min-h-0` lets this flex child shrink below its intrinsic content
+            size so the inner overflow-y-auto actually engages. */}
+        <nav className="flex-1 min-h-0 py-2 overflow-y-auto" aria-label="Main navigation">
           {navItems.filter((item) => !item.adminOnly || isSystemAdmin).map((item) => {
             const active = location.pathname === item.path;
             return (

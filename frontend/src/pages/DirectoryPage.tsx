@@ -36,10 +36,13 @@ export default function DirectoryPage() {
   const handleSelectDept = (id: string | null) => { setSelectedDeptId(id); setPage(0); };
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8">
+    <div className="mx-auto max-w-7xl px-4 md:px-6 py-6 md:py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">{t('directory.title')}</h1>
-        <p className="text-sm text-[var(--color-text-muted)] mt-1">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight"
+            style={{ color: 'var(--color-text)' }}>
+          {t('directory.title')}
+        </h1>
+        <p className="text-sm mt-1" style={{ color: 'var(--color-text-muted)' }}>
           {t('directory.subtitle')}
         </p>
       </div>
@@ -210,7 +213,7 @@ function DeptMembersView({
 
   return (
     <>
-      <table className="w-full text-sm">
+      <table className="w-full min-w-[720px] text-sm">
         <thead className="bg-[var(--color-surface-hover)]">
           <tr>
             <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">{t('directory.person')}</th>
@@ -284,7 +287,7 @@ function DeptMembersView({
 function UserTable({ users, deptMap }: { users: User[]; deptMap: Map<string, string> }) {
   const { t } = useTranslation();
   return (
-    <table className="w-full text-sm">
+    <table className="w-full min-w-[720px] text-sm">
       <thead className="bg-[var(--color-surface-hover)]">
         <tr>
           <th className="px-4 py-2.5 text-left font-medium text-[var(--color-text-secondary)]">{t('directory.person')}</th>

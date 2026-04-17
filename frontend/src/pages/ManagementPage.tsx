@@ -45,21 +45,30 @@ export default function ManagementPage() {
     departments.filter((d) => d.parent_id === parentId);
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-6">
-      <div className="mb-5">
-        <h1 className="text-2xl font-bold">{t('management.title', '관리')}</h1>
-        <p className="text-sm text-[var(--color-text-muted)] mt-1">
+    <div className="mx-auto max-w-7xl px-4 md:px-6 py-6 md:py-8">
+      <div className="mb-6">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight" style={{ color: 'var(--color-text)' }}>
+          {t('management.title', '관리')}
+        </h1>
+        <p className="text-sm mt-1" style={{ color: 'var(--color-text-muted)' }}>
           {t('management.subtitle', '사용자, 부서, 보드 통합 관리')}
         </p>
       </div>
 
       {(deptsLoading || usersLoading) && <Spinner />}
 
-      <div className="flex gap-4">
+      {/* Responsive 3-pane layout. Below `lg` the tree/list/detail stack
+          vertically; above `lg` they sit side by side with fixed left/right
+          rails and a fluid middle. `min-w-0` on the middle pane lets its
+          content shrink without pushing the grid past viewport width. */}
+      <div className="grid gap-4 lg:gap-5 lg:grid-cols-[14rem_minmax(0,1fr)_28rem]">
         {/* Left: scope tree */}
-        <div className="w-56 flex-shrink-0">
-          <div className="surface-raised p-3 sticky top-4">
-            <h2 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
+        <aside className="lg:sticky lg:top-4 lg:self-start">
+          <div className="surface-raised p-3">
+            <h2
+              className="text-[11px] font-semibold uppercase tracking-wider mb-2"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
               {t('management.scope', '범위')}
             </h2>
             <ScopeButton
@@ -68,7 +77,7 @@ export default function ManagementPage() {
               active={selection.kind === 'all'}
               onClick={() => { setSelection({ kind: 'all' }); setSelectedDeptId(null); }}
             />
-            <div className="border-t my-1.5" />
+            <div className="my-1.5" style={{ borderTop: '1px solid var(--color-border-light)' }} />
             {roots.map((dept) => (
               <DeptNode
                 key={dept.id}
@@ -83,16 +92,24 @@ export default function ManagementPage() {
               />
             ))}
           </div>
-        </div>
+        </aside>
 
         {/* Middle: user list */}
-        <div className="flex-1 min-w-0 max-w-xl">
+        <section className="min-w-0">
           <div className="surface-raised">
-            <div className="px-3 py-2 border-b flex items-center gap-2">
+            <div
+              className="px-3 py-2 flex items-center gap-2"
+              style={{ borderBottom: '1px solid var(--color-border)' }}
+            >
               <input
                 type="text"
                 placeholder={t('management.searchPlaceholder', '이름 또는 이메일')}
-                className="flex-1 border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                className="flex-1 rounded-md px-3 py-1.5 text-sm outline-none focus:ring-2"
+                style={{
+                  backgroundColor: 'var(--color-surface)',
+                  border: '1px solid var(--color-border)',
+                  color: 'var(--color-text)',
+                }}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -115,10 +132,10 @@ export default function ManagementPage() {
               />
             )}
           </div>
-        </div>
+        </section>
 
         {/* Right: detail */}
-        <div className="w-[28rem] flex-shrink-0">
+        <aside className="min-w-0">
           {selection.kind === 'user' && (
             <UserDetail
               userId={selection.userId}
@@ -130,11 +147,14 @@ export default function ManagementPage() {
             <DepartmentDetail deptId={selection.deptId} />
           )}
           {selection.kind === 'all' && (
-            <div className="surface-raised p-4 text-sm text-[var(--color-text-muted)]">
+            <div
+              className="surface-raised p-4 text-sm"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
               {t('management.selectHint', '좌측에서 부서 또는 사용자를 선택하세요.')}
             </div>
           )}
-        </div>
+        </aside>
       </div>
     </div>
   );
@@ -153,9 +173,12 @@ function ScopeButton({
 }) {
   return (
     <div
-      className={`flex items-center gap-1.5 px-2 py-1.5 rounded text-sm cursor-pointer mb-1 ${
-        active ? 'bg-blue-50 text-blue-700 font-medium' : 'hover:bg-[var(--color-surface-hover)] text-[var(--color-text)]'
-      }`}
+      className="flex items-center gap-1.5 px-2 py-1.5 rounded text-sm cursor-pointer mb-1 hover:bg-[var(--color-surface-hover)]"
+      style={{
+        backgroundColor: active ? 'var(--color-primary-light)' : undefined,
+        color: active ? 'var(--color-primary-text)' : 'var(--color-text)',
+        fontWeight: active ? 600 : 400,
+      }}
       onClick={onClick}
     >
       <span className="flex-1">{label}</span>
@@ -183,12 +206,13 @@ function DeptNode({
   return (
     <>
       <div
-        className={`flex items-center gap-1 px-2 py-1 rounded text-sm cursor-pointer mb-0.5 ${
-          selected === dept.id
-            ? 'bg-blue-50 text-blue-700 font-medium'
-            : 'hover:bg-[var(--color-surface-hover)] text-[var(--color-text)]'
-        }`}
-        style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
+        className="flex items-center gap-1 px-2 py-1 rounded text-sm cursor-pointer mb-0.5 hover:bg-[var(--color-surface-hover)]"
+        style={{
+          paddingLeft: `${0.5 + depth * 0.75}rem`,
+          backgroundColor: selected === dept.id ? 'var(--color-primary-light)' : undefined,
+          color: selected === dept.id ? 'var(--color-primary-text)' : 'var(--color-text)',
+          fontWeight: selected === dept.id ? 600 : 400,
+        }}
         onClick={() => onSelect(dept.id)}
       >
         <span className="truncate" title={dept.name}>{dept.name}</span>
@@ -305,11 +329,16 @@ function UserRow({
     <li>
       <button
         onClick={onClick}
-        className={`w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-[var(--color-surface-hover)] ${
-          selected ? 'bg-blue-50' : ''
-        }`}
+        className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-[var(--color-surface-hover)]"
+        style={{ backgroundColor: selected ? 'var(--color-primary-light)' : undefined }}
       >
-        <div className="w-7 h-7 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center flex-shrink-0">
+        <div
+          className="w-7 h-7 rounded-full text-xs flex items-center justify-center flex-shrink-0 font-semibold"
+          style={{
+            backgroundColor: 'var(--color-primary)',
+            color: 'var(--color-text-inverse)',
+          }}
+        >
           {user.name.charAt(0).toUpperCase()}
         </div>
         <div className="flex-1 min-w-0">
@@ -319,9 +348,11 @@ function UserRow({
         {user.roles?.map((r) => (
           <Badge key={r} className={roleClass(r)}>{r}</Badge>
         ))}
-        {!user.active && <span className="text-xs text-red-500">비활성</span>}
+        {!user.active && (
+          <span className="text-xs" style={{ color: 'var(--color-danger)' }}>비활성</span>
+        )}
         {user.department_ids?.length > 0 && deptMap.size > 0 && (
-          <span className="text-xs text-[var(--color-text-muted)] truncate max-w-[8rem]">
+          <span className="text-xs truncate max-w-[8rem]" style={{ color: 'var(--color-text-muted)' }}>
             {user.department_ids.map((id) => deptMap.get(id)).filter(Boolean).join(', ')}
           </span>
         )}
@@ -344,9 +375,15 @@ function UserDetail({
   const boards = boardsData?.items ?? [];
   if (!user) return null;
   return (
-    <div className="surface-raised p-4 sticky top-4">
+    <div className="surface-raised p-4 lg:sticky lg:top-4">
       <div className="flex items-center gap-3 mb-3">
-        <div className="w-10 h-10 rounded-full bg-blue-500 text-white text-sm flex items-center justify-center flex-shrink-0">
+        <div
+          className="w-10 h-10 rounded-full text-sm flex items-center justify-center flex-shrink-0 font-semibold"
+          style={{
+            backgroundColor: 'var(--color-primary)',
+            color: 'var(--color-text-inverse)',
+          }}
+        >
           {user.name.charAt(0).toUpperCase()}
         </div>
         <div className="min-w-0">
@@ -409,7 +446,7 @@ function DepartmentDetail({ deptId }: { deptId: string }) {
   const { data, isLoading } = useDepartmentBoards(deptId);
   const boards = data?.items ?? [];
   return (
-    <div className="surface-raised p-4 sticky top-4">
+    <div className="surface-raised p-4 lg:sticky lg:top-4">
       <div className="text-xs font-semibold uppercase mb-2" style={{ color: 'var(--color-text-muted)' }}>
         부서 보드 ({boards.length})
       </div>

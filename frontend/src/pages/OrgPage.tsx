@@ -17,11 +17,14 @@ export default function OrgPage() {
     departments.filter((d) => d.parent_id === parentId);
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8">
+    <div className="mx-auto max-w-6xl px-4 md:px-6 py-6 md:py-8">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Organization</h1>
-          <p className="text-sm text-gray-400 mt-1">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight"
+              style={{ color: 'var(--color-text)' }}>
+            Organization
+          </h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--color-text-muted)' }}>
             Departments and members are synced from Active Directory (read-only)
           </p>
         </div>
@@ -162,8 +165,12 @@ function MembersTable({ departmentId }: { departmentId: string }) {
       {isLoading && <Spinner />}
 
       {members.length > 0 ? (
-        <div className="overflow-x-auto rounded border border-gray-200">
-          <table className="w-full text-sm">
+        // No internal overflow wrapper — page-level scroll handles it.
+        <div
+          className="rounded-lg"
+          style={{ border: '1px solid var(--color-border)' }}
+        >
+          <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-3 py-2 text-left font-medium text-gray-600">
