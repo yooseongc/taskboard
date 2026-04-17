@@ -242,11 +242,13 @@ def ensure_templates(H: dict[str, str]) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Demo boards — each entry is (template_name, board_title, [tasks...])
+# Demo boards — each entry is (template_name, board_title, owner_dept_slug, [tasks...])
+# Boards are scoped to the listed department so only its members (plus the
+# creator/SystemAdmin) can see them. Pick slugs so every user sees something.
 # task = (title, column_title, {field_name: value, ...}, [label_names])
 # ---------------------------------------------------------------------------
-BOARDS: list[tuple[str, str, list[tuple[str, str, dict[str, Any], list[str]]]]] = [
-    ("Sprint Board", "Sprint 2026-Q2", [
+BOARDS: list[tuple[str, str, str, list[tuple[str, str, dict[str, Any], list[str]]]]] = [
+    ("Sprint Board", "Sprint 2026-Q2", "eng-backend", [
         ("JWT -> OAuth2 Migration", "In Progress",
          {"Priority": "Urgent", "Story Points": 8, "Sprint": "Sprint 1",
           "_summary": "Auth system refactoring", "_priority": "urgent",
@@ -270,7 +272,7 @@ BOARDS: list[tuple[str, str, list[tuple[str, str, dict[str, Any], list[str]]]]] 
          {"Priority": "Medium", "Story Points": 3, "Sprint": "Sprint 2",
           "_summary": "Bottleneck analysis", "_priority": "medium"}, ["Spike"]),
     ]),
-    ("Team Task Board", "Team Task Board", [
+    ("Team Task Board", "Team Task Board", "engineering", [
         ("Weekly Meeting Prep", "This Week",
          {"Priority": "Medium", "Area": "Frontend",
           "_priority": "medium", "_due_date": "2026-04-21"}, []),
@@ -286,7 +288,7 @@ BOARDS: list[tuple[str, str, list[tuple[str, str, dict[str, Any], list[str]]]]] 
         ("Infra Monitoring Setup", "Complete",
          {"Priority": "High", "Area": "Backend", "_priority": "high"}, ["Urgent"]),
     ]),
-    ("Roadmap", "2026 Roadmap", [
+    ("Roadmap", "2026 Roadmap", "management", [
         ("Multi-tenancy Support", "Q3",
          {"Priority": "Urgent", "Target Release": "v3.0", "Progress": 20,
           "_summary": "Per-org data isolation", "_priority": "urgent"},
@@ -308,7 +310,7 @@ BOARDS: list[tuple[str, str, list[tuple[str, str, dict[str, Any], list[str]]]]] 
           "_summary": "Auto task classification", "_priority": "low"},
          ["Nice-to-have"]),
     ]),
-    ("Schedule Calendar", "Team Schedule", [
+    ("Schedule Calendar", "Team Schedule", "engineering", [
         ("Sprint Retrospective", "Scheduled",
          {"Location": "Meeting Room A", "_summary": "Sprint 1 retro",
           "_start_date": "2026-04-18", "_due_date": "2026-04-18"}, ["Meeting"]),
@@ -321,7 +323,7 @@ BOARDS: list[tuple[str, str, list[tuple[str, str, dict[str, Any], list[str]]]]] 
          {"Location": "Zoom (Online)", "_summary": "UX improvement review",
           "_start_date": "2026-04-22", "_due_date": "2026-04-22"}, ["Review"]),
     ]),
-    ("Vacation Tracker", "Vacation Tracker", [
+    ("Vacation Tracker", "Vacation Tracker", "management", [
         ("Kim Minsu - Annual Leave", "Approved",
          {"Reason": "Family trip",
           "_start_date": "2026-04-28", "_due_date": "2026-04-30"}, ["Annual"]),
@@ -332,7 +334,7 @@ BOARDS: list[tuple[str, str, list[tuple[str, str, dict[str, Any], list[str]]]]] 
          {"Reason": "Overtime compensation",
           "_start_date": "2026-05-05", "_due_date": "2026-05-05"}, ["Comp Day"]),
     ]),
-    ("Bug Triage", "Bug Triage", [
+    ("Bug Triage", "Bug Triage", "qa", [
         ("Infinite redirect after login", "Fixing",
          {"Priority": "P0-Critical", "Reproducibility": "Always",
           "Impact Area": "Authentication",
@@ -356,7 +358,7 @@ BOARDS: list[tuple[str, str, list[tuple[str, str, dict[str, Any], list[str]]]]] 
          {"Priority": "P2-Medium", "Reproducibility": "Sometimes",
           "_summary": "Fixed in v2.1.3", "_priority": "medium"}, []),
     ]),
-    ("Project Tracker", "New Service Launch", [
+    ("Project Tracker", "New Service Launch", "design", [
         ("Requirements Definition", "Planning",
          {"Priority": "High", "Progress": 80, "Team": "PM",
           "_summary": "PRD writing", "_priority": "high",
@@ -388,10 +390,11 @@ def _iso(date: str, end: bool) -> str:
     return f"{date}T{'23:59:59' if end else '00:00:00'}Z"
 
 
-def seed_boards(H: dict[str, str], tmpls: dict[str, str], dept_id: str) -> int:
+def seed_boards(H: dict[str, str], tmpls: dict[str, str], depts: dict[str, str]) -> int:
     total_tasks = 0
-    for tmpl_name, board_title, tasks in BOARDS:
+    for tmpl_name, board_title, dept_slug, tasks in BOARDS:
         tmpl_id = tmpls[tmpl_name]
+        dept_id = depts[dept_slug]
         board = post(f"/boards?from_template={tmpl_id}", H,
                      {"title": board_title, "description": f"Demo board: {board_title}",
                       "department_ids": [dept_id]})
@@ -399,7 +402,7 @@ def seed_boards(H: dict[str, str], tmpls: dict[str, str], dept_id: str) -> int:
         cols = {c["title"]: c["id"] for c in get(f"/boards/{bid}/columns", H)["items"]}
         flds = {f["name"]: f["id"] for f in get(f"/boards/{bid}/fields", H)["items"]}
         lbls = {l["name"]: l["id"] for l in get(f"/boards/{bid}/labels", H)["items"]}
-        print(f"  board: {board_title} -> {bid}")
+        print(f"  board: {board_title} ({dept_slug}) -> {bid}")
 
         for title, col, fields, labels in tasks:
             body: dict[str, Any] = {"title": title, "column_id": cols[col]}
@@ -439,8 +442,7 @@ def main() -> int:
     print(f"  {len(tmpls)} templates ready")
 
     print("=== Creating boards ===")
-    dept_id = depts["engineering"]
-    total_tasks = seed_boards(H, tmpls, dept_id)
+    total_tasks = seed_boards(H, tmpls, depts)
 
     print(f"\n=== Done. {len(BOARDS)} boards with {total_tasks} tasks. ===")
     return 0
