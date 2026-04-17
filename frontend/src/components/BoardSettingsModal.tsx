@@ -629,27 +629,10 @@ function FieldRow({
             </div>
           )}
         </div>
-        {/* "Show on card" toggle — user flips this inline, no edit-mode
-            round trip needed. Patching through usePatchCustomField
-            invalidates the fields query which in turn re-renders the
-            kanban cards that key off show_on_card. */}
-        <label
-          className="flex items-center gap-1.5 text-xs cursor-pointer select-none"
-          style={{ color: 'var(--color-text-secondary)' }}
-          title={t('boardSettings.showOnCardHint', 'Display this field on the kanban card')}
-        >
-          <input
-            type="checkbox"
-            checked={field.show_on_card}
-            onChange={(e) =>
-              patchField.mutate(
-                { fieldId: field.id, show_on_card: e.target.checked },
-                { onError: () => addToast('error', t('common.error')) },
-              )
-            }
-          />
-          <span>{t('boardSettings.showOnCard', 'Show on card')}</span>
-        </label>
+        {/* Card-visibility toggling lives in the Properties popover on the
+            board header (BoardViewPage.tsx "tableView.properties" modal) —
+            a dedicated UI that already enumerates every field with a
+            checkbox. Duplicating it here is redundant. */}
         <Button size="sm" variant="ghost" onClick={onStartEdit}>
           {t('common.rename')}
         </Button>
