@@ -150,7 +150,7 @@ export default function BoardViewPage() {
         filters: (c.filters as TableViewState['filters']) ?? [],
         filterMode: (c.filterMode as TableViewState['filterMode']) ?? 'and',
       });
-      setTableGroupBy(c.groupBy ?? { type: 'none' });
+      setTableGroupBy(c.groupBy ?? { type: 'column' });
       setTableDensity(c.density ?? 'normal');
       setTableKey((k) => k + 1);
     } else if (view.view_type === 'calendar') {
@@ -209,7 +209,7 @@ export default function BoardViewPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [groupBy, setGroupBy] = useState<GroupByKey>({ type: 'column' });
   const [density, setDensity] = useState<ViewDensity>('normal');
-  const [tableGroupBy, setTableGroupBy] = useState<GroupByKey>({ type: 'none' });
+  const [tableGroupBy, setTableGroupBy] = useState<GroupByKey>({ type: 'column' });
   const [tableDensity, setTableDensity] = useState<ViewDensity>('normal');
   const [calendarGroupBy, setCalendarGroupBy] = useState<GroupByKey>({
     type: 'none',
