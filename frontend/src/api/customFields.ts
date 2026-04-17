@@ -114,7 +114,7 @@ export function useTaskFieldValues(taskId: string) {
   });
 }
 
-export function useSetTaskFieldValue(taskId: string) {
+export function useSetTaskFieldValue(taskId: string, boardId?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ fieldId, value }: { fieldId: string; value: unknown }) =>
@@ -124,6 +124,9 @@ export function useSetTaskFieldValue(taskId: string) {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['task', taskId, 'fields'] });
+      if (boardId) {
+        qc.invalidateQueries({ queryKey: ['board', boardId, 'field-values'] });
+      }
     },
   });
 }

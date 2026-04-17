@@ -68,7 +68,7 @@ export default function TaskModal({ taskId, boardId, onClose }: TaskModalProps) 
   const createBoardLabel = useCreateBoardLabel(boardId);
   const { data: customFieldsData } = useBoardCustomFields(boardId);
   const { data: fieldValuesData } = useTaskFieldValues(taskId);
-  const setFieldValue = useSetTaskFieldValue(taskId);
+  const setFieldValue = useSetTaskFieldValue(taskId, boardId);
   const createCustomField = useCreateCustomField(boardId);
   const addToast = useToastStore((s) => s.addToast);
   const { t } = useTranslation();

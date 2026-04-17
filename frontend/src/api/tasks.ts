@@ -79,15 +79,10 @@ export function usePatchTask(boardId: string) {
         body: JSON.stringify(body),
       }),
     onSuccess: (data) => {
-      // Immediately patch the in-memory board task list so the board reflects
-      // the change without waiting for a background refetch.
-      const listKey = ['board', boardId, 'tasks', 'by_column'] as const;
-      qc.setQueryData<PaginatedResponse<TaskDto>>(listKey, (old) =>
-        old
-          ? { ...old, items: old.items.map((t) => (t.id === data.id ? data : t)) }
-          : old,
-      );
-      qc.setQueryData<TaskDto>(['task', data.id], data);
+      // Invalidate board task list to trigger refetch with enriched data
+      // (labels, assignees, checklist summary, comment count).
+      qc.invalidateQueries({ queryKey: ['board', boardId, 'tasks', 'by_column'] });
+      qc.invalidateQueries({ queryKey: ['task', data.id] });
     },
   });
 }
