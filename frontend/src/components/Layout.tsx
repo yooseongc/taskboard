@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../stores/authStore';
 import { getLogoutUrl } from '../auth/oidc';
 import { usePermissions } from '../hooks/usePermissions';
-import { useMyBoards } from '../api/boards';
+import { useMyBoards, useToggleBoardPin } from '../api/boards';
 import { useBoardViews, type ViewType } from '../api/views';
 import { ToastContainer } from './Toast';
 import CommandPalette from './CommandPalette';
@@ -270,10 +270,12 @@ function BoardNavLink({
   boardId,
   title,
   active,
+  pinned = false,
 }: {
   boardId: string;
   title: string;
   active: boolean;
+  pinned?: boolean;
 }) {
   // Expand automatically when the board is currently open; otherwise the
   // user can toggle the chevron. Keeping this as local state (rather than
@@ -282,6 +284,7 @@ function BoardNavLink({
   useEffect(() => {
     if (active) setExpanded(true);
   }, [active]);
+  const togglePin = useToggleBoardPin();
 
   return (
     <div>
@@ -322,6 +325,16 @@ function BoardNavLink({
           />
           <span className="truncate">{title}</span>
         </Link>
+        <button
+          type="button"
+          onClick={(e) => { e.preventDefault(); togglePin.mutate(boardId); }}
+          className={`flex-shrink-0 p-0.5 text-xs transition-opacity ${pinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+          style={{ color: pinned ? '#fbbf24' : 'var(--color-sidebar-text)' }}
+          title={pinned ? '즐겨찾기 해제' : '즐겨찾기'}
+          aria-label={pinned ? 'Unpin' : 'Pin'}
+        >
+          {pinned ? '★' : '☆'}
+        </button>
       </div>
       {expanded && <BoardViewList boardId={boardId} />}
     </div>
@@ -392,7 +405,7 @@ function BoardBucketSection({
   pathname,
 }: {
   label: string;
-  boards: Array<{ id: string; title: string }>;
+  boards: Array<{ id: string; title: string; pinned: boolean }>;
   pathname: string;
 }) {
   if (boards.length === 0) return null;
@@ -408,7 +421,13 @@ function BoardBucketSection({
       {boards.map((board) => {
         const active = pathname === `/boards/${board.id}`;
         return (
-          <BoardNavLink key={board.id} boardId={board.id} title={board.title} active={active} />
+          <BoardNavLink
+            key={board.id}
+            boardId={board.id}
+            title={board.title}
+            active={active}
+            pinned={board.pinned}
+          />
         );
       })}
     </div>

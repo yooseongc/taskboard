@@ -358,6 +358,13 @@ export default function BoardSettingsModal({ boardId, onClose }: BoardSettingsMo
 
 const BOARD_ROLES = ['admin', 'editor', 'viewer'] as const;
 
+/** Localized labels for the lowercase board roles (ROLES.md §3). */
+const BOARD_ROLE_LABELS: Record<string, string> = {
+  admin: '관리자',
+  editor: '편집가능',
+  viewer: '뷰어',
+};
+
 function MembersPanel({ boardId }: { boardId: string }) {
   const { data: membersData, isLoading } = useBoardMembers(boardId);
   const { data: usersData } = useUsers();
@@ -417,7 +424,7 @@ function MembersPanel({ boardId }: { boardId: string }) {
                 style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text)', borderColor: 'var(--color-border)' }}
               >
                 {BOARD_ROLES.map((r) => (
-                  <option key={r} value={r}>{r}</option>
+                  <option key={r} value={r}>{BOARD_ROLE_LABELS[r] ?? r}</option>
                 ))}
               </select>
               <button
@@ -445,11 +452,11 @@ function MembersPanel({ boardId }: { boardId: string }) {
         style={{ borderColor: 'var(--color-border)' }}
       >
         <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
-          Add member
+          멤버 초대
         </h4>
         <div className="flex gap-2">
           <input
-            placeholder="Search by name or email..."
+            placeholder="이름 또는 이메일 검색..."
             className="flex-1 text-sm border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
             style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
             value={search}
@@ -462,7 +469,7 @@ function MembersPanel({ boardId }: { boardId: string }) {
             style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
           >
             {BOARD_ROLES.map((r) => (
-              <option key={r} value={r}>{r}</option>
+              <option key={r} value={r}>{BOARD_ROLE_LABELS[r] ?? r}</option>
             ))}
           </select>
         </div>
