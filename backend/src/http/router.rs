@@ -63,6 +63,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/users/me/boards", get(collab::list_my_boards))
         // ROLES.md §8: pin/unpin a board
         .route("/api/users/me/pins/{board_id}", put(collab::toggle_board_pin))
+        // ROLES.md §6: management views — boards per user / per department
+        .route("/api/users/{user_id}/boards", get(collab::list_user_boards))
+        .route("/api/departments/{dept_id}/boards", get(collab::list_department_boards))
         .route("/api/boards/{id}", get(collab::get_board))
         .route("/api/boards/{id}", patch(collab::patch_board))
         .route("/api/boards/{id}", delete(collab::delete_board))

@@ -109,6 +109,30 @@ export function useMyBoards(bucket?: 'favorites' | 'department' | 'personal' | '
   });
 }
 
+/** ROLES.md §6: list a specific user's boards (admin views). */
+export function useUserBoards(userId: string | null) {
+  return useQuery({
+    queryKey: ['user-boards', userId],
+    queryFn: () =>
+      apiFetch<{ items: Array<{ id: string; title: string; owner_type: string; bucket: string; updated_at: string }> }>(
+        `/api/users/${userId}/boards`,
+      ),
+    enabled: !!userId,
+  });
+}
+
+/** ROLES.md §6: list a department's boards. */
+export function useDepartmentBoards(deptId: string | null) {
+  return useQuery({
+    queryKey: ['dept-boards', deptId],
+    queryFn: () =>
+      apiFetch<{ items: Array<{ id: string; title: string; owner_type: string; updated_at: string }> }>(
+        `/api/departments/${deptId}/boards`,
+      ),
+    enabled: !!deptId,
+  });
+}
+
 /** ROLES.md §8: pin/unpin a board. */
 export function useToggleBoardPin() {
   const qc = useQueryClient();

@@ -1224,6 +1224,97 @@ pub async fn list_my_boards(
 }
 
 // ===========================================================================
+// ROLES.md §6 (Management page): GET /api/users/:user_id/boards
+// SystemAdmin/DepartmentAdmin only — see boards a specific user belongs to.
+// ===========================================================================
+
+pub async fn list_user_boards(
+    State(state): State<AppState>,
+    user: AuthnUser,
+    Path(target_user_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    // Authz: SystemAdmin always; DepartmentAdmin only if target shares a dept.
+    let is_admin = user.global_roles.contains(&GlobalRole::SystemAdmin);
+    let is_dept_admin = user.global_roles.contains(&GlobalRole::DepartmentAdmin);
+    let is_self = user.user_id == target_user_id;
+    if !is_admin && !is_dept_admin && !is_self {
+        return Err(AppError::PermissionDenied {
+            action: "list_user_boards".into(),
+            resource: "users".into(),
+        });
+    }
+
+    let rows: Vec<BoardRow> = sqlx::query_as::<_, BoardRow>(
+        r#"
+        SELECT b.* FROM boards b
+        WHERE b.deleted_at IS NULL
+        AND (
+            b.id IN (SELECT board_id FROM board_members WHERE user_id = $1)
+            OR b.id IN (
+                SELECT bd.board_id FROM board_departments bd
+                JOIN department_members dm ON bd.department_id = dm.department_id
+                WHERE dm.user_id = $1
+            )
+            OR (b.owner_type = 'personal' AND b.owner_id = $1)
+        )
+        ORDER BY b.updated_at DESC
+        "#,
+    )
+    .bind(target_user_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    // Compute bucket from the *target* user's perspective
+    let board_ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
+    let dept_boards = fetch_dept_board_ids_for_user(&state.pool, target_user_id, &board_ids).await?;
+
+    let summaries: Vec<serde_json::Value> = rows.iter().map(|r| {
+        let bucket = compute_bucket(r, target_user_id, &dept_boards);
+        serde_json::json!({
+            "id": r.id,
+            "title": r.title,
+            "owner_type": r.owner_type,
+            "bucket": bucket,
+            "updated_at": r.updated_at,
+        })
+    }).collect();
+
+    Ok(Json(serde_json::json!({ "items": summaries })))
+}
+
+// ===========================================================================
+// ROLES.md §6: GET /api/departments/:dept_id/boards
+// List department boards (department_members can see; useful for mgmt page).
+// ===========================================================================
+
+pub async fn list_department_boards(
+    State(state): State<AppState>,
+    _user: AuthnUser,
+    Path(dept_id): Path<Uuid>,
+) -> Result<impl IntoResponse, AppError> {
+    let rows: Vec<BoardRow> = sqlx::query_as::<_, BoardRow>(
+        r#"
+        SELECT b.* FROM boards b
+        JOIN board_departments bd ON bd.board_id = b.id
+        WHERE bd.department_id = $1 AND b.deleted_at IS NULL
+        ORDER BY b.updated_at DESC
+        "#,
+    )
+    .bind(dept_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let summaries: Vec<serde_json::Value> = rows.iter().map(|r| serde_json::json!({
+        "id": r.id,
+        "title": r.title,
+        "owner_type": r.owner_type,
+        "updated_at": r.updated_at,
+    })).collect();
+
+    Ok(Json(serde_json::json!({ "items": summaries })))
+}
+
+// ===========================================================================
 // ROLES.md §8: PUT /api/users/me/pins/:board_id (toggle)
 // ===========================================================================
 
