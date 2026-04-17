@@ -21,12 +21,12 @@ pub enum ResourceType {
     DeptManagement,
 }
 
-/// S-025: Board-level roles.
+/// Board-level roles per ROLES.md §3 (lowercase storage).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BoardRole {
-    BoardAdmin,
-    BoardMember,
-    BoardViewer,
+    Admin,
+    Editor,
+    Viewer,
 }
 
 /// S-025: Authorization decision.
@@ -67,7 +67,6 @@ impl GlobalRole {
             Self::SystemAdmin => 0,
             Self::DepartmentAdmin => 1,
             Self::Member => 2,
-            Self::Viewer => 3,
         }
     }
 }
@@ -75,17 +74,20 @@ impl GlobalRole {
 impl BoardRole {
     fn idx(self) -> usize {
         match self {
-            Self::BoardAdmin => 0,
-            Self::BoardMember => 1,
-            Self::BoardViewer => 2,
+            Self::Admin => 0,
+            Self::Editor => 1,
+            Self::Viewer => 2,
         }
     }
 
+    /// Parse from the lowercase storage form. Legacy capitalized forms
+    /// (BoardAdmin/BoardMember/BoardViewer) are also accepted to ease
+    /// transitions, but new code should write lowercase.
     pub fn from_str_opt(s: &str) -> Option<Self> {
         match s {
-            "BoardAdmin" => Some(Self::BoardAdmin),
-            "BoardMember" => Some(Self::BoardMember),
-            "BoardViewer" => Some(Self::BoardViewer),
+            "admin" | "BoardAdmin" => Some(Self::Admin),
+            "editor" | "BoardMember" => Some(Self::Editor),
+            "viewer" | "BoardViewer" => Some(Self::Viewer),
             _ => None,
         }
     }
@@ -94,29 +96,47 @@ impl BoardRole {
 const A: Decision = Decision::Allow;
 const D: Decision = Decision::Deny;
 
-/// S-025: Global role matrix [4 roles][5 resources][5 actions].
-/// Rows: SysAdmin, DeptAdmin, Member, Viewer
+/// Global role matrix [3 roles][5 resources][5 actions]. ROLES.md §4.1.
+/// Rows: SysAdmin, DeptAdmin, Member
 /// Cols per resource: Create, Read, Update, Delete, ManageMembers
-static MATRIX: [[[Decision; 5]; 5]; 4] = [
-    // SystemAdmin
+static MATRIX: [[[Decision; 5]; 5]; 3] = [
+    // SystemAdmin — all allow
     [[A, A, A, A, A], [A, A, A, A, A], [A, A, A, A, A], [A, A, A, A, A], [A, A, A, A, A]],
-    // DepartmentAdmin
+    // DepartmentAdmin (internal): full control on board/task/comment in own dept
     [[A, A, A, A, A], [A, A, A, A, A], [A, A, A, A, D], [A, A, A, A, D], [A, A, A, A, A]],
-    // Member
+    // Member (internal): can read everything, create/comment but not delete or manage
     [[D, A, D, D, D], [A, A, A, D, D], [A, A, A, D, D], [A, A, A, D, D], [D, A, D, D, D]],
-    // Viewer
-    [[D, A, D, D, D], [D, A, D, D, D], [D, A, D, D, D], [D, A, D, D, D], [D, A, D, D, D]],
 ];
 
-/// S-025: Board-level role matrix [3 roles][5 resources][5 actions].
-/// Rows: BoardAdmin, BoardMember, BoardViewer
+/// Board-level role matrix [3 roles][5 resources][5 actions]. ROLES.md §4.2.
+/// Rows: admin, editor, viewer
+///
+/// Key changes from the previous BoardMember/BoardViewer split:
+///   - viewer can now Create/Read/Update comments (own) — ROLES.md §3
+///   - admin can update board settings (Board.Update = A)
 static BOARD_MATRIX: [[[Decision; 5]; 5]; 3] = [
-    // BoardAdmin
+    // admin — full control on the board's content + member management
+    //         Create=Read=Update=Delete=ManageMembers
+    // Board:    [D, A, A, A, A]  (Create handled by global; Update=Delete=ManageMembers Allow)
+    // Task:     [A, A, A, A, A]
+    // Template: [D, A, D, D, D]  (templates are not board-scoped; admin acts as Member)
+    // Comment:  [A, A, A, A, D]
+    // DeptMgmt: [D, D, D, D, D]
     [[D, A, A, A, A], [A, A, A, A, A], [D, A, D, D, D], [A, A, A, A, D], [D, D, D, D, D]],
-    // BoardMember
-    [[D, A, D, D, D], [A, A, A, D, D], [D, A, D, D, D], [A, A, A, D, D], [D, D, D, D, D]],
-    // BoardViewer
-    [[D, A, D, D, D], [D, A, D, D, D], [D, A, D, D, D], [D, A, D, D, D], [D, D, D, D, D]],
+    // editor — task CRUD + comment
+    // Board:    [D, A, D, D, D]
+    // Task:     [A, A, A, A, D]
+    // Template: [D, A, D, D, D]
+    // Comment:  [A, A, A, D, D]
+    // DeptMgmt: [D, D, D, D, D]
+    [[D, A, D, D, D], [A, A, A, A, D], [D, A, D, D, D], [A, A, A, D, D], [D, D, D, D, D]],
+    // viewer — read + comment create (NEW behaviour per user decision)
+    // Board:    [D, A, D, D, D]
+    // Task:     [D, A, D, D, D]
+    // Template: [D, A, D, D, D]
+    // Comment:  [A, A, D, D, D]   ← Create allowed; only own update/delete handled in handler
+    // DeptMgmt: [D, D, D, D, D]
+    [[D, A, D, D, D], [D, A, D, D, D], [D, A, D, D, D], [A, A, D, D, D], [D, D, D, D, D]],
 ];
 
 /// S-025: evaluate authorization decision.
@@ -223,32 +243,30 @@ mod tests {
 
     #[test]
     fn q001_max_global_board_role_composition() {
-        // S-025: final = max(global, board_local).
-        // DeptAdmin (internal) + BoardViewer => DeptAdmin wins.
+        // ROLES.md §4: final = max(global, board_local).
+        // DeptAdmin (internal) + viewer board role => DeptAdmin wins.
         let user = make_user(vec![GlobalRole::DepartmentAdmin]);
         let resource = ResourceRef::new(ResourceType::Task)
-            .with_board_role(BoardRole::BoardViewer);
+            .with_board_role(BoardRole::Viewer);
 
-        // DeptAdmin internal => Task Create = Allow
-        // BoardViewer => Task Create = Deny
-        // max(Allow, Deny) = Allow
         assert_eq!(evaluate(&user, Action::Create, &resource, true), Decision::Allow);
     }
 
     #[test]
-    fn q001_viewer_comment_create_deny() {
-        // S-025: Viewer cannot create comments.
-        // MATRIX[Viewer][Comment][Create] = D
-        let user = make_user(vec![GlobalRole::Viewer]);
-        let resource = ResourceRef::new(ResourceType::Comment);
+    fn q001_viewer_can_create_comment() {
+        // ROLES.md §3: viewer can create comments.
+        // BOARD_MATRIX[viewer][Comment][Create] = A
+        let user = make_user(vec![GlobalRole::Member]);
+        let resource = ResourceRef::new(ResourceType::Comment)
+            .with_board_role(BoardRole::Viewer);
 
-        assert_eq!(evaluate(&user, Action::Create, &resource, true), Decision::Deny);
+        assert_eq!(evaluate(&user, Action::Create, &resource, false), Decision::Allow);
     }
 
     #[test]
     fn q001_viewer_board_read_allow_when_internal() {
-        // MATRIX[Viewer][Board][Read] = A
-        let user = make_user(vec![GlobalRole::Viewer]);
+        // Member (internal default) + Board Read = Allow
+        let user = make_user(vec![GlobalRole::Member]);
         let resource = ResourceRef::new(ResourceType::Board);
 
         assert_eq!(evaluate(&user, Action::Read, &resource, true), Decision::Allow);
@@ -265,45 +283,43 @@ mod tests {
 
     #[test]
     fn q001_board_admin_manage_members_allow() {
-        // BOARD_MATRIX[BoardAdmin][Board][ManageMembers] = A
-        let user = make_user(vec![GlobalRole::Viewer]);
+        // BOARD_MATRIX[admin][Board][ManageMembers] = A
+        // External Member + admin board role => composes to Allow
+        let user = make_user(vec![GlobalRole::Member]);
         let resource = ResourceRef::new(ResourceType::Board)
-            .with_board_role(BoardRole::BoardAdmin);
+            .with_board_role(BoardRole::Admin);
 
-        // Viewer internal => Board ManageMembers = Deny
-        // BoardAdmin => Board ManageMembers = Allow
-        // max(D, A) = A
-        assert_eq!(evaluate(&user, Action::ManageMembers, &resource, true), Decision::Allow);
+        assert_eq!(evaluate(&user, Action::ManageMembers, &resource, false), Decision::Allow);
     }
 
     #[test]
-    fn q001_board_member_cannot_delete_task() {
-        // BOARD_MATRIX[BoardMember][Task][Delete] = D
-        // External user with BoardMember role
-        let user = make_user(vec![GlobalRole::Viewer]);
+    fn q001_editor_can_delete_task() {
+        // BOARD_MATRIX[editor][Task][Delete] = A (per new model — editors
+        // can fully manage tasks they have access to).
+        let user = make_user(vec![GlobalRole::Member]);
         let resource = ResourceRef::new(ResourceType::Task)
-            .with_board_role(BoardRole::BoardMember);
+            .with_board_role(BoardRole::Editor);
 
-        assert_eq!(evaluate(&user, Action::Delete, &resource, false), Decision::Deny);
+        assert_eq!(evaluate(&user, Action::Delete, &resource, false), Decision::Allow);
     }
 
     #[test]
-    fn q001_board_member_can_create_task() {
-        // BOARD_MATRIX[BoardMember][Task][Create] = A
-        let user = make_user(vec![GlobalRole::Viewer]);
+    fn q001_editor_can_create_task() {
+        // BOARD_MATRIX[editor][Task][Create] = A
+        let user = make_user(vec![GlobalRole::Member]);
         let resource = ResourceRef::new(ResourceType::Task)
-            .with_board_role(BoardRole::BoardMember);
+            .with_board_role(BoardRole::Editor);
 
         assert_eq!(evaluate(&user, Action::Create, &resource, false), Decision::Allow);
     }
 
     #[test]
-    fn q001_empty_roles_defaults_to_viewer() {
-        // GlobalRole::highest on empty list defaults to Viewer
+    fn q001_empty_roles_defaults_to_member() {
+        // GlobalRole::highest on empty list defaults to Member (Viewer removed).
         let user = make_user(vec![]);
         let resource = ResourceRef::new(ResourceType::Board);
 
-        // Viewer + internal => Board Read = Allow, Board Create = Deny
+        // Member + internal => Board Read = Allow, Board Create = Deny
         assert_eq!(evaluate(&user, Action::Read, &resource, true), Decision::Allow);
         assert_eq!(evaluate(&user, Action::Create, &resource, true), Decision::Deny);
     }

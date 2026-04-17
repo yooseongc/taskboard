@@ -24,44 +24,42 @@ pub struct AuthnUser {
     pub active: bool,
 }
 
-/// Global roles as per S-025.
+/// Global roles per ROLES.md §1.
+/// Viewer was removed — all users get at least Member.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum GlobalRole {
     SystemAdmin,
     DepartmentAdmin,
     Member,
-    Viewer,
 }
 
 impl GlobalRole {
     /// Privilege level for max() comparison in evaluate.
     pub fn privilege_level(self) -> u8 {
         match self {
-            Self::SystemAdmin => 3,
-            Self::DepartmentAdmin => 2,
-            Self::Member => 1,
-            Self::Viewer => 0,
+            Self::SystemAdmin => 2,
+            Self::DepartmentAdmin => 1,
+            Self::Member => 0,
         }
     }
 
-    /// Get the highest-privilege role from a list.
+    /// Get the highest-privilege role from a list. Falls back to Member
+    /// (the global default since Viewer was removed).
     pub fn highest(roles: &[GlobalRole]) -> Self {
         roles
             .iter()
             .copied()
             .max_by_key(|r| r.privilege_level())
-            .unwrap_or(Self::Viewer)
+            .unwrap_or(Self::Member)
     }
 
-    /// Parse a role from its S-025 string form, returning `None` for
-    /// unknown values. Used by legacy tests; production flow deserializes
-    /// via serde. Keep in sync with the enum variants above.
+    /// Parse a role from its string form, returning `None` for unknown
+    /// values. Used by legacy tests; production flow deserializes via serde.
     pub fn from_str_opt(s: &str) -> Option<Self> {
         match s {
             "SystemAdmin" => Some(Self::SystemAdmin),
             "DepartmentAdmin" => Some(Self::DepartmentAdmin),
             "Member" => Some(Self::Member),
-            "Viewer" => Some(Self::Viewer),
             _ => None,
         }
     }
@@ -73,7 +71,6 @@ impl std::fmt::Display for GlobalRole {
             Self::SystemAdmin => write!(f, "SystemAdmin"),
             Self::DepartmentAdmin => write!(f, "DepartmentAdmin"),
             Self::Member => write!(f, "Member"),
-            Self::Viewer => write!(f, "Viewer"),
         }
     }
 }
@@ -302,7 +299,7 @@ mod tests {
 
     #[test]
     fn global_role_highest_system_admin_wins() {
-        let roles = vec![GlobalRole::Viewer, GlobalRole::SystemAdmin, GlobalRole::Member];
+        let roles = vec![GlobalRole::Member, GlobalRole::SystemAdmin, GlobalRole::DepartmentAdmin];
         assert_eq!(GlobalRole::highest(&roles), GlobalRole::SystemAdmin);
     }
 
@@ -313,8 +310,9 @@ mod tests {
     }
 
     #[test]
-    fn global_role_highest_empty_defaults_to_viewer() {
-        assert_eq!(GlobalRole::highest(&[]), GlobalRole::Viewer);
+    fn global_role_highest_empty_defaults_to_member() {
+        // Viewer was removed; Member is the new floor.
+        assert_eq!(GlobalRole::highest(&[]), GlobalRole::Member);
     }
 
     #[test]
@@ -327,7 +325,8 @@ mod tests {
         assert_eq!(GlobalRole::from_str_opt("SystemAdmin"), Some(GlobalRole::SystemAdmin));
         assert_eq!(GlobalRole::from_str_opt("DepartmentAdmin"), Some(GlobalRole::DepartmentAdmin));
         assert_eq!(GlobalRole::from_str_opt("Member"), Some(GlobalRole::Member));
-        assert_eq!(GlobalRole::from_str_opt("Viewer"), Some(GlobalRole::Viewer));
+        // Viewer no longer exists.
+        assert_eq!(GlobalRole::from_str_opt("Viewer"), None);
         assert_eq!(GlobalRole::from_str_opt("InvalidRole"), None);
         assert_eq!(GlobalRole::from_str_opt(""), None);
     }
@@ -336,16 +335,24 @@ mod tests {
     fn global_role_privilege_ordering() {
         assert!(GlobalRole::SystemAdmin.privilege_level() > GlobalRole::DepartmentAdmin.privilege_level());
         assert!(GlobalRole::DepartmentAdmin.privilege_level() > GlobalRole::Member.privilege_level());
-        assert!(GlobalRole::Member.privilege_level() > GlobalRole::Viewer.privilege_level());
     }
 
     #[test]
-    fn board_role_from_str_opt() {
+    fn board_role_from_str_opt_lowercase() {
         use crate::authz::matrix::BoardRole;
-        assert_eq!(BoardRole::from_str_opt("BoardAdmin"), Some(BoardRole::BoardAdmin));
-        assert_eq!(BoardRole::from_str_opt("BoardMember"), Some(BoardRole::BoardMember));
-        assert_eq!(BoardRole::from_str_opt("BoardViewer"), Some(BoardRole::BoardViewer));
+        assert_eq!(BoardRole::from_str_opt("admin"), Some(BoardRole::Admin));
+        assert_eq!(BoardRole::from_str_opt("editor"), Some(BoardRole::Editor));
+        assert_eq!(BoardRole::from_str_opt("viewer"), Some(BoardRole::Viewer));
         assert_eq!(BoardRole::from_str_opt("Invalid"), None);
+    }
+
+    #[test]
+    fn board_role_from_str_opt_legacy_capitalized() {
+        // Backwards compat for any callers still passing the old form.
+        use crate::authz::matrix::BoardRole;
+        assert_eq!(BoardRole::from_str_opt("BoardAdmin"), Some(BoardRole::Admin));
+        assert_eq!(BoardRole::from_str_opt("BoardMember"), Some(BoardRole::Editor));
+        assert_eq!(BoardRole::from_str_opt("BoardViewer"), Some(BoardRole::Viewer));
     }
 }
 
@@ -406,9 +413,11 @@ pub async fn get_user_roles(
         roles.push(GlobalRole::Member);
     }
 
-    // If no department roles at all, default to Viewer
+    // If no department roles at all, default to Member.
+    // Viewer was removed — every authenticated user is at least Member,
+    // so they can create personal boards and accept invitations.
     if roles.is_empty() {
-        roles.push(GlobalRole::Viewer);
+        roles.push(GlobalRole::Member);
     }
 
     Ok(roles)

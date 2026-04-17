@@ -36,7 +36,7 @@ mod tests {
 
     #[test]
     fn resource_ref_with_board_role() {
-        let r = ResourceRef::new(ResourceType::Board).with_board_role(BoardRole::BoardAdmin);
-        assert_eq!(r.board_role, Some(BoardRole::BoardAdmin));
+        let r = ResourceRef::new(ResourceType::Board).with_board_role(BoardRole::Admin);
+        assert_eq!(r.board_role, Some(BoardRole::Admin));
     }
 }

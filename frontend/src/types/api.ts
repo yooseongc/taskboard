@@ -21,7 +21,10 @@ export interface PaginatedResponse<T> {
 }
 
 /** S-006: Whoami response */
-export type GlobalRole = 'SystemAdmin' | 'DepartmentAdmin' | 'Member' | 'Viewer';
+export type GlobalRole = 'SystemAdmin' | 'DepartmentAdmin' | 'Member';
+
+/** Per-board role stored lowercase per ROLES.md §3. */
+export type BoardRole = 'admin' | 'editor' | 'viewer';
 
 export interface WhoamiResponse {
   id: string;

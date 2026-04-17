@@ -104,9 +104,9 @@ pub async fn seed_default_views(
 
 fn validate_board_role(role: &str) -> Result<(), AppError> {
     match role {
-        "BoardAdmin" | "BoardMember" | "BoardViewer" => Ok(()),
+        "admin" | "editor" | "viewer" => Ok(()),
         _ => Err(AppError::InvalidInput(
-            "role_in_board must be 'BoardAdmin', 'BoardMember', or 'BoardViewer'".into(),
+            "role_in_board must be 'admin', 'editor', or 'viewer'".into(),
         )),
     }
 }
@@ -222,9 +222,9 @@ pub async fn create_board(
         })?;
     }
 
-    // Insert creator as BoardAdmin
+    // Insert creator as admin
     sqlx::query(
-        "INSERT INTO board_members (user_id, board_id, role_in_board) VALUES ($1, $2, 'BoardAdmin')",
+        "INSERT INTO board_members (user_id, board_id, role_in_board) VALUES ($1, $2, 'admin')",
     )
     .bind(user.user_id)
     .bind(board_id)

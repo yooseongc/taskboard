@@ -67,7 +67,6 @@ export default function AdminUsersPage() {
           <option value="SystemAdmin">SystemAdmin</option>
           <option value="DepartmentAdmin">DepartmentAdmin</option>
           <option value="Member">Member</option>
-          <option value="Viewer">Viewer</option>
         </select>
         <span className="self-center text-sm text-gray-400">
           {filtered.length} user(s)

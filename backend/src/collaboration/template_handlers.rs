@@ -1099,9 +1099,9 @@ pub async fn materialize_from_template(
         .await?;
     }
 
-    // 4g. Insert creator as BoardAdmin
+    // 4g. Insert creator as admin
     sqlx::query(
-        "INSERT INTO board_members (user_id, board_id, role_in_board) VALUES ($1, $2, 'BoardAdmin')",
+        "INSERT INTO board_members (user_id, board_id, role_in_board) VALUES ($1, $2, 'admin')",
     )
     .bind(user.user_id)
     .bind(board_id)
@@ -1120,12 +1120,12 @@ pub async fn materialize_from_template(
             .await?;
 
             for (member_id,) in &dept_members {
-                // Skip the creator (already added as BoardAdmin)
+                // Skip the creator (already added as admin)
                 if *member_id == user.user_id {
                     continue;
                 }
                 sqlx::query(
-                    "INSERT INTO board_members (user_id, board_id, role_in_board) VALUES ($1, $2, 'BoardMember') ON CONFLICT DO NOTHING",
+                    "INSERT INTO board_members (user_id, board_id, role_in_board) VALUES ($1, $2, 'editor') ON CONFLICT DO NOTHING",
                 )
                 .bind(member_id)
                 .bind(board_id)

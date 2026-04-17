@@ -356,7 +356,7 @@ export default function BoardSettingsModal({ boardId, onClose }: BoardSettingsMo
 // Board Members Panel
 // ---------------------------------------------------------------------------
 
-const BOARD_ROLES = ['BoardAdmin', 'BoardMember', 'BoardViewer'] as const;
+const BOARD_ROLES = ['admin', 'editor', 'viewer'] as const;
 
 function MembersPanel({ boardId }: { boardId: string }) {
   const { data: membersData, isLoading } = useBoardMembers(boardId);
@@ -367,7 +367,7 @@ function MembersPanel({ boardId }: { boardId: string }) {
   const addToast = useToastStore((s) => s.addToast);
 
   const [search, setSearch] = useState('');
-  const [newRole, setNewRole] = useState<string>('BoardMember');
+  const [newRole, setNewRole] = useState<string>('editor');
 
   const members = membersData?.items ?? [];
   const memberIds = new Set(members.map((m) => m.user_id));
