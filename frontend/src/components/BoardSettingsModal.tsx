@@ -79,7 +79,8 @@ export default function BoardSettingsModal({ boardId, onClose }: BoardSettingsMo
   const deleteField = useDeleteCustomField(boardId);
   const addToast = useToastStore((s) => s.addToast);
 
-  const [activeTab, setActiveTab] = useState<'fields' | 'members'>('fields');
+  // Members tab moved to its own modal (BoardMembersModal). This page now
+  // focuses on field configuration only.
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   // Inline "Add field" form state. When `pendingType` is set, the form
@@ -163,32 +164,7 @@ export default function BoardSettingsModal({ boardId, onClose }: BoardSettingsMo
         </Button>
       }
     >
-      {/* Tab bar */}
-      <div
-        className="flex gap-1 mb-5 border-b"
-        style={{ borderColor: 'var(--color-border)' }}
-      >
-        {(['fields', 'members'] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
-              activeTab === tab
-                ? 'border-[var(--color-primary)]'
-                : 'border-transparent hover:border-[var(--color-border)]'
-            }`}
-            style={{
-              color: activeTab === tab ? 'var(--color-primary)' : 'var(--color-text-muted)',
-            }}
-          >
-            {tab === 'fields' ? t('boardSettings.fields') : t('boardSettings.members')}
-          </button>
-        ))}
-      </div>
-
-      {activeTab === 'members' && <MembersPanel boardId={boardId} />}
-
-      <div className={activeTab === 'fields' ? 'space-y-5' : 'hidden'}>
+      <div className="space-y-5">
         <section>
           <div className="flex items-center justify-between mb-3">
             <h3
@@ -365,7 +341,7 @@ const BOARD_ROLE_LABELS: Record<string, string> = {
   viewer: '뷰어',
 };
 
-function MembersPanel({ boardId }: { boardId: string }) {
+export function MembersPanel({ boardId }: { boardId: string }) {
   const { data: membersData, isLoading } = useBoardMembers(boardId);
   const { data: usersData } = useUsers();
   const addMember = useAddBoardMember(boardId);

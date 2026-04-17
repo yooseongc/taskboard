@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useBoards, useCreateBoard } from '../api/boards';
+import { useCreateBoard, useMyBoards, type BoardSummaryWithBucket } from '../api/boards';
 import { useDepartments } from '../api/departments';
 import { useTemplates } from '../api/templates';
 import { useToastStore } from '../stores/toastStore';
@@ -10,44 +10,23 @@ import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import { SkeletonGrid } from '../components/ui/Skeleton';
 import EmptyState from '../components/ui/EmptyState';
-import type { Board } from '../types/api';
 
 export default function BoardListPage() {
   const { t } = useTranslation();
-  const { data, isLoading, isError, refetch } = useBoards();
-  const { data: deptsData } = useDepartments();
+  const { data, isLoading, isError, refetch } = useMyBoards('all');
   const [showCreate, setShowCreate] = useState(false);
   const { canCreateBoard } = usePermissions();
 
-  const departments = deptsData?.items ?? [];
-  const deptMap = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const d of departments) m.set(d.id, d.name);
-    return m;
-  }, [departments]);
-
-  // Group boards by their first department
-  const grouped = useMemo(() => {
-    const boards = data?.items ?? [];
-    const groups = new Map<string, { name: string; boards: Board[] }>();
-    const ungrouped: Board[] = [];
-
-    for (const board of boards) {
-      const deptId = board.department_ids?.[0];
-      if (deptId && deptMap.has(deptId)) {
-        const existing = groups.get(deptId);
-        if (existing) {
-          existing.boards.push(board);
-        } else {
-          groups.set(deptId, { name: deptMap.get(deptId)!, boards: [board] });
-        }
-      } else {
-        ungrouped.push(board);
-      }
-    }
-
-    return { groups: [...groups.values()], ungrouped };
-  }, [data, deptMap]);
+  // ROLES.md §5: 4 buckets — favorites + department + personal + invited.
+  const buckets = useMemo(() => {
+    const all = data?.items ?? [];
+    return {
+      favorites: all.filter((b) => b.pinned),
+      department: all.filter((b) => b.bucket === 'department'),
+      personal: all.filter((b) => b.bucket === 'personal'),
+      invited: all.filter((b) => b.bucket === 'invited'),
+    };
+  }, [data]);
 
   const totalBoards = (data?.items ?? []).length;
 
@@ -107,33 +86,11 @@ export default function BoardListPage() {
         />
       )}
 
-      {/* Grouped by department */}
-      {grouped.groups.map((group) => (
-        <div key={group.name} className="mb-8">
-          <h2 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-3">
-            {group.name}
-          </h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {group.boards.map((board) => (
-              <BoardCard key={board.id} board={board} />
-            ))}
-          </div>
-        </div>
-      ))}
-      {grouped.ungrouped.length > 0 && (
-        <div className="mb-8">
-          {grouped.groups.length > 0 && (
-            <h2 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-3">
-              Other
-            </h2>
-          )}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {grouped.ungrouped.map((board) => (
-              <BoardCard key={board.id} board={board} />
-            ))}
-          </div>
-        </div>
-      )}
+      {/* ROLES.md §5: 4-bucket sections */}
+      <BucketSection label={t('boards.bucket.favorites', '★ 즐겨찾기')} boards={buckets.favorites} />
+      <BucketSection label={t('boards.bucket.department', '부서 보드')} boards={buckets.department} />
+      <BucketSection label={t('boards.bucket.personal', '개인 보드')} boards={buckets.personal} />
+      <BucketSection label={t('boards.bucket.invited', '초대받은 보드')} boards={buckets.invited} />
 
       {showCreate && (
         <CreateBoardModal onClose={() => setShowCreate(false)} />
@@ -142,21 +99,50 @@ export default function BoardListPage() {
   );
 }
 
-function BoardCard({ board }: { board: Board }) {
+function BucketSection({
+  label,
+  boards,
+}: {
+  label: string;
+  boards: BoardSummaryWithBucket[];
+}) {
+  if (boards.length === 0) return null;
+  return (
+    <div className="mb-8">
+      <h2 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-3">
+        {label} <span className="font-normal opacity-60">({boards.length})</span>
+      </h2>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {boards.map((board) => (
+          <BoardCard key={board.id} board={board} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BoardCard({ board }: { board: BoardSummaryWithBucket }) {
   return (
     <Link
       to={`/boards/${board.id}`}
       className="block surface-raised p-5 hover:shadow-md transition-shadow"
     >
-      <h3 className="text-base font-semibold">{board.title}</h3>
-      {board.description && (
-        <p className="mt-1.5 text-sm text-[var(--color-text-secondary)] line-clamp-2">
-          {board.description}
-        </p>
-      )}
-      <div className="mt-3 text-xs text-[var(--color-text-muted)]">
-        v{board.version} &middot;{' '}
-        {new Date(board.created_at).toLocaleDateString()}
+      <div className="flex items-start gap-2">
+        <span className="text-base">{board.owner_type === 'personal' ? '👤' : '🏢'}</span>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-base font-semibold">
+            {board.pinned && <span className="mr-1" style={{ color: '#fbbf24' }}>★</span>}
+            {board.title}
+          </h3>
+          {board.description && (
+            <p className="mt-1.5 text-sm text-[var(--color-text-secondary)] line-clamp-2">
+              {board.description}
+            </p>
+          )}
+          <div className="mt-3 text-xs text-[var(--color-text-muted)]">
+            v{board.version} &middot; {new Date(board.updated_at).toLocaleDateString()}
+          </div>
+        </div>
       </div>
     </Link>
   );

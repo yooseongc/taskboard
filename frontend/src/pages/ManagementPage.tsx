@@ -97,12 +97,12 @@ export default function ManagementPage() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            {selectedDeptId && selection.kind !== 'user' ? (
+            {selectedDeptId ? (
               <DeptUserList
                 deptId={selectedDeptId}
                 allUsers={allUsers}
                 search={search}
-                selectedUserId={null}
+                selectedUserId={selection.kind === 'user' ? selection.userId : null}
                 onSelect={(userId) => setSelection({ kind: 'user', userId })}
               />
             ) : (

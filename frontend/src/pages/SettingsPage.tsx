@@ -241,12 +241,6 @@ export default function SettingsPage() {
             {t('settings.apply')}
           </Button>
         </div>
-        <div className="mt-3 flex gap-1">
-          <div className="w-16 h-10 rounded" style={{ backgroundColor: currentSidebar ?? '#111827' }} />
-          <div className="text-xs self-end" style={{ color: 'var(--color-text-muted)' }}>
-            {t('settings.sidebarPreview', 'Current sidebar')}
-          </div>
-        </div>
       </section>
 
       {/* Global Density */}
