@@ -240,8 +240,11 @@ export default function Layout() {
         </div>
       </aside>
 
-      {/* Main area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Main area — `min-w-0` is what lets flex children shrink below
+           their content's natural width. Without it, a wide kanban row
+           would push the whole layout to overflow the viewport instead
+           of scrolling inside `<main>`. */}
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Top bar */}
         <header
           className="h-12 flex items-center px-4 gap-3 flex-shrink-0"
@@ -286,8 +289,13 @@ export default function Layout() {
           </button>
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-auto" style={{ backgroundColor: 'var(--color-bg)' }}>
+        {/* Page content. `overflow-auto` gives both axes so page-level
+             content wider than main (e.g. a table with many custom fields)
+             surfaces a bottom scrollbar instead of being clipped. */}
+        <main
+          className="flex-1 overflow-auto min-w-0"
+          style={{ backgroundColor: 'var(--color-bg)' }}
+        >
           <Outlet />
         </main>
       </div>

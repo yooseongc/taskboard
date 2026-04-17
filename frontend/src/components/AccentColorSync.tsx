@@ -30,12 +30,26 @@ export default function AccentColorSync() {
       root.style.setProperty('--color-primary-light', adjustBrightness(color, 80));
     }
 
-    // Sidebar color
+    // Sidebar color. User-picked hex overrides the default sidebar bg,
+    // but we also recompute readable text tokens from luminance so a dark
+    // pick in light mode (or vice-versa) doesn't leave the labels invisible.
     const sidebar = bag.sidebarColor;
     if (typeof sidebar === 'string' && /^#[0-9a-fA-F]{6}$/.test(sidebar)) {
       root.style.setProperty('--color-sidebar-bg', sidebar);
-      root.style.setProperty('--color-sidebar-hover', adjustBrightness(sidebar, 12));
-      root.style.setProperty('--color-sidebar-border', adjustBrightness(sidebar, 12));
+      const isDarkBg = relativeLuminance(sidebar) < 0.5;
+      if (isDarkBg) {
+        // Dark bg → light text. Bump hover/border toward white.
+        root.style.setProperty('--color-sidebar-text', 'rgba(255,255,255,0.75)');
+        root.style.setProperty('--color-sidebar-text-active', '#ffffff');
+        root.style.setProperty('--color-sidebar-hover', adjustBrightness(sidebar, 12));
+        root.style.setProperty('--color-sidebar-border', adjustBrightness(sidebar, 12));
+      } else {
+        // Light bg → dark text. Warm charcoal matches the Notion body color.
+        root.style.setProperty('--color-sidebar-text', 'rgba(55,53,47,0.75)');
+        root.style.setProperty('--color-sidebar-text-active', '#37352f');
+        root.style.setProperty('--color-sidebar-hover', adjustBrightness(sidebar, -6));
+        root.style.setProperty('--color-sidebar-border', 'rgba(55,53,47,0.09)');
+      }
     }
 
     // Global density
@@ -60,4 +74,17 @@ function adjustBrightness(hex: string, percent: number): string {
   const g = Math.min(255, Math.max(0, ((num >> 8) & 0xff) + Math.round(2.55 * percent)));
   const b = Math.min(255, Math.max(0, (num & 0xff) + Math.round(2.55 * percent)));
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+}
+
+/** WCAG relative luminance for `#RRGGBB`. 0 (black) to 1 (white). */
+function relativeLuminance(hex: string): number {
+  const num = parseInt(hex.replace('#', ''), 16);
+  const channel = (raw: number) => {
+    const v = raw / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  const r = channel((num >> 16) & 0xff);
+  const g = channel((num >> 8) & 0xff);
+  const b = channel(num & 0xff);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }

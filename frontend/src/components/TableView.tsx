@@ -86,7 +86,8 @@ export interface FilterChip {
 
 type FilterMode = 'and' | 'or';
 
-type SortKey = 'title' | 'due_date' | 'column';
+/** Built-in sort keys; any other string is interpreted as a custom field id. */
+type SortKey = 'title' | 'due_date' | 'column' | string;
 type SortDir = 'asc' | 'desc';
 
 /**
@@ -316,7 +317,10 @@ export default function TableView({
   // Ordered list of visible columns for rendering headers and cells.
   // Merges built-in columns + custom fields, sorted by columnOrder, filtered by hiddenColumns.
   const orderedVisibleColumns = useMemo(() => {
-    const sortableIds = new Set<string>(['title', 'column', 'due_date']);
+    // Built-in sortable columns + every custom field (generic comparator
+    // in `sorted` below handles string/number/date/boolean uniformly).
+    // `assignees` and `info` remain unsortable — multi-value + composite.
+    const nonSortable = new Set<string>(['assignees', 'info']);
     const labelMap: Record<string, string> = {
       title: t('tableView.colTitle'),
       column: t('tableView.colColumn'),
@@ -334,7 +338,7 @@ export default function TableView({
       .map((id) => ({
         id,
         label: labelMap[id] ?? realFields.find((f) => f.id === id)?.name ?? id,
-        sortable: sortableIds.has(id),
+        sortable: !nonSortable.has(id),
         isCustomField: !ALL_COLUMN_IDS.includes(id as any),
       }));
   }, [columnOrder, hiddenColumns, realFields, t]);
@@ -387,6 +391,21 @@ export default function TableView({
   const sorted = useMemo(() => {
     const list = [...filtered];
     const dir = sortDir === 'asc' ? 1 : -1;
+    // Comparator for an arbitrary pair of values. Numbers compare
+    // numerically, everything else uses locale-aware string compare. Empty
+    // values always sort after non-empty ones regardless of direction.
+    const cmp = (va: unknown, vb: unknown): number => {
+      const aEmpty = va === null || va === undefined || va === '';
+      const bEmpty = vb === null || vb === undefined || vb === '';
+      if (aEmpty && bEmpty) return 0;
+      if (aEmpty) return 1;
+      if (bEmpty) return -1;
+      if (typeof va === 'number' && typeof vb === 'number') return va - vb;
+      if (typeof va === 'boolean' && typeof vb === 'boolean') {
+        return (va === vb) ? 0 : (va ? -1 : 1);
+      }
+      return String(va).localeCompare(String(vb));
+    };
     list.sort((a, b) => {
       switch (sortKey) {
         case 'title':
@@ -394,15 +413,20 @@ export default function TableView({
         case 'due_date': {
           const da = a.due_date ?? '';
           const db = b.due_date ?? '';
-          return dir * da.localeCompare(db);
+          return dir * cmp(da, db);
         }
         case 'column': {
           const ca = columnMap.get(a.column_id) ?? '';
           const cb = columnMap.get(b.column_id) ?? '';
           return dir * ca.localeCompare(cb);
         }
-        default:
-          return 0;
+        default: {
+          // Custom field id. Lookup the value map built below; missing
+          // values fall through to the empty-handling branch in `cmp`.
+          const va = valuesByTaskField.get(a.id)?.get(sortKey);
+          const vb = valuesByTaskField.get(b.id)?.get(sortKey);
+          return dir * cmp(va, vb);
+        }
       }
     });
     return list;
@@ -582,33 +606,19 @@ export default function TableView({
           />
         </td>
       )}
-      {orderedVisibleColumns.map((col, i) => {
-        const sticky = i === 0;
-        const baseStyle =
-          col.isCustomField || col.id === 'due_date'
-            ? { color: 'var(--color-text-secondary)' as const }
-            : undefined;
-        return (
-          <td
-            key={col.id}
-            className={`px-4 ${col.id === 'due_date' ? 'text-xs' : ''} ${rowPad}`}
-            style={{
-              ...baseStyle,
-              ...(sticky
-                ? {
-                    position: 'sticky',
-                    left: (onBulkMove || onBulkDelete) ? 32 : 0,
-                    zIndex: 1,
-                    backgroundColor: 'var(--color-surface)',
-                    boxShadow: '2px 0 4px rgba(0, 0, 0, 0.04)',
-                  }
-                : {}),
-            }}
-          >
-            {renderCell(col.id, task)}
-          </td>
-        );
-      })}
+      {orderedVisibleColumns.map((col) => (
+        <td
+          key={col.id}
+          className={`px-4 ${col.id === 'due_date' ? 'text-xs' : ''} ${rowPad}`}
+          style={
+            col.isCustomField || col.id === 'due_date'
+              ? { color: 'var(--color-text-secondary)' }
+              : undefined
+          }
+        >
+          {renderCell(col.id, task)}
+        </td>
+      ))}
     </tr>
   );
 
@@ -660,10 +670,15 @@ export default function TableView({
         sort={{
           key: sortKey,
           dir: sortDir,
+          // Built-in keys first, then every custom field the user has on
+          // this board. Sorting by any field with a primitive (text /
+          // number / date / checkbox / select) value is supported; the
+          // generic comparator in `sorted` handles each type.
           options: [
             { id: 'title', label: t('tableView.colTitle') },
             { id: 'column', label: t('tableView.colColumn') },
             { id: 'due_date', label: t('tableView.colDueDate') },
+            ...realFields.map((f) => ({ id: f.id, label: f.name })),
           ],
           onChange: (key, dir) => {
             setSortKey(key as SortKey);
@@ -838,12 +853,15 @@ export default function TableView({
         </div>
       )}
 
-      {/* Table */}
+      {/* Table. No internal overflow wrapper — when the table is wider than
+          viewport the <main> region scrolls horizontally for the whole page,
+          which keeps table chrome (sticky tfoot, the toolbar above) aligned
+          with the rest of the screen instead of scrolling independently. */}
       <div
-        className="overflow-x-auto rounded-lg"
+        className="rounded-lg"
         style={{ border: '1px solid var(--color-border)' }}
       >
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[720px] text-sm">
           <thead style={{ backgroundColor: 'var(--color-surface-hover)' }}>
             <tr>
               {(onBulkMove || onBulkDelete) && (
@@ -862,42 +880,27 @@ export default function TableView({
                   />
                 </th>
               )}
-              {orderedVisibleColumns.map((col, i) => {
-                // First visible column (usually "Title") stays fixed while
-                // the user scrolls horizontally — the wide-custom-field case
-                // otherwise loses context about which row they're reading.
-                const sticky = i === 0;
-                return (
-                  <th
-                    key={col.id}
-                    onClick={col.sortable ? () => handleSort(col.id as SortKey) : undefined}
-                    className={`px-4 py-2.5 text-left font-medium relative group select-none ${col.sortable ? 'cursor-pointer hover:bg-[var(--color-surface-active)]' : ''}`}
-                    style={{
-                      color: 'var(--color-text-secondary)',
-                      width: columnWidths[col.id],
-                      minWidth: columnWidths[col.id],
-                      ...(sticky
-                        ? {
-                            position: 'sticky',
-                            left: (onBulkMove || onBulkDelete) ? 32 : 0,
-                            zIndex: 2,
-                            backgroundColor: 'var(--color-surface-hover)',
-                            boxShadow: '2px 0 4px rgba(0, 0, 0, 0.04)',
-                          }
-                        : {}),
-                    }}
-                  >
-                    {col.label}
-                    {col.sortable && <SortIcon col={col.id as SortKey} />}
-                    <ColumnResizeHandle
-                      columnKey={col.id}
-                      onResize={(w) =>
-                        setColumnWidths((prev) => ({ ...prev, [col.id]: w }))
-                      }
-                    />
-                  </th>
-                );
-              })}
+              {orderedVisibleColumns.map((col) => (
+                <th
+                  key={col.id}
+                  onClick={col.sortable ? () => handleSort(col.id as SortKey) : undefined}
+                  className={`px-4 py-2.5 text-left font-medium relative group select-none ${col.sortable ? 'cursor-pointer hover:bg-[var(--color-surface-active)]' : ''}`}
+                  style={{
+                    color: 'var(--color-text-secondary)',
+                    width: columnWidths[col.id],
+                    minWidth: columnWidths[col.id],
+                  }}
+                >
+                  {col.label}
+                  {col.sortable && <SortIcon col={col.id as SortKey} />}
+                  <ColumnResizeHandle
+                    columnKey={col.id}
+                    onResize={(w) =>
+                      setColumnWidths((prev) => ({ ...prev, [col.id]: w }))
+                    }
+                  />
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody
@@ -1005,17 +1008,20 @@ export default function TableView({
           >
             <tr>
               {(onBulkMove || onBulkDelete) && (
-                <td className="px-3 py-2 text-xs font-semibold uppercase tracking-wider"
-                    style={{ color: 'var(--color-text-secondary)' }}>
-                  {/* Row count belongs next to the bulk-select column so it
-                      lines up with the checkbox for every data row. */}
-                  {t('tableView.count', { count: sorted.length })}
-                </td>
+                // Bulk-select column is only ~32px wide, so the row-count
+                // label (e.g. "4개 태스크") gets stacked vertically. Leave
+                // this cell empty and render the count on the first visible
+                // column's footer cell instead.
+                <td
+                  className="px-3 py-2"
+                  style={{ width: 32, minWidth: 32 }}
+                />
               )}
               {orderedVisibleColumns.map((col, idx) => {
-                // Without the bulk-select column we place the overall count
-                // in the first visible column's footer cell.
-                const showCountHere = !(onBulkMove || onBulkDelete) && idx === 0;
+                // Overall count always rides on the first visible column's
+                // footer, regardless of bulk-select presence — wider cell =
+                // no vertical stacking of the label.
+                const showCountHere = idx === 0;
                 return (
                   <AggregationFooterCell
                     key={`agg-${col.id}`}
