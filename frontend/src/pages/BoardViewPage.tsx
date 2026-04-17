@@ -28,6 +28,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   useBoardCustomFields,
   useBoardFieldValues,
+  usePatchCustomField,
   type CustomField,
   type TaskFieldValue,
 } from '../api/customFields';
@@ -50,6 +51,7 @@ import {
 } from '../api/views';
 import type { BoardViewConfig, TableViewConfig } from '../api/views';
 import type { TableViewState } from '../components/TableView';
+import { type FilterChip, evaluateFilter, operatorsFor } from '../components/TableView';
 import { useToastStore } from '../stores/toastStore';
 import Breadcrumbs from '../components/ui/Breadcrumbs';
 import { useTagTheme } from '../theme/constants';
@@ -83,6 +85,7 @@ export default function BoardViewPage() {
   // up to "small" limits) and cached via react-query.
   const { data: fieldsData } = useBoardCustomFields(id!);
   const { data: fieldValuesData } = useBoardFieldValues(id!);
+  const patchCustomField = usePatchCustomField(id!);
   const { t } = useTranslation();
   const moveTask = useMoveTask(id!);
   const deleteTask = useDeleteTask(id!);
@@ -130,7 +133,7 @@ export default function BoardViewPage() {
         density?: ViewDensity;
       };
       setBoardSearch(c.search ?? '');
-      setFilterPriority(c.priority ?? '');
+      setBoardFilters((c as any).filters ?? []);
       // Kanban must always group by column — 'none' makes no sense here
       const bg = c.groupBy?.type === 'none' ? { type: 'column' as const } : (c.groupBy ?? { type: 'column' as const });
       setGroupBy(bg);
@@ -200,7 +203,9 @@ export default function BoardViewPage() {
   const [newColTitle, setNewColTitle] = useState('');
   const [addingColumn, setAddingColumn] = useState(false);
   const [boardSearch, setBoardSearch] = useState('');
-  const [filterPriority, setFilterPriority] = useState('');
+  const [boardFilters, setBoardFilters] = useState<FilterChip[]>([]);
+  const [boardFilterMode] = useState<'and' | 'or'>('and');
+  const [boardPropertiesOpen, setBoardPropertiesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [groupBy, setGroupBy] = useState<GroupByKey>({ type: 'column' });
   const [density, setDensity] = useState<ViewDensity>('normal');
@@ -226,7 +231,7 @@ export default function BoardViewPage() {
     if (view.view_type === 'board') {
       nextConfig = {
         search: boardSearch,
-        priority: filterPriority,
+        filters: boardFilters,
         groupBy,
         density,
       };
@@ -252,7 +257,7 @@ export default function BoardViewPage() {
   }, [
     selectedViewId,
     boardSearch,
-    filterPriority,
+    boardFilters,
     groupBy,
     density,
     tableConfig,
@@ -336,7 +341,21 @@ export default function BoardViewPage() {
         return false;
       }
     }
-    if (filterPriority && t.priority !== filterPriority) return false;
+    // Apply FilterChip-based filters
+    if (boardFilters.length > 0) {
+      const allFields = fieldsData?.items ?? [];
+      const results = boardFilters.map((chip) => {
+        const field = allFields.find((f) => f.id === chip.fieldId);
+        if (!field) return true;
+        const taskValues = valuesByTask.get(t.id) ?? [];
+        const fv = taskValues.find((v) => v.field_id === chip.fieldId);
+        return evaluateFilter(chip, field, fv?.value);
+      });
+      const pass = boardFilterMode === 'and'
+        ? results.every(Boolean)
+        : results.some(Boolean);
+      if (!pass) return false;
+    }
     return true;
   });
 
@@ -737,32 +756,51 @@ export default function BoardViewPage() {
             onDensityChange={setDensity}
             leftExtras={
               <>
-                <select
-                  value={filterPriority}
-                  onChange={(e) => setFilterPriority(e.target.value)}
-                  className="text-sm rounded-lg px-2 py-1.5"
+                <button
+                  onClick={() => {
+                    const allFields = fieldsData?.items ?? [];
+                    const firstField = allFields[0];
+                    if (!firstField) return;
+                    setBoardFilters((prev) => [
+                      ...prev,
+                      {
+                        id: crypto.randomUUID(),
+                        fieldId: firstField.id,
+                        operator: operatorsFor(firstField.field_type)[0],
+                        value: '',
+                      },
+                    ]);
+                  }}
+                  className="text-sm px-2 py-1"
                   style={{
-                    backgroundColor: 'var(--color-surface)',
+                    color: 'var(--color-text-muted)',
                     border: '1px solid var(--color-border)',
-                    color: 'var(--color-text)',
+                    borderRadius: 'var(--radius-md)',
                   }}
                 >
-                  <option value="">All priorities</option>
-                  <option value="urgent">Urgent</option>
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-                {(boardSearch || filterPriority) && (
+                  + {t('tableView.addFilter')}
+                </button>
+                <button
+                  onClick={() => setBoardPropertiesOpen(true)}
+                  className="text-sm px-2 py-1"
+                  style={{
+                    color: 'var(--color-text-muted)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: 'var(--radius-md)',
+                  }}
+                >
+                  {t('tableView.properties')}
+                </button>
+                {(boardSearch || boardFilters.length > 0) && (
                   <button
                     onClick={() => {
                       setBoardSearch('');
-                      setFilterPriority('');
+                      setBoardFilters([]);
                     }}
                     className="text-xs"
                     style={{ color: 'var(--color-text-muted)' }}
                   >
-                    Clear ({tasks.length}/{rawTasks.length})
+                    {t('tableView.clearFilters', 'Clear filters')}
                   </button>
                 )}
               </>
@@ -1294,6 +1332,50 @@ export default function BoardViewPage() {
           <p className="text-sm" style={{ color: 'var(--color-text)' }}>
             {t('board.deleteViewConfirm', `Are you sure you want to delete the view "${deletingView.name}"?`)}
           </p>
+        </Modal>
+      )}
+
+      {/* Board Properties Modal — toggle show_on_card per custom field */}
+      {boardPropertiesOpen && (
+        <Modal
+          title={t('tableView.properties')}
+          onClose={() => setBoardPropertiesOpen(false)}
+          width="max-w-sm"
+        >
+          <div className="space-y-1">
+            {(fieldsData?.items ?? [])
+              .slice()
+              .sort((a, b) => a.position - b.position)
+              .map((field) => (
+                <label
+                  key={field.id}
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer"
+                  style={{
+                    backgroundColor: field.show_on_card ? 'var(--color-surface)' : 'transparent',
+                    border: '1px solid var(--color-border)',
+                    opacity: field.show_on_card ? 1 : 0.5,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    className="w-3.5 h-3.5 rounded"
+                    checked={field.show_on_card}
+                    onChange={() =>
+                      patchCustomField.mutate({
+                        fieldId: field.id,
+                        show_on_card: !field.show_on_card,
+                      })
+                    }
+                  />
+                  <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
+                    {field.name}
+                  </span>
+                  <span className="text-xs ml-auto" style={{ color: 'var(--color-text-muted)' }}>
+                    {field.field_type}
+                  </span>
+                </label>
+              ))}
+          </div>
         </Modal>
       )}
     </div>
