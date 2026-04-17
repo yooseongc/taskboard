@@ -31,7 +31,7 @@ export default function BoardListPage() {
   const totalBoards = (data?.items ?? []).length;
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8">
+    <div className="mx-auto max-w-6xl px-4 md:px-6 py-6 md:py-8">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: 'var(--color-text)' }}>{t('boards.title')}</h1>

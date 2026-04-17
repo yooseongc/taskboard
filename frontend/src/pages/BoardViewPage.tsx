@@ -614,7 +614,7 @@ export default function BoardViewPage() {
     <div className="h-full flex flex-col">
       {/* Header */}
       <div
-        className="px-6 py-3"
+        className="px-4 md:px-6 py-3"
         style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-surface)' }}
       >
         <Breadcrumbs items={[{ label: t('nav.boards'), to: '/' }, { label: board.title }]} />
@@ -733,7 +733,7 @@ export default function BoardViewPage() {
       {/* Board toolbar (search/group-by/density + priority filter) */}
       {activeView === 'board' && (
         <div
-          className="px-6"
+          className="px-4 md:px-6"
           style={{
             borderBottom: '1px solid var(--color-border)',
             backgroundColor: 'var(--color-surface)',
@@ -959,7 +959,7 @@ export default function BoardViewPage() {
         <div className="flex flex-col flex-1 overflow-hidden">
           {/* Calendar toolbar — date field picker + group by */}
           <div
-            className="flex items-center gap-3 px-6 flex-shrink-0"
+            className="flex items-center gap-3 px-4 md:px-6 flex-shrink-0"
             style={{
               borderBottom: '1px solid var(--color-border)',
               backgroundColor: 'var(--color-surface)',
@@ -1026,7 +1026,7 @@ export default function BoardViewPage() {
 
       {activeView === 'activity' && (
         <div className="flex-1 overflow-y-auto">
-          <div className="max-w-2xl mx-auto px-6 py-5">
+          <div className="max-w-2xl mx-auto px-4 md:px-6 py-5">
             <div className="flex items-center gap-3 mb-4">
               <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
                 {t('board.activity')}
