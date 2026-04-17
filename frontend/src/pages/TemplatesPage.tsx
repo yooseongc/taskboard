@@ -499,7 +499,7 @@ function UseTemplateModal({
 // --- Create Template Modal ---
 
 const TEMPLATE_FIELD_TYPES = [
-  'text', 'number', 'checkbox', 'select', 'multi_select', 'date', 'url', 'email', 'phone', 'person',
+  'text', 'number', 'checkbox', 'select', 'multi_select', 'date', 'url', 'email', 'phone', 'person', 'progress',
 ] as const;
 
 interface TemplateFieldDef {
@@ -537,7 +537,7 @@ function CreateTemplateModal({ onClose }: { onClose: () => void }) {
         kind: 'board',
         name,
         description: description || undefined,
-        scope: 'team',
+        scope: 'global',
         payload: {
           columns: columns.map((c, i) => ({ title: c, position: i })),
           labels: [],
@@ -626,9 +626,18 @@ function CreateTemplateModal({ onClose }: { onClose: () => void }) {
           {fields.length > 0 && (
             <ul className="mb-2 space-y-1">
               {fields.map((f, i) => (
-                <li key={i} className="flex items-center gap-2 text-sm px-2 py-1 rounded" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
+                <li key={i} className="flex items-center gap-2 text-sm px-2 py-1.5 rounded" style={{ backgroundColor: 'var(--color-surface-hover)' }}>
                   <span className="flex-1" style={{ color: 'var(--color-text)' }}>{f.name}</span>
                   <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}>{f.field_type}</span>
+                  <label className="flex items-center gap-1 text-xs cursor-pointer" style={{ color: 'var(--color-text-muted)' }}>
+                    <input
+                      type="checkbox"
+                      className="w-3 h-3"
+                      checked={f.show_on_card}
+                      onChange={() => setFields((prev) => prev.map((ff, idx) => idx === i ? { ...ff, show_on_card: !ff.show_on_card } : ff))}
+                    />
+                    {t('boardSettings.showOnCard', 'Card')}
+                  </label>
                   <button
                     onClick={() => setFields((prev) => prev.filter((_, idx) => idx !== i))}
                     className="text-xs hover:text-red-500"

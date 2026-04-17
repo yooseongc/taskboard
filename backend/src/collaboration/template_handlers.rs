@@ -1151,6 +1151,20 @@ pub async fn materialize_from_template(
     )
     .await?;
 
+    // 4i. Seed Status/Priority custom fields if template didn't include them
+    let has_status = payload_fields.iter().any(|f| {
+        f.get("name").and_then(|v| v.as_str()) == Some("Status")
+    });
+    let has_priority = payload_fields.iter().any(|f| {
+        f.get("name").and_then(|v| v.as_str()) == Some("Priority")
+    });
+    if !has_status || !has_priority {
+        crate::collaboration::board_handlers::seed_status_priority_fields(&mut tx, board_id).await?;
+    }
+
+    // 4j. Seed default views (Kanban/Table/Calendar)
+    crate::collaboration::board_handlers::seed_default_views(&mut tx, board_id, user.user_id).await?;
+
     // 5. TX commit
     tx.commit().await?;
 

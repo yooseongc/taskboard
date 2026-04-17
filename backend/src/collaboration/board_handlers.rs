@@ -26,7 +26,7 @@ use crate::infra::uuid7;
 ///
 /// Runs inside the caller's transaction so a failure rolls back board
 /// creation as a whole.
-async fn seed_status_priority_fields(
+pub async fn seed_status_priority_fields(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     board_id: Uuid,
 ) -> Result<(), AppError> {
@@ -71,7 +71,7 @@ async fn seed_status_priority_fields(
 /// shared so other board members see them immediately. Configs are
 /// empty objects so the default UI behaviour kicks in until the user
 /// customizes and saves.
-async fn seed_default_views(
+pub async fn seed_default_views(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     board_id: Uuid,
     owner_id: Uuid,
