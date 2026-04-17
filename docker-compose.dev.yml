@@ -1,4 +1,14 @@
-version: "3.9"
+# Development compose — in-repo Keycloak + GLAuth (LDAP stand-in for AD)
+# Usage:
+#   cp .env.dev.example .env.dev
+#   docker compose -f docker-compose.dev.yml --env-file .env.dev up -d --build
+#
+# Ports:
+#   frontend  -> http://localhost:5174
+#   backend   -> http://localhost:8080
+#   keycloak  -> http://localhost:8180  (admin / admin)
+#   ldap      -> ldap://localhost:3893
+#   postgres  -> localhost:5433
 
 services:
   postgres:
@@ -10,7 +20,7 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata-dev:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U taskboard"]
       interval: 5s
@@ -22,7 +32,7 @@ services:
     ports:
       - "3893:3893"
     volumes:
-      - ./glauth/glauth.cfg:/app/config/config.cfg:ro
+      - ./infra/glauth/glauth.cfg:/app/config/config.cfg:ro
 
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
@@ -33,7 +43,7 @@ services:
     ports:
       - "8180:8080"
     volumes:
-      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+      - ./infra/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -42,10 +52,10 @@ services:
 
   backend:
     build:
-      context: ..
-      dockerfile: infra/backend.Dockerfile
+      context: .
+      dockerfile: docker/backend.dev.Dockerfile
     env_file:
-      - env.example
+      - .env.dev.example
     environment:
       DATABASE_URL: postgres://taskboard:taskboard@postgres:5432/taskboard
       KEYCLOAK_ISSUER: http://keycloak:8080/realms/taskboard
@@ -63,12 +73,12 @@ services:
 
   frontend:
     build:
-      context: ..
-      dockerfile: infra/frontend.Dockerfile
+      context: .
+      dockerfile: docker/frontend.dev.Dockerfile
     ports:
       - "5174:80"
     depends_on:
       - backend
 
 volumes:
-  pgdata:
+  pgdata-dev:
