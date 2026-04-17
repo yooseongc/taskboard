@@ -168,6 +168,16 @@ async fn dev_auth_path(
     // DB: upsert user, get roles
     let user = upsert_user_from_claims(&state.pool, sub, sub, &email).await?;
 
+    // OIDC group → department sync (ROLES.md §10).
+    sync_user_departments_from_claims(
+        &state.pool,
+        user.id,
+        &dev_data.claims,
+        &state.config.oidc_dept_claim,
+        state.config.oidc_dept_sync_enabled,
+    )
+    .await?;
+
     // Check active status via LRU cache (R-026, D-039)
     let is_active = state
         .active_cache
@@ -232,6 +242,16 @@ async fn oidc_path(
     // DB: upsert user, get roles
     let user = upsert_user_from_claims(&state.pool, sub, name, email).await?;
 
+    // OIDC group → department sync (ROLES.md §10).
+    sync_user_departments_from_claims(
+        &state.pool,
+        user.id,
+        &claims,
+        &state.config.oidc_dept_claim,
+        state.config.oidc_dept_sync_enabled,
+    )
+    .await?;
+
     // Check active status via LRU cache (R-026, D-039)
     let is_active = state
         .active_cache
@@ -259,6 +279,89 @@ async fn oidc_path(
 // ---------------------------------------------------------------------------
 // Helper functions
 // ---------------------------------------------------------------------------
+
+/// ROLES.md §10: Sync the user's department memberships against an OIDC
+/// `groups` claim. Group names are matched exactly to department slugs.
+///
+///   - groups present in DB but not in claim → user removed from that dept
+///   - groups in claim that map to existing depts → user added (Member)
+///   - unmatched group names are silently ignored
+///
+/// Disabled by setting `OIDC_DEPT_SYNC_ENABLED=false` (default true).
+/// Custom claim name via `OIDC_DEPT_CLAIM` (default "groups").
+///
+/// DepartmentAdmin assignments are NOT touched — only Member rows are
+/// inserted/removed. This avoids stripping admin status when an admin
+/// is removed from the matching AD group.
+pub async fn sync_user_departments_from_claims(
+    pool: &PgPool,
+    user_id: Uuid,
+    claims: &serde_json::Value,
+    claim_name: &str,
+    sync_enabled: bool,
+) -> Result<(), AppError> {
+    if !sync_enabled {
+        return Ok(());
+    }
+    let groups: Vec<String> = claims
+        .get(claim_name)
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|g| g.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    if groups.is_empty() {
+        return Ok(());
+    }
+
+    // Resolve the dept IDs for the matching slugs.
+    let target_dept_ids: Vec<Uuid> = sqlx::query_as::<_, (Uuid,)>(
+        "SELECT id FROM departments WHERE slug = ANY($1)",
+    )
+    .bind(&groups)
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|(id,)| id)
+    .collect();
+
+    // Current Member rows for this user.
+    let current_member_dept_ids: Vec<Uuid> = sqlx::query_as::<_, (Uuid,)>(
+        "SELECT department_id FROM department_members WHERE user_id = $1 AND role_in_department = 'Member'",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|(id,)| id)
+    .collect();
+
+    let target_set: std::collections::HashSet<Uuid> = target_dept_ids.iter().copied().collect();
+    let current_set: std::collections::HashSet<Uuid> = current_member_dept_ids.iter().copied().collect();
+
+    // Add missing memberships (Member role only).
+    for dept_id in target_set.difference(&current_set) {
+        sqlx::query(
+            "INSERT INTO department_members (user_id, department_id, role_in_department) VALUES ($1, $2, 'Member') ON CONFLICT DO NOTHING",
+        )
+        .bind(user_id)
+        .bind(dept_id)
+        .execute(pool)
+        .await?;
+    }
+
+    // Remove memberships not in the claim — but only Member rows.
+    // DepartmentAdmin rows survive group changes.
+    for dept_id in current_set.difference(&target_set) {
+        sqlx::query(
+            "DELETE FROM department_members WHERE user_id = $1 AND department_id = $2 AND role_in_department = 'Member'",
+        )
+        .bind(user_id)
+        .bind(dept_id)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
+}
 
 /// Upsert a user from JWT claims. Creates on first login (JIT provisioning).
 pub async fn upsert_user_from_claims(

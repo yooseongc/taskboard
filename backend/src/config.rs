@@ -30,6 +30,12 @@ pub struct AppConfig {
     // System admin emails (comma-separated env SYSTEM_ADMIN_EMAILS)
     pub system_admin_emails: Vec<String>,
 
+    // ROLES.md §10: OIDC group → department auto-sync
+    /// Claim name to read groups from (default: "groups").
+    pub oidc_dept_claim: String,
+    /// Whether to perform the sync at all (default: true).
+    pub oidc_dept_sync_enabled: bool,
+
     // Dev-auth keys (2 keys, only compiled when feature = "dev-auth")
     #[cfg(feature = "dev-auth")]
     pub dev_auth_enabled: bool,
@@ -84,6 +90,12 @@ impl AppConfig {
             .filter(|s| !s.is_empty())
             .collect();
 
+        // ROLES.md §10: OIDC dept sync settings
+        let oidc_dept_claim = env::var("OIDC_DEPT_CLAIM").unwrap_or_else(|_| "groups".to_string());
+        let oidc_dept_sync_enabled = env::var("OIDC_DEPT_SYNC_ENABLED")
+            .map(|v| v.to_lowercase() != "false" && v != "0")
+            .unwrap_or(true);
+
         // Dev-auth keys (only read when feature = "dev-auth")
         #[cfg(feature = "dev-auth")]
         let dev_auth_enabled = env::var("TASKBOARD_DEV_AUTH")
@@ -114,6 +126,8 @@ impl AppConfig {
             jwks_grace_ttl_secs,
             seed_on_start,
             system_admin_emails,
+            oidc_dept_claim,
+            oidc_dept_sync_enabled,
             #[cfg(feature = "dev-auth")]
             dev_auth_enabled,
             #[cfg(feature = "dev-auth")]
