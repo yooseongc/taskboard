@@ -356,6 +356,16 @@ code, pre, .font-mono {
   vertical-align: middle;
 }
 
+/* ---- Global density levels ---- */
+[data-density="compact"] {
+  --text-base: 0.8125rem;
+  --text-sm: 0.75rem;
+}
+[data-density="comfortable"] {
+  --text-base: 0.9375rem;
+  --text-sm: 0.875rem;
+}
+
 /* ---- Custom CSS injection point ---- */
 /* Users can add custom overrides after this comment.
    Example: Override primary color:

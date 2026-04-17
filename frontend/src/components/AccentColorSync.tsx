@@ -20,13 +20,29 @@ export default function AccentColorSync() {
 
   useEffect(() => {
     const bag = (prefs?.preferences ?? {}) as Record<string, unknown>;
-    const color = bag.primaryColor;
-    if (typeof color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(color)) return;
+    const root = document.documentElement;
 
-    const root = document.documentElement.style;
-    root.setProperty('--color-primary', color);
-    root.setProperty('--color-primary-hover', adjustBrightness(color, -15));
-    root.setProperty('--color-primary-light', adjustBrightness(color, 80));
+    // Accent color
+    const color = bag.primaryColor;
+    if (typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color)) {
+      root.style.setProperty('--color-primary', color);
+      root.style.setProperty('--color-primary-hover', adjustBrightness(color, -15));
+      root.style.setProperty('--color-primary-light', adjustBrightness(color, 80));
+    }
+
+    // Sidebar color
+    const sidebar = bag.sidebarColor;
+    if (typeof sidebar === 'string' && /^#[0-9a-fA-F]{6}$/.test(sidebar)) {
+      root.style.setProperty('--color-sidebar-bg', sidebar);
+      root.style.setProperty('--color-sidebar-hover', adjustBrightness(sidebar, 12));
+      root.style.setProperty('--color-sidebar-border', adjustBrightness(sidebar, 12));
+    }
+
+    // Global density
+    const density = bag.density;
+    if (typeof density === 'string') {
+      root.setAttribute('data-density', density);
+    }
   }, [prefs]);
 
   return null;
