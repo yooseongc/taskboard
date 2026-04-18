@@ -21,6 +21,14 @@
     "redirecting": "리다이렉트 중...",
     "loginFailed": "로그인 실패. 백엔드를 확인하세요."
   },
+  "home": {
+    "todayTitle": "오늘 주의가 필요한 작업",
+    "todayEmpty": "기한이 임박하거나 지난 작업이 없어요.",
+    "todayEmptyHint": "내가 assignee인 작업 중 due_date가 가까운 것들이 여기에 요약됩니다.",
+    "statDueSoon": "기한 임박·초과",
+    "statUnread": "안읽은 알림",
+    "statBoards": "내 보드"
+  },
   "boards": {
     "title": "내 보드",
     "newBoard": "+ 새 보드",

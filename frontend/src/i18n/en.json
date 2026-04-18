@@ -21,6 +21,14 @@
     "redirecting": "Redirecting...",
     "loginFailed": "Login failed. Check backend."
   },
+  "home": {
+    "todayTitle": "Needs attention today",
+    "todayEmpty": "No tasks are due soon or overdue.",
+    "todayEmptyHint": "Tasks assigned to you with approaching due dates will summarize here.",
+    "statDueSoon": "Due soon · overdue",
+    "statUnread": "Unread",
+    "statBoards": "My boards"
+  },
   "boards": {
     "title": "My Boards",
     "newBoard": "+ New Board",

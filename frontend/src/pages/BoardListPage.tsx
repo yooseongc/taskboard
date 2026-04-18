@@ -4,31 +4,63 @@ import { useTranslation } from 'react-i18next';
 import { useCreateBoard, useMyBoards, type BoardSummaryWithBucket } from '../api/boards';
 import { useDepartments } from '../api/departments';
 import { useTemplates } from '../api/templates';
+import {
+  useMarkNotificationRead,
+  useNotifications,
+  useUnreadNotificationCount,
+  type NotificationSummary,
+} from '../api/notifications';
+import { useAppConfig } from '../api/config';
 import { useToastStore } from '../stores/toastStore';
 import { usePermissions } from '../hooks/usePermissions';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import { SkeletonGrid } from '../components/ui/Skeleton';
 import EmptyState from '../components/ui/EmptyState';
+import NotificationRow, { notificationHref } from '../components/NotificationRow';
 
 export default function BoardListPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { data, isLoading, isError, refetch } = useMyBoards('all');
+  const { data: appConfig } = useAppConfig();
+  const { data: unreadCount } = useUnreadNotificationCount();
+  const { data: unreadList } = useNotifications({ unread: true });
+  const markRead = useMarkNotificationRead();
   const [showCreate, setShowCreate] = useState(false);
   const { canCreateBoard } = usePermissions();
+  const isPersonal = appConfig?.mode === 'personal';
 
   // ROLES.md §5: 4 buckets — favorites + department + personal + invited.
+  // Personal mode collapses to "personal" only (+ optional favorites pin).
   const buckets = useMemo(() => {
     const all = data?.items ?? [];
     return {
       favorites: all.filter((b) => b.pinned),
-      department: all.filter((b) => b.bucket === 'department'),
+      department: isPersonal ? [] : all.filter((b) => b.bucket === 'department'),
       personal: all.filter((b) => b.bucket === 'personal'),
-      invited: all.filter((b) => b.bucket === 'invited'),
+      invited: isPersonal ? [] : all.filter((b) => b.bucket === 'invited'),
     };
-  }, [data]);
+  }, [data, isPersonal]);
 
   const totalBoards = (data?.items ?? []).length;
+
+  // Today attention = unread deadline-related notifications. Drives both
+  // the Due-Soon stat card count and the hero list below.
+  const deadlineNotifs = useMemo<NotificationSummary[]>(() => {
+    const flat = unreadList?.pages.flatMap((p) => p.items) ?? [];
+    return flat.filter(
+      (n) => n.kind === 'deadline_soon' || n.kind === 'deadline_overdue',
+    );
+  }, [unreadList]);
+  const dueSoonCount = deadlineNotifs.length;
+  const unreadTotal = unreadCount?.unread ?? 0;
+
+  const activateNotif = (n: NotificationSummary) => {
+    if (!n.read_at) markRead.mutate({ id: n.id, read: true });
+    const dest = notificationHref(n);
+    if (dest) navigate(dest);
+  };
 
   return (
     <div className="mx-auto max-w-6xl px-4 md:px-6 py-6 md:py-8">
@@ -86,16 +118,225 @@ export default function BoardListPage() {
         />
       )}
 
-      {/* ROLES.md §5: 4-bucket sections */}
+      {/* Today-first hero — stat strip + "needs attention today" list.
+          Only when the user already has boards; a newcomer's home still
+          focuses on the EmptyState above. */}
+      {data && totalBoards > 0 && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+            <StatCard
+              label={t('home.statDueSoon')}
+              value={dueSoonCount}
+              tone={dueSoonCount > 0 ? 'danger' : 'neutral'}
+              icon={<ClockIcon />}
+              to="/notifications"
+            />
+            <StatCard
+              label={t('home.statUnread')}
+              value={unreadTotal}
+              tone={unreadTotal > 0 ? 'primary' : 'neutral'}
+              icon={<BellIcon />}
+              to="/notifications"
+            />
+            <StatCard
+              label={t('home.statBoards')}
+              value={totalBoards}
+              tone="neutral"
+              icon={<GridIcon />}
+            />
+          </div>
+
+          <TodayAttention
+            notifications={deadlineNotifs}
+            onActivate={activateNotif}
+          />
+        </>
+      )}
+
+      {/* ROLES.md §5: bucket sections. Personal mode skips dept/invited. */}
       <BucketSection label={t('boards.bucket.favorites', '★ 즐겨찾기')} boards={buckets.favorites} />
-      <BucketSection label={t('boards.bucket.department', '부서 보드')} boards={buckets.department} />
+      {!isPersonal && (
+        <BucketSection label={t('boards.bucket.department', '부서 보드')} boards={buckets.department} />
+      )}
       <BucketSection label={t('boards.bucket.personal', '개인 보드')} boards={buckets.personal} />
-      <BucketSection label={t('boards.bucket.invited', '초대받은 보드')} boards={buckets.invited} />
+      {!isPersonal && (
+        <BucketSection label={t('boards.bucket.invited', '초대받은 보드')} boards={buckets.invited} />
+      )}
 
       {showCreate && (
         <CreateBoardModal onClose={() => setShowCreate(false)} />
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Today-first hero — stat strip + "needs attention" list.
+// ---------------------------------------------------------------------------
+
+type StatTone = 'neutral' | 'primary' | 'danger';
+
+function StatCard({
+  label,
+  value,
+  tone,
+  icon,
+  to,
+}: {
+  label: string;
+  value: number;
+  tone: StatTone;
+  icon: React.ReactNode;
+  to?: string;
+}) {
+  // Tone palette: danger when there's something that needs attention,
+  // primary for general unread, neutral otherwise. The icon circle picks
+  // up the tone so the card reads at a glance.
+  const ringVar = tone === 'danger'
+    ? 'var(--tag-danger-bg)'
+    : tone === 'primary'
+      ? 'var(--color-primary-light)'
+      : 'var(--color-surface-hover)';
+  const iconColor = tone === 'danger'
+    ? 'var(--tag-danger-text)'
+    : tone === 'primary'
+      ? 'var(--color-primary-text)'
+      : 'var(--color-text-muted)';
+
+  const content = (
+    <div
+      className="flex items-center gap-3 p-4 rounded-lg h-full"
+      style={{
+        backgroundColor: 'var(--color-surface)',
+        border: '1px solid var(--color-border)',
+      }}
+    >
+      <div
+        className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center"
+        style={{ backgroundColor: ringVar, color: iconColor }}
+      >
+        {icon}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div
+          className="text-2xl font-bold tabular-nums leading-none"
+          style={{ color: 'var(--color-text)' }}
+        >
+          {value}
+        </div>
+        <div
+          className="mt-1 text-xs"
+          style={{ color: 'var(--color-text-muted)' }}
+        >
+          {label}
+        </div>
+      </div>
+    </div>
+  );
+
+  if (to) {
+    return (
+      <Link to={to} className="block hover:shadow-sm transition-shadow">
+        {content}
+      </Link>
+    );
+  }
+  return content;
+}
+
+function TodayAttention({
+  notifications,
+  onActivate,
+}: {
+  notifications: NotificationSummary[];
+  onActivate: (n: NotificationSummary) => void;
+}) {
+  const { t } = useTranslation();
+  // Cap the hero list — deeper inspection goes to /notifications. Five
+  // rows is enough to cover "what's on my plate today" without pushing
+  // the board grid below the fold on most laptops.
+  const top = notifications.slice(0, 5);
+  return (
+    <div className="mb-8">
+      <h2
+        className="text-xs font-semibold uppercase tracking-wider mb-3"
+        style={{ color: 'var(--color-text-muted)' }}
+      >
+        {t('home.todayTitle')}
+      </h2>
+      <div
+        className="rounded-lg overflow-hidden"
+        style={{
+          border: '1px solid var(--color-border)',
+          backgroundColor: 'var(--color-surface)',
+        }}
+      >
+        {top.length === 0 ? (
+          <div className="px-5 py-6 text-center">
+            <div
+              className="text-sm font-medium"
+              style={{ color: 'var(--color-text)' }}
+            >
+              {t('home.todayEmpty')}
+            </div>
+            <div
+              className="mt-1 text-xs"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              {t('home.todayEmptyHint')}
+            </div>
+          </div>
+        ) : (
+          <>
+            {top.map((n) => (
+              <NotificationRow
+                key={n.id}
+                notification={n}
+                onActivate={() => onActivate(n)}
+                compact
+              />
+            ))}
+            {notifications.length > top.length && (
+              <div
+                className="px-3 py-2 text-center"
+                style={{ borderTop: '1px solid var(--color-border)' }}
+              >
+                <Link
+                  to="/notifications"
+                  className="text-xs"
+                  style={{ color: 'var(--color-primary)' }}
+                >
+                  {t('notifications.viewAll')} →
+                </Link>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+function BellIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+    </svg>
+  );
+}
+function GridIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h3v6H4V6zm0 8h5v6H6a2 2 0 01-2-2v-4zm11-10h3a2 2 0 012 2v4h-5V4zm0 8h5v6a2 2 0 01-2 2h-3v-8z" />
+    </svg>
   );
 }
 
