@@ -56,7 +56,7 @@ import {
 } from '../api/views';
 import type { BoardViewConfig, TableViewConfig } from '../api/views';
 import type { TableViewState } from '../components/TableView';
-import { type FilterChip, evaluateFilter, operatorsFor } from '../components/TableView';
+import { type FilterChip, evaluateFilter, operatorsFor, FilterChipEditor } from '../components/TableView';
 import { useToastStore } from '../stores/toastStore';
 import Breadcrumbs from '../components/ui/Breadcrumbs';
 import { useTagTheme } from '../theme/constants';
@@ -217,9 +217,14 @@ export default function BoardViewPage() {
   const [density, setDensity] = useState<ViewDensity>('normal');
   const [tableGroupBy, setTableGroupBy] = useState<GroupByKey>({ type: 'column' });
   const [tableDensity, setTableDensity] = useState<ViewDensity>('normal');
-  const [calendarGroupBy, setCalendarGroupBy] = useState<GroupByKey>({
-    type: 'none',
-  });
+  // Calendar grouping is intentionally frozen — the UI was removed because
+  // grouping only tints event color here and users found it noisy. The
+  // state survives solely so existing saved views round-trip without
+  // clobbering their stored groupBy.
+  const [calendarGroupBy] = useState<GroupByKey>({ type: 'none' });
+  // Calendar filters mirror the board/table pattern: FilterChip[] applied
+  // via evaluateFilter to narrow the event set without touching dates.
+  const [calendarFilters, setCalendarFilters] = useState<FilterChip[]>([]);
 
   // Debounced auto-save: when the active view's local config changes,
   // PATCH the selected view so the change persists without an explicit
@@ -251,6 +256,7 @@ export default function BoardViewPage() {
       nextConfig = {
         dateField: calendarDateField.id,
         groupBy: calendarGroupBy,
+        filters: calendarFilters,
       };
     }
     if (nextConfig === null) return;
@@ -271,6 +277,7 @@ export default function BoardViewPage() {
     tableDensity,
     calendarDateField,
     calendarGroupBy,
+    calendarFilters,
   ]);
 
   if (boardLoading) return <Spinner />;
@@ -331,6 +338,22 @@ export default function BoardViewPage() {
       .filter((f) => f.field_type === 'date')
       .map((f): CalendarDateField => ({ id: f.id, label: f.name, kind: 'custom' })),
   ];
+
+  // Calendar-specific filters: applied on top of `tasks` so a saved
+  // calendar view can narrow independently of the board view. Declared
+  // here so it's in scope before the early board-filter returns below.
+  const calendarTasks = (() => {
+    if (calendarFilters.length === 0) return null;
+    const allFields = fieldsData?.items ?? [];
+    return (task: TaskDto) =>
+      calendarFilters.every((chip) => {
+        const field = allFields.find((f) => f.id === chip.fieldId);
+        if (!field) return true;
+        const taskValues = valuesByTask.get(task.id) ?? [];
+        const fv = taskValues.find((v) => v.field_id === chip.fieldId);
+        return evaluateFilter(chip, field, fv?.value);
+      });
+  })();
 
   // Apply board-level search/filter (only affects board view)
   const tasks = rawTasks.filter((t) => {
@@ -957,25 +980,19 @@ export default function BoardViewPage() {
 
       {activeView === 'calendar' && (
         <div className="flex flex-col flex-1 overflow-hidden">
-          {/* Calendar toolbar — date field picker + group by */}
+          {/* Calendar toolbar — date field picker + filter chips.
+              Calendar intentionally omits GroupBy: grouping only tints event
+              colors here (no spatial grouping like board), which proved more
+              confusing than useful. Filters and the date-field picker are
+              the two controls the calendar actually needs. */}
           <div
-            className="flex items-center gap-3 px-4 md:px-6 flex-shrink-0"
+            className="flex flex-col gap-1 px-4 md:px-6 pt-1 pb-2 flex-shrink-0"
             style={{
               borderBottom: '1px solid var(--color-border)',
               backgroundColor: 'var(--color-surface)',
             }}
           >
             <ViewToolbar
-              groupBy={calendarGroupBy}
-              onGroupByChange={setCalendarGroupBy}
-              groupByOptions={[
-                'none',
-                'status',
-                'priority',
-                'assignee',
-                'label',
-                'custom_field',
-              ]}
               customFields={fieldsData?.items ?? []}
               leftExtras={
                 <>
@@ -1006,17 +1023,79 @@ export default function BoardViewPage() {
                       </option>
                     ))}
                   </select>
+                  <button
+                    onClick={() => {
+                      const allFields = fieldsData?.items ?? [];
+                      const firstField = allFields[0];
+                      if (!firstField) return;
+                      setCalendarFilters((prev) => [
+                        ...prev,
+                        {
+                          id: crypto.randomUUID(),
+                          fieldId: firstField.id,
+                          operator: operatorsFor(firstField.field_type)[0],
+                          value: '',
+                        },
+                      ]);
+                    }}
+                    className="text-sm px-2 py-1"
+                    style={{
+                      color: 'var(--color-text-muted)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: 'var(--radius-md)',
+                    }}
+                  >
+                    + {t('tableView.addFilter')}
+                  </button>
+                  {calendarFilters.length > 0 && (
+                    <button
+                      onClick={() => setCalendarFilters([])}
+                      className="text-xs"
+                      style={{ color: 'var(--color-text-muted)' }}
+                    >
+                      {t('tableView.clearFilters', 'Clear filters')}
+                    </button>
+                  )}
                 </>
               }
             />
+            {calendarFilters.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 pb-1">
+                {calendarFilters.map((chip, idx) => (
+                  <span key={chip.id} className="inline-flex items-center gap-2">
+                    {idx > 0 && (
+                      <span
+                        className="text-[10px] font-bold uppercase tracking-wider"
+                        style={{ color: 'var(--color-text-muted)' }}
+                      >
+                        {t('tableView.mode.and')}
+                      </span>
+                    )}
+                    <FilterChipEditor
+                      chip={chip}
+                      fields={fieldsData?.items ?? []}
+                      onChange={(next) =>
+                        setCalendarFilters((prev) =>
+                          prev.map((c) => (c.id === chip.id ? next : c)),
+                        )
+                      }
+                      onRemove={() =>
+                        setCalendarFilters((prev) =>
+                          prev.filter((c) => c.id !== chip.id),
+                        )
+                      }
+                    />
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex-1 overflow-auto">
             <CalendarView
-              tasks={tasks}
+              tasks={calendarTasks ? tasks.filter(calendarTasks) : tasks}
               onTaskClick={setOpenTaskId}
               dateField={calendarDateField}
               customFieldValues={customFieldValues}
-              groupBy={calendarGroupBy}
               customFields={fieldsData?.items ?? []}
               allFieldValues={fieldValuesData?.items ?? []}
             />

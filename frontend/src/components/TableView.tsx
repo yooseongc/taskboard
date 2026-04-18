@@ -1082,7 +1082,7 @@ export default function TableView({
  * All edits flow through `onChange` so the parent's state is the single
  * source of truth — chip remains controlled.
  */
-function FilterChipEditor({
+export function FilterChipEditor({
   chip,
   fields,
   onChange,
