@@ -1,7 +1,7 @@
 # PROCESS.md — Task Board 구현 진행 현황
 
 > 마지막 업데이트: 2026-04-18  
-> 최신 커밋: 2da5b8c (관리 페이지 2-col + detail modal + NavBrand no-select)
+> 최신 커밋: 32de91e (대시보드 카드 미리보기 + fading chip + DirectoryPage 다크모드)
 
 ---
 
@@ -218,6 +218,53 @@ workspace/infra/
 
 ---
 
+## Round I — Personal 모드 · 알림 · 대시보드 (4ad6c74 → 32de91e)
+
+### Personal / SSO 런타임 분기
+- `TASKBOARD_MODE` env 로 분기 (`sso` 기본, `personal` 은 단일 사용자/부서 부트스트랩)
+- Personal 모드에선 `AuthnUser` extractor 가 Authorization 헤더를 무시하고 시드 사용자 반환 — Keycloak/JWKS 초기화 skip
+- 공개 `GET /api/config` 로 프론트가 모드 인지 → 로그인 화면/로그아웃/부서·초대 bucket/`/directory` 자동 숨김
+- `docker-compose.personal.yml` 프로필 (Postgres+backend+frontend 만)
+
+### 개인 알림 시스템
+- `notifications` 테이블 (migration 0019) + fan-out + deadline_scanner (tokio::interval 15m)
+- `activity_helper.insert_activity()` 에 한 번 hook → 23개 action 전부 자동 fan-out (board_members ∪ task_assignees 중 actor 제외)
+- `deadline_scanner`: 24h 이내 + 초과 task 의 assignee 에게 `deadline_soon`/`deadline_overdue` 행 insert, partial unique index 로 dedup
+- 라우트: `GET /api/users/me/notifications{,/count}`, `PATCH /{id}`, `POST /read-all`
+- 프론트: `NotificationBell` 헤더 뱃지(60s 폴링), `NotificationsPage` 탭+무한스크롤, 공용 `NotificationRow` 3단 layout (kind 아이콘 · 본문 · ⋯ 메뉴, overdue 는 danger 스트라이프)
+
+### Today-first 대시보드
+- `/` = "보드 리스트" → "오늘 할 일 + 내 보드". 상단 3 stat 카드(기한 임박·초과 · 안읽은 알림 · 내 보드 수) + "오늘 주의가 필요한 작업" 상위 5 (공용 NotificationRow compact)
+- 보드 카드 미리보기: `BoardSummary.open_task_count` + `top_assignees` (백엔드 batched GROUP BY + DISTINCT ON + ROW_NUMBER 윈도우) → 카드 하단에 task pill + 오버랩 아바타 스택
+- 인라인 보드 검색 (title/description) 필터
+
+### 세션 자동 연장
+- Keycloak realm-export lifespan 명시 (access 15m, SSO idle 2h, max 10h) — 기본 5m/30m 로 인한 조용한 튕김 방지
+- 프론트 `auth/scheduler.ts`: JWT `exp` 디코드 → 만료 90s 전에 `/token` refresh → 성공 시 재스케줄 (clamp [5s, 30m]). 전부 실패하면 `authStore.expireSession` → i18n 토스트 + `/login`
+- dev-auth 도 저장된 이메일로 `/api/dev/login` 재호출해 1h HMAC 연장. 로그아웃 시 정리.
+
+### 뷰 toolbar 통일
+- `ViewToolbar` 를 self-contained 로: `filters={chips+AND/OR+clear}` · `properties` · `newAction` · `bare` 래퍼 까지 내장. 3 뷰(Board/Table/Calendar) 의 툴바가 같은 리듬. Board 의 필터 chip 편집 불가 버그도 덤으로 해결.
+- Edit View 모달을 `<Button>` variant(ghost/primary/secondary/danger)로 통일 + i18n 완비.
+
+### 캘린더 UX 정비
+- 다크모드 대응: `.rbc-*` 를 `var(--color-*)` 로 repaint, 커스텀 `CalendarToolbar` (Today/←/→/Month/Week) + `CalendarEventBody` (title + show_on_card chip 최대 3)
+- `window.prompt` 제거 → 날짜 셀 hover "+" → inline input 패턴 (`dateCellWrapper` + EntryContext, 모듈 스코프 안정 identity 로 remount 회피)
+- 이벤트 pill 을 fading chip 으로: `color-mix 14% surface` + 3px 좌측 스트립 + `--color-text`
+- 필터 chip row (ViewToolbar 공용) + 제목 검색 + 속성(Properties) 버튼 + `newAction` 제거 (셀 hover 로 일원화)
+
+### 프로필 / 설정 정리
+- ProfilePage 재구성: 부서 chip · 활동 stat 타일 · 외부 ID · 갱신시각. personal 모드면 부서·AD 문구 자동 숨김.
+- SettingsPage 의 AD 문구 → personal 모드는 "개인 모드로 실행 중"
+
+### 품질
+- i18n: notifications.*, errors.*, home.*, auth.sessionExpired, boards.created 등 누락 키 추가. 인라인 영어 토스트 전부 i18n 치환
+- 성능: emoji 청크를 runtime(77KB) / data(433KB) 로 분리해 피커 UI 가 더 빨리 마운트. `chunkSizeWarningLimit` 600KB 로 상향
+- 접근성: 모달 backdrop `aria-hidden`, 심볼 버튼 (density ▬/☰) `aria-label` + `aria-pressed`, SavedViewBar 입력 `aria-label`, DirectoryPage bare `border-t/b` 3곳 토큰화
+- PWA: `public/manifest.webmanifest` + `index.html` theme-color/apple-touch-icon/mask-icon — Chrome/Edge "Install app" 가능
+
+---
+
 ## 구현 완료 기능 전체 목록
 
 | 기능 | 상태 |
@@ -252,6 +299,14 @@ workspace/infra/
 | Notion-inspired warm palette (light sidebar) | ✅ |
 | 모바일 off-canvas drawer + 반응형 패딩 | ✅ |
 | 관리 페이지 2-col + detail modal | ✅ |
+| Personal / SSO 런타임 모드 분기 (`TASKBOARD_MODE`) | ✅ |
+| 개인 알림 (fan-out + deadline scanner + 벨 + `/notifications`) | ✅ |
+| Today-first 대시보드 (stat 카드 + 오늘 작업 + 보드 미리보기) | ✅ |
+| 인라인 보드 검색 | ✅ |
+| 세션 자동 연장 (proactive refresh scheduler) | ✅ |
+| 뷰 toolbar 통일 (filters/properties/newAction/bare) | ✅ |
+| 캘린더: 다크모드, fading chip, hover 인라인 태스크 추가, 필터·검색 | ✅ |
+| PWA manifest + favicon (Chrome/Edge "Install app") | ✅ |
 
 ---
 

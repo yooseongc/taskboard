@@ -21,6 +21,7 @@ Mattermost Boards 유사 UX (Board/Table/Calendar/Activity View + Template + 역
 |---|---|
 | 개발 스택 전체 (권장) | `docker compose -f docker-compose.dev.yml --env-file .env.dev up -d --build` |
 | 개발 스택 중지 | `docker compose -f docker-compose.dev.yml down` |
+| Personal 모드 (standalone, SSO 없음) | `docker compose -f docker-compose.personal.yml up -d --build` |
 | 네이티브 backend | `cd backend && cargo run --features dev-auth` |
 | 네이티브 frontend | `cd frontend && pnpm dev` (http://localhost:5173) |
 | Backend 타입/린트 체크 | `cd backend && cargo check` |

@@ -1,9 +1,11 @@
 # API_CONTRACT.md — Backend ↔ Frontend 계약
 
-> 최종 갱신: 2026-04-17
+> 최종 갱신: 2026-04-18
 >
 > 백엔드 라우트( `backend/src/http/router.rs` )와 프론트엔드 호출( `frontend/src/api/*.ts` ) 을 실제 코드에서 추출한 인벤토리입니다.
 > 권위 있는 출처는 **코드 자체** — 이 문서는 사람이 훑어보기 위한 단면입니다. 변경 시 이 문서도 함께 갱신하세요.
+>
+> Round I 추가: `/api/config` (runtime 모드 probe) · `/api/users/me/notifications/*` (알림 inbox) · `BoardSummary.open_task_count` / `top_assignees` (대시보드 카드 미리보기) · `useCreateTask` body 에 `start_date`/`due_date` 수용.
 
 ---
 
@@ -33,8 +35,9 @@
 |---|---|---|---|---|
 | POST | `/api/auth/callback` | `identity/handlers.rs:54` | 🚫 | OIDC 콜백 후 whoami 경유, 현재 프론트는 whoami 만 사용 |
 | GET | `/api/auth/whoami` | `identity/handlers.rs:66` | `useWhoami` (`api/auth.ts:8`) | ✅ |
-| POST | `/api/dev/login` | `identity/handlers.rs:392` (feature=`dev-auth`) | `useDevLogin` (`api/auth.ts:17`) | ✅ `{user_email: string}` |
-| POST | `<KC>/realms/<realm>/protocol/openid-connect/token` | (Keycloak) | `handleOidcCallback` (`auth/oidc.ts:92`), `tryRefreshToken` (`auth/refresh.ts:37`) | PKCE / refresh |
+| POST | `/api/dev/login` | `identity/handlers.rs:392` (feature=`dev-auth`) | `useDevLogin` (`api/auth.ts:17`) + scheduler.ts fallback | ✅ `{user_email: string}`. scheduler 가 HMAC 토큰 만료 임박 시 재호출해 1h 연장 |
+| POST | `<KC>/realms/<realm>/protocol/openid-connect/token` | (Keycloak) | `handleOidcCallback` (`auth/oidc.ts:92`), `tryRefreshToken` (`auth/refresh.ts:37`) | PKCE / refresh. `auth/scheduler.ts` 가 JWT exp − 90s 에 proactive 호출 |
+| GET | `/api/config` | `http/router.rs` (public) | `useAppConfig` (`api/config.ts`) | ✅ `{mode:"sso"|"personal", auth_required, dev_auth_enabled}`. AuthGuard 분기·personal 모드 UI gating |
 | GET | `/api/health` | `http/router.rs:226` | 🚫 (ops 용) | `"ok"` 텍스트. 프론트 nginx 프록시로도 동일 경로 reachable |
 
 ### 2.2 Users & Preferences
@@ -45,7 +48,11 @@
 | GET | `/api/users/me` | `identity/handlers.rs:66` (= whoami) | `useMe` (`api/users.ts:15`) | ✅ |
 | PATCH | `/api/users/{id}` | `identity/handlers.rs:78` | `usePatchUser` (`api/users.ts:19`) | ✅ `{active?}` 만. name/email/roles 는 OIDC 클레임 기준으로만 갱신 |
 | GET | `/api/users/me/preferences` | `preference_handlers.rs:30` | `usePreferences` | ✅ |
-| PATCH | `/api/users/me/preferences` | `preference_handlers.rs:59` | `usePatchPreferences` | ✅ |
+| PATCH | `/api/users/me/preferences` | `preference_handlers.rs:59` | `usePatchPreferences` | ✅ `preferences.sidebar_width` 등 임의 JSONB 키 |
+| GET | `/api/users/me/notifications` | `notifications/handlers.rs` | `useNotifications` (`api/notifications.ts`) | ✅ `?unread&limit&cursor` keyset page |
+| GET | `/api/users/me/notifications/count` | `notifications/handlers.rs` | `useUnreadNotificationCount` | ✅ 60s 폴링, 벨 뱃지 구동 |
+| PATCH | `/api/users/me/notifications/{id}` | `notifications/handlers.rs` | `useMarkNotificationRead` | ✅ `{read:bool}` |
+| POST | `/api/users/me/notifications/read-all` | `notifications/handlers.rs` | `useMarkAllNotificationsRead` | ✅ |
 
 ### 2.3 Departments
 
