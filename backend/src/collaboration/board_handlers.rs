@@ -500,6 +500,10 @@ pub async fn list_boards(
     let pins = fetch_pinned_set(&state.pool, user.user_id, &board_ids).await?;
     let dept_board_ids = fetch_dept_board_ids_for_user(&state.pool, user.user_id, &board_ids).await?;
 
+    // Legacy list_boards does not populate the dashboard preview fields —
+    // they're only consumed by the dashboard card via list_my_boards.
+    // Returning defaults keeps the wire type consistent without the
+    // extra two queries.
     let items: Vec<BoardSummary> = rows
         .iter()
         .map(|r| {
@@ -516,6 +520,8 @@ pub async fn list_boards(
                 deleted_at: r.deleted_at,
                 pinned: pins.contains(&r.id),
                 bucket,
+                open_task_count: 0,
+                top_assignees: Vec::new(),
             }
         })
         .collect();
@@ -1212,6 +1218,71 @@ pub async fn list_my_boards(
     let pins = fetch_pinned_set(&state.pool, user.user_id, &board_ids).await?;
     let dept_boards = fetch_dept_board_ids_for_user(&state.pool, user.user_id, &board_ids).await?;
 
+    // Per-board preview stats for the dashboard card: open task count +
+    // up to 3 most-recent assignees. Both are batched in-query so the
+    // list endpoint stays single round-trip regardless of board count.
+    let task_counts: std::collections::HashMap<Uuid, i64> = if board_ids.is_empty() {
+        std::collections::HashMap::new()
+    } else {
+        sqlx::query_as::<_, (Uuid, i64)>(
+            r#"
+            SELECT board_id, COUNT(*)::bigint
+            FROM tasks
+            WHERE board_id = ANY($1)
+              AND deleted_at IS NULL
+              AND status IN ('open', 'in_progress')
+            GROUP BY board_id
+            "#,
+        )
+        .bind(&board_ids)
+        .fetch_all(&state.pool)
+        .await?
+        .into_iter()
+        .collect()
+    };
+
+    let assignee_rows: Vec<(Uuid, Uuid, String)> = if board_ids.is_empty() {
+        Vec::new()
+    } else {
+        // Rank distinct assignees per board by most recently touched task,
+        // then keep the top 3. DISTINCT ON picks the best per (board,user),
+        // ROW_NUMBER caps the set.
+        sqlx::query_as::<_, (Uuid, Uuid, String)>(
+            r#"
+            WITH ranked AS (
+                SELECT DISTINCT ON (t.board_id, ta.user_id)
+                    t.board_id, ta.user_id, t.updated_at
+                FROM tasks t
+                JOIN task_assignees ta ON ta.task_id = t.id
+                WHERE t.board_id = ANY($1)
+                  AND t.deleted_at IS NULL
+                ORDER BY t.board_id, ta.user_id, t.updated_at DESC
+            ),
+            top3 AS (
+                SELECT board_id, user_id, updated_at,
+                    ROW_NUMBER() OVER (PARTITION BY board_id ORDER BY updated_at DESC) AS rn
+                FROM ranked
+            )
+            SELECT t.board_id, t.user_id, u.name
+            FROM top3 t
+            JOIN users u ON u.id = t.user_id
+            WHERE t.rn <= 3
+            ORDER BY t.board_id, t.updated_at DESC
+            "#,
+        )
+        .bind(&board_ids)
+        .fetch_all(&state.pool)
+        .await?
+    };
+    let mut assignees_by_board: std::collections::HashMap<Uuid, Vec<BoardAssigneePreview>> =
+        std::collections::HashMap::new();
+    for (board_id, user_id, name) in assignee_rows {
+        assignees_by_board
+            .entry(board_id)
+            .or_default()
+            .push(BoardAssigneePreview { user_id, name });
+    }
+
     let summaries: Vec<BoardSummary> = rows
         .iter()
         .map(|r| {
@@ -1228,6 +1299,8 @@ pub async fn list_my_boards(
                 deleted_at: r.deleted_at,
                 pinned: pins.contains(&r.id),
                 bucket: computed,
+                open_task_count: task_counts.get(&r.id).copied().unwrap_or(0),
+                top_assignees: assignees_by_board.remove(&r.id).unwrap_or_default(),
             }
         })
         .collect();

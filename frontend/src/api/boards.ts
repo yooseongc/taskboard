@@ -147,6 +147,11 @@ export function useToggleBoardPin() {
   });
 }
 
+export interface BoardAssigneePreview {
+  user_id: string;
+  name: string;
+}
+
 export interface BoardSummaryWithBucket {
   id: string;
   title: string;
@@ -158,6 +163,10 @@ export interface BoardSummaryWithBucket {
   updated_at: string;
   pinned: boolean;
   bucket: 'department' | 'personal' | 'invited';
+  /** Dashboard card preview: count of open/in_progress tasks. */
+  open_task_count: number;
+  /** Up to 3 assignees ordered by most recent task touch. */
+  top_assignees: BoardAssigneePreview[];
 }
 
 export function usePatchBoard() {

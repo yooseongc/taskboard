@@ -363,6 +363,12 @@ function BucketSection({
 }
 
 function BoardCard({ board }: { board: BoardSummaryWithBucket }) {
+  // Compact assignee stack: up to 3 initial circles, overlapping so a dense
+  // board still fits in the card footer. The `+N` chip absorbs the rest.
+  const assigneeOverflow = Math.max(
+    0,
+    (board.top_assignees?.length ?? 0) - 3,
+  );
   return (
     <Link
       to={`/boards/${board.id}`}
@@ -380,13 +386,72 @@ function BoardCard({ board }: { board: BoardSummaryWithBucket }) {
               {board.description}
             </p>
           )}
-          <div className="mt-3 text-xs text-[var(--color-text-muted)]">
-            v{board.version} &middot; {new Date(board.updated_at).toLocaleDateString()}
+          <div className="mt-3 flex items-center gap-3 flex-wrap">
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
+              style={{
+                backgroundColor: 'var(--color-surface-hover)',
+                color: 'var(--color-text-secondary)',
+              }}
+              title={`${board.open_task_count} open tasks`}
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
+              {board.open_task_count} open
+            </span>
+            {board.top_assignees && board.top_assignees.length > 0 && (
+              <div className="flex items-center">
+                <div className="flex -space-x-1.5">
+                  {board.top_assignees.slice(0, 3).map((a) => (
+                    <span
+                      key={a.user_id}
+                      title={a.name}
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
+                      style={{
+                        backgroundColor: paletteFromId(a.user_id),
+                        color: '#ffffff',
+                        boxShadow: '0 0 0 2px var(--color-surface-raised)',
+                      }}
+                    >
+                      {a.name.charAt(0).toUpperCase()}
+                    </span>
+                  ))}
+                </div>
+                {assigneeOverflow > 0 && (
+                  <span
+                    className="ml-1.5 text-xs"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  >
+                    +{assigneeOverflow}
+                  </span>
+                )}
+              </div>
+            )}
+            <span
+              className="ml-auto text-xs"
+              style={{ color: 'var(--color-text-muted)' }}
+              title={new Date(board.updated_at).toLocaleString()}
+            >
+              {new Date(board.updated_at).toLocaleDateString()}
+            </span>
           </div>
         </div>
       </div>
     </Link>
   );
+}
+
+// Same palette function used by groupBy — deterministic color per user id.
+// Inlined here to avoid importing the larger groupBy module on this page.
+function paletteFromId(id: string): string {
+  const palette = [
+    '#3b82f6', '#ef4444', '#10b981', '#f59e0b',
+    '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16',
+  ];
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  return palette[Math.abs(hash) % palette.length];
 }
 
 function CreateBoardModal({ onClose }: { onClose: () => void }) {

@@ -169,6 +169,14 @@ pub struct BoardResponse {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Compact assignee descriptor shown on the dashboard's board card —
+/// enough to render an initial circle + tooltip with the display name.
+#[derive(Serialize, Debug, Clone)]
+pub struct BoardAssigneePreview {
+    pub user_id: Uuid,
+    pub name: String,
+}
+
 /// S-013: Board summary for list responses.
 #[derive(Serialize, Debug)]
 pub struct BoardSummary {
@@ -186,6 +194,12 @@ pub struct BoardSummary {
     /// Which bucket this board falls into for the requesting user.
     /// One of: "department", "personal", "invited".
     pub bucket: String,
+    /// Count of active (status IN 'open', 'in_progress') tasks on this
+    /// board. Zero for fresh boards. Computed in-query.
+    pub open_task_count: i64,
+    /// Up to 3 most-recently-active assignees on this board, newest
+    /// first. Used by the dashboard's BoardCard for an avatar stack.
+    pub top_assignees: Vec<BoardAssigneePreview>,
 }
 
 /// S-013: Board detail for get_board.
