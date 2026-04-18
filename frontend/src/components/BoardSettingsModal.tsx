@@ -342,6 +342,7 @@ const BOARD_ROLE_LABELS: Record<string, string> = {
 };
 
 export function MembersPanel({ boardId }: { boardId: string }) {
+  const { t } = useTranslation();
   const { data: membersData, isLoading } = useBoardMembers(boardId);
   const { data: usersData } = useUsers();
   const addMember = useAddBoardMember(boardId);
@@ -399,7 +400,7 @@ export function MembersPanel({ boardId }: { boardId: string }) {
                 onChange={(e) =>
                   patchMember.mutate(
                     { userId: m.user_id, role_in_board: e.target.value },
-                    { onError: () => addToast('error', 'Failed to update role') },
+                    { onError: () => addToast('error', t('errors.updateRole')) },
                   )
                 }
                 className="text-xs border rounded px-1.5 py-1"
@@ -412,7 +413,7 @@ export function MembersPanel({ boardId }: { boardId: string }) {
               <button
                 onClick={() =>
                   removeMember.mutate(m.user_id, {
-                    onError: () => addToast('error', 'Failed to remove member'),
+                    onError: () => addToast('error', t('errors.removeMember')),
                   })
                 }
                 className="p-1 rounded flex-shrink-0 hover:bg-[var(--tag-danger-bg)] hover:text-[var(--tag-danger-text)]"
@@ -470,7 +471,7 @@ export function MembersPanel({ boardId }: { boardId: string }) {
                       { user_id: u.id, role_in_board: newRole },
                       {
                         onSuccess: () => setSearch(''),
-                        onError: () => addToast('error', 'Failed to add member'),
+                        onError: () => addToast('error', t('errors.addMember')),
                       },
                     )
                   }

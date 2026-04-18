@@ -521,7 +521,7 @@ export default function BoardViewPage() {
         patchTask.mutate(
           { taskId: draggableId, ...mutation.patch, version: task.version },
           {
-            onError: () => addToast('error', 'Failed to update task'),
+            onError: () => addToast('error', t('errors.updateTask')),
           },
         );
         break;
@@ -534,7 +534,7 @@ export default function BoardViewPage() {
             await addTaskAssignee(draggableId, mutation.userId);
             invalidate();
           } catch {
-            addToast('error', 'Failed to update assignee');
+            addToast('error', t('errors.updateAssignee'));
           }
         })();
         break;
@@ -547,7 +547,7 @@ export default function BoardViewPage() {
             await addTaskLabel(draggableId, mutation.labelId);
             invalidate();
           } catch {
-            addToast('error', 'Failed to update label');
+            addToast('error', t('errors.updateLabel'));
           }
         })();
         break;
@@ -563,7 +563,7 @@ export default function BoardViewPage() {
             });
             invalidate();
           } catch {
-            addToast('error', 'Failed to update field');
+            addToast('error', t('errors.updateField'));
           }
         })();
         break;
@@ -579,7 +579,7 @@ export default function BoardViewPage() {
           setNewColTitle('');
           setAddingColumn(false);
         },
-        onError: () => addToast('error', 'Failed to create column'),
+        onError: () => addToast('error', t('errors.createColumn')),
       },
     );
   };

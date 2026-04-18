@@ -23,7 +23,15 @@ export default function Modal({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
+      {/* Backdrop — visual scrim + convenience click-to-close. ESC + close
+          button already cover keyboard flows, so we mark the scrim
+          aria-hidden so screen readers don't announce a mystery "clickable
+          region". */}
+      <div
+        className="fixed inset-0 bg-black/30 z-40"
+        onClick={onClose}
+        aria-hidden="true"
+      />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div
           ref={trapRef}

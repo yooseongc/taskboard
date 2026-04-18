@@ -152,6 +152,7 @@ export default function SavedViewBar({
           <input
             autoFocus
             placeholder={t('views.namePlaceholder', 'View name')}
+            aria-label={t('views.namePlaceholder', 'View name')}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSave()}

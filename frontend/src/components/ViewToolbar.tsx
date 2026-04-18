@@ -584,6 +584,8 @@ function DensityToggle({
             onClick={() => onChange(d)}
             className="px-2.5 py-1 font-medium"
             title={t(`toolbar.density.${d}`)}
+            aria-label={t(`toolbar.density.${d}`)}
+            aria-pressed={active}
             style={{
               backgroundColor: active
                 ? 'var(--color-primary)'

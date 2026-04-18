@@ -122,7 +122,11 @@ export default function CommandPalette({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/40 z-50" onClick={onClose} />
+      <div
+        className="fixed inset-0 bg-black/40 z-50"
+        onClick={onClose}
+        aria-hidden="true"
+      />
       <div className="fixed inset-0 z-[60] flex items-start justify-center pt-[15vh] p-4">
         <div
           role="dialog"

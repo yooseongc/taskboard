@@ -7,6 +7,7 @@ import {
   startSessionScheduler,
   stopSessionScheduler,
 } from '../auth/scheduler';
+import i18n from '../i18n';
 import { useToastStore } from './toastStore';
 
 interface AuthState {
@@ -49,11 +50,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     clearToken();
     clearRefreshToken();
     set({ user: null, isAuthenticated: false });
-    // `auth.sessionExpired` is defined in i18n; keep this toast plain in
-    // case translations haven't loaded yet.
-    useToastStore
-      .getState()
-      .addToast('info', '세션이 만료되어 다시 로그인이 필요합니다.');
+    useToastStore.getState().addToast('info', i18n.t('auth.sessionExpired'));
   },
   rearmScheduler: () => {
     if (getToken()) armScheduler(() => get().expireSession());

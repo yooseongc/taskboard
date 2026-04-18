@@ -1398,8 +1398,14 @@ function DrawerShell({ onClose, children }: { onClose: () => void; children: Rea
   const trapRef = useFocusTrap<HTMLDivElement>(true);
   return (
     <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose} />
+      {/* Backdrop — decorative scrim, marked aria-hidden so screen readers
+          don't announce a mystery click target; ESC + close button handle
+          keyboard dismiss. */}
+      <div
+        className="fixed inset-0 bg-black/50 z-40"
+        onClick={onClose}
+        aria-hidden="true"
+      />
       {/* Centered large dialog — fills ~90% of viewport */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8">
         <div
