@@ -71,7 +71,7 @@ export default function DirectoryPage() {
               <span>{t('directory.allPeople')}</span>
               <span className="ml-auto text-xs text-[var(--color-text-muted)]">{allUsers.length}</span>
             </div>
-            <div className="border-t my-1.5" />
+            <div className="my-1.5" style={{ borderTop: '1px solid var(--color-border)' }} />
             {roots.map((dept) => (
               <DeptNode
                 key={dept.id}
@@ -89,7 +89,10 @@ export default function DirectoryPage() {
         <div className="flex-1 min-w-0">
           <div className="surface-raised">
             {/* Header */}
-            <div className="px-4 py-3 border-b flex items-center gap-3">
+            <div
+              className="px-4 py-3 flex items-center gap-3"
+              style={{ borderBottom: '1px solid var(--color-border)' }}
+            >
               <h2 className="text-sm font-semibold">
                 {selectedDept ? selectedDept.name : t('directory.allPeople')}
               </h2>
@@ -375,7 +378,10 @@ function Pagination({
   const { t } = useTranslation();
   if (totalPages <= 1) return null;
   return (
-    <div className="px-4 py-3 border-t flex items-center justify-between text-sm">
+    <div
+      className="px-4 py-3 flex items-center justify-between text-sm"
+      style={{ borderTop: '1px solid var(--color-border)' }}
+    >
       <span className="text-[var(--color-text-muted)]">
         {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
       </span>
