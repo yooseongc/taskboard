@@ -3,6 +3,18 @@
   "enabled": true,
   "sslRequired": "none",
   "registrationAllowed": false,
+
+  "accessTokenLifespan": 900,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "ssoSessionIdleTimeout": 7200,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
+  "accessCodeLifespan": 60,
+  "accessCodeLifespanUserAction": 300,
+  "accessCodeLifespanLogin": 1800,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+
   "clients": [
     {
       "clientId": "taskboard-frontend",

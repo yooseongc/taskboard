@@ -2,6 +2,12 @@ import { create } from 'zustand';
 import type { WhoamiResponse } from '../types/api';
 import { getToken, setToken, clearToken } from '../auth';
 import { clearRefreshToken } from '../auth/refresh';
+import {
+  forgetDevEmail,
+  startSessionScheduler,
+  stopSessionScheduler,
+} from '../auth/scheduler';
+import { useToastStore } from './toastStore';
 
 interface AuthState {
   user: WhoamiResponse | null;
@@ -9,19 +15,51 @@ interface AuthState {
   setUser: (user: WhoamiResponse | null) => void;
   login: (token: string) => void;
   logout: () => void;
+  /** Called by the proactive session scheduler when every refresh path has
+   *  been exhausted. Mirrors `logout` but surfaces a toast so the
+   *  redirect doesn't look like a random error. */
+  expireSession: () => void;
+  /** Re-arm the proactive scheduler after a page reload — AuthGuard calls
+   *  this once on boot when we already have a token from localStorage. */
+  rearmScheduler: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+// The scheduler is wired lazily so stores don't import each other at
+// module-load time. `armScheduler` below closes over `set` via the
+// store instance.
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isAuthenticated: !!getToken(),
   setUser: (user) => set({ user, isAuthenticated: !!user }),
   login: (token) => {
     setToken(token);
     set({ isAuthenticated: true });
+    armScheduler(() => get().expireSession());
   },
   logout: () => {
+    stopSessionScheduler();
+    forgetDevEmail();
     clearToken();
     clearRefreshToken();
     set({ user: null, isAuthenticated: false });
   },
+  expireSession: () => {
+    stopSessionScheduler();
+    forgetDevEmail();
+    clearToken();
+    clearRefreshToken();
+    set({ user: null, isAuthenticated: false });
+    // `auth.sessionExpired` is defined in i18n; keep this toast plain in
+    // case translations haven't loaded yet.
+    useToastStore
+      .getState()
+      .addToast('info', '세션이 만료되어 다시 로그인이 필요합니다.');
+  },
+  rearmScheduler: () => {
+    if (getToken()) armScheduler(() => get().expireSession());
+  },
 }));
+
+function armScheduler(onFail: () => void) {
+  startSessionScheduler(onFail);
+}

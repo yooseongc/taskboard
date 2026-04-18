@@ -3,7 +3,7 @@
     "name": "Taskboard"
   },
   "nav": {
-    "boards": "보드",
+    "boards": "대시보드",
     "templates": "템플릿",
     "directory": "관리",
     "settings": "설정",

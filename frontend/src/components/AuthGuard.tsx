@@ -6,9 +6,16 @@ import { useAppConfig } from '../api/config';
 import { Spinner } from './Spinner';
 
 export function AuthGuard() {
-  const { isAuthenticated, user, setUser, logout } = useAuthStore();
+  const { isAuthenticated, user, setUser, logout, rearmScheduler } = useAuthStore();
   const { data: appConfig, isLoading: configLoading } = useAppConfig();
   const isPersonal = appConfig?.mode === 'personal';
+
+  // After a page reload we still have a token in localStorage but the
+  // scheduler instance is gone — re-arm it once on mount so proactive
+  // refresh resumes without waiting for the next login cycle.
+  useEffect(() => {
+    if (isAuthenticated && !isPersonal) rearmScheduler();
+  }, [isAuthenticated, isPersonal, rearmScheduler]);
 
   // Personal mode: call whoami unconditionally — the backend returns the
   // seeded user regardless of Authorization. In SSO mode, only call it

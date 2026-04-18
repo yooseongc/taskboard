@@ -5,6 +5,7 @@ import { useDevLogin } from '../api/auth';
 import { useAuthStore } from '../stores/authStore';
 import { useAppConfig } from '../api/config';
 import { startOidcLogin } from '../auth/oidc';
+import { rememberDevEmail } from '../auth/scheduler';
 import Button from '../components/ui/Button';
 
 export default function LoginPage() {
@@ -38,6 +39,10 @@ export default function LoginPage() {
   const handleDevLogin = async () => {
     try {
       const result = await devLogin.mutateAsync(email);
+      // Stash the email so the scheduler can replay /api/dev/login when
+      // the 1-hour HS256 token is about to expire — dev-auth has no
+      // refresh endpoint of its own, so this is the only way to extend.
+      rememberDevEmail(email);
       login(result.token);
       navigate('/', { replace: true });
     } catch (err) {

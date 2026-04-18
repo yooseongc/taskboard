@@ -3,7 +3,7 @@
     "name": "Taskboard"
   },
   "nav": {
-    "boards": "Boards",
+    "boards": "Dashboard",
     "templates": "Templates",
     "directory": "Management",
     "settings": "Settings",

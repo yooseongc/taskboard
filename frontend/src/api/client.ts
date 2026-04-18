@@ -1,5 +1,6 @@
 import { getToken, clearToken } from '../auth';
 import { tryRefreshToken } from '../auth/refresh';
+import { useAuthStore } from '../stores/authStore';
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL ?? '';
 
@@ -55,7 +56,16 @@ async function fetchWithAuth(path: string, init?: RequestInit): Promise<Response
 }
 
 function forceLogout() {
-  clearToken();
+  // Route through the store's expireSession so a toast explains the
+  // redirect instead of dropping the user on /login silently. Falls
+  // back to a raw clearToken/redirect if the store isn't initialized
+  // yet (extreme edge case: 401 on the very first request).
+  const store = useAuthStore.getState();
+  if (store?.expireSession) {
+    store.expireSession();
+  } else {
+    clearToken();
+  }
   if (window.location.pathname !== '/login') {
     window.location.href = '/login';
   }
