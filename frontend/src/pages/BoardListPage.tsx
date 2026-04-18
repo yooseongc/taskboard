@@ -31,19 +31,36 @@ export default function BoardListPage() {
   const { canCreateBoard } = usePermissions();
   const isPersonal = appConfig?.mode === 'personal';
 
+  // Inline search — filters the bucket grid by title/description match.
+  // When active, the today-first hero strip still shows so the user can
+  // glance at deadlines while narrowing boards.
+  const [boardSearch, setBoardSearch] = useState('');
+
   // ROLES.md §5: 4 buckets — favorites + department + personal + invited.
   // Personal mode collapses to "personal" only (+ optional favorites pin).
   const buckets = useMemo(() => {
     const all = data?.items ?? [];
+    const q = boardSearch.trim().toLowerCase();
+    const matches = (b: BoardSummaryWithBucket) =>
+      !q ||
+      b.title.toLowerCase().includes(q) ||
+      (b.description ?? '').toLowerCase().includes(q);
     return {
-      favorites: all.filter((b) => b.pinned),
-      department: isPersonal ? [] : all.filter((b) => b.bucket === 'department'),
-      personal: all.filter((b) => b.bucket === 'personal'),
-      invited: isPersonal ? [] : all.filter((b) => b.bucket === 'invited'),
+      favorites: all.filter((b) => b.pinned && matches(b)),
+      department: isPersonal
+        ? []
+        : all.filter((b) => b.bucket === 'department' && matches(b)),
+      personal: all.filter((b) => b.bucket === 'personal' && matches(b)),
+      invited: isPersonal ? [] : all.filter((b) => b.bucket === 'invited' && matches(b)),
     };
-  }, [data, isPersonal]);
+  }, [data, isPersonal, boardSearch]);
 
   const totalBoards = (data?.items ?? []).length;
+  const visibleTotal =
+    buckets.favorites.length +
+    buckets.department.length +
+    buckets.personal.length +
+    buckets.invited.length;
 
   // Today attention = unread deadline-related notifications. Drives both
   // the Due-Soon stat card count and the hero list below.
@@ -64,13 +81,42 @@ export default function BoardListPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 md:px-6 py-6 md:py-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center gap-4 mb-6 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: 'var(--color-text)' }}>{t('boards.title')}</h1>
           {totalBoards > 0 && (
             <p className="text-sm text-[var(--color-text-muted)] mt-0.5">{totalBoards} board(s)</p>
           )}
         </div>
+        {totalBoards > 0 && (
+          <div className="flex-1 min-w-[200px] max-w-md">
+            <div className="relative">
+              <svg
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                viewBox="0 0 24 24"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                value={boardSearch}
+                onChange={(e) => setBoardSearch(e.target.value)}
+                placeholder={t('home.searchPlaceholder')}
+                aria-label={t('home.searchPlaceholder')}
+                className="w-full rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
+                style={{
+                  backgroundColor: 'var(--color-surface)',
+                  color: 'var(--color-text)',
+                  border: '1px solid var(--color-border)',
+                }}
+              />
+            </div>
+          </div>
+        )}
         {canCreateBoard ? (
           <Button onClick={() => setShowCreate(true)}>{t('boards.newBoard')}</Button>
         ) : (
@@ -153,14 +199,31 @@ export default function BoardListPage() {
         </>
       )}
 
-      {/* ROLES.md §5: bucket sections. Personal mode skips dept/invited. */}
-      <BucketSection label={t('boards.bucket.favorites', '★ 즐겨찾기')} boards={buckets.favorites} />
-      {!isPersonal && (
-        <BucketSection label={t('boards.bucket.department', '부서 보드')} boards={buckets.department} />
-      )}
-      <BucketSection label={t('boards.bucket.personal', '개인 보드')} boards={buckets.personal} />
-      {!isPersonal && (
-        <BucketSection label={t('boards.bucket.invited', '초대받은 보드')} boards={buckets.invited} />
+      {/* Bucket grid — filtered by the inline search when the query is set.
+          ROLES.md §5: 4 sections (fav + dept + personal + invited); personal
+          mode collapses to 2. */}
+      {boardSearch.trim() && visibleTotal === 0 ? (
+        <div
+          className="text-center py-10 rounded-lg"
+          style={{
+            backgroundColor: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            color: 'var(--color-text-muted)',
+          }}
+        >
+          {t('home.searchEmpty')}
+        </div>
+      ) : (
+        <>
+          <BucketSection label={t('boards.bucket.favorites', '★ 즐겨찾기')} boards={buckets.favorites} />
+          {!isPersonal && (
+            <BucketSection label={t('boards.bucket.department', '부서 보드')} boards={buckets.department} />
+          )}
+          <BucketSection label={t('boards.bucket.personal', '개인 보드')} boards={buckets.personal} />
+          {!isPersonal && (
+            <BucketSection label={t('boards.bucket.invited', '초대받은 보드')} boards={buckets.invited} />
+          )}
+        </>
       )}
 
       {showCreate && (
@@ -455,6 +518,7 @@ function paletteFromId(id: string): string {
 }
 
 function CreateBoardModal({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [ownerType, setOwnerType] = useState<'department' | 'personal'>('personal');
@@ -483,13 +547,13 @@ function CreateBoardModal({ onClose }: { onClose: () => void }) {
 
     createBoard.mutate(body, {
       onSuccess: (board) => {
-        addToast('success', 'Board created');
+        addToast('success', t('boards.created'));
         onClose();
         navigate(`/boards/${board.id}`);
       },
       onError: () =>
-        addToast('error', `Failed to create board "${title}"`, {
-          action: { label: 'Retry', onClick: handleCreate },
+        addToast('error', t('errors.boardCreateFailed', { title }), {
+          action: { label: t('errors.retry'), onClick: handleCreate },
         }),
     });
   };

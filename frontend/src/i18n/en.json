@@ -11,6 +11,18 @@
     "logout": "Logout",
     "myBoards": "My Boards"
   },
+  "errors": {
+    "updateRole": "Failed to update role.",
+    "removeMember": "Failed to remove member.",
+    "addMember": "Failed to add member.",
+    "updateTask": "Failed to update task.",
+    "updateAssignee": "Failed to update assignee.",
+    "updateLabel": "Failed to update label.",
+    "updateField": "Failed to update field.",
+    "createColumn": "Failed to create column.",
+    "boardCreateFailed": "Failed to create board \"{{title}}\".",
+    "retry": "Retry"
+  },
   "auth": {
     "title": "Taskboard",
     "subtitle": "Sign in to continue",
@@ -19,12 +31,15 @@
     "devLogin": "Dev Login",
     "loggingIn": "Logging in...",
     "redirecting": "Redirecting...",
-    "loginFailed": "Login failed. Check backend."
+    "loginFailed": "Login failed. Check backend.",
+    "sessionExpired": "Session expired — please log in again."
   },
   "home": {
+    "searchPlaceholder": "Search boards — title · description",
+    "searchEmpty": "No boards match your search.",
     "todayTitle": "Needs attention today",
     "todayEmpty": "No tasks are due soon or overdue.",
-    "todayEmptyHint": "Tasks assigned to you with approaching due dates will summarize here.",
+    "todayEmptyHint": "Tasks you own with upcoming deadlines will show up here.",
     "statDueSoon": "Due soon · overdue",
     "statUnread": "Unread",
     "statBoards": "My boards"
@@ -33,6 +48,7 @@
     "title": "My Boards",
     "newBoard": "+ New Board",
     "noBoards": "No boards yet. Create one to get started.",
+    "created": "Board created.",
     "createTitle": "Create New Board",
     "boardTitle": "Board title",
     "description": "Description",
