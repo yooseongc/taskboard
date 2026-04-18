@@ -44,6 +44,45 @@
       "invited": "Invited Boards"
     }
   },
+  "notifications": {
+    "title": "Notifications",
+    "tabUnread": "Unread",
+    "tabAll": "All",
+    "markAllRead": "Mark all read",
+    "markRead": "Mark as read",
+    "markUnread": "Mark as unread",
+    "viewAll": "See all",
+    "bellLabel": "Notifications",
+    "bellUnreadLabel": "Notifications ({{count}} unread)",
+    "loading": "Loading…",
+    "emptyUnread": "No unread notifications yet.",
+    "emptyAll": "No notifications yet.",
+    "emptyHint": "We'll let you know here when a deadline is approaching or a related board has activity.",
+    "loadMore": "Load more",
+    "openBackend": "Could not reach the backend. Please contact an administrator.",
+    "kind": {
+      "deadline_soon": "Due soon",
+      "deadline_overdue": "Overdue",
+      "board_activity": "Activity",
+      "mentioned": "Mention",
+      "assigned": "Assigned"
+    },
+    "line": {
+      "deadline_soon": "{{task}} is due within 24 hours.",
+      "deadline_overdue": "{{task}} is past its due date.",
+      "assigned": "{{who}} assigned {{task}} to you.",
+      "mentioned": "{{who}} mentioned you in {{task}}.",
+      "board_activity": "{{who}} updated {{task}}."
+    },
+    "unknownActor": "Someone",
+    "unknownTask": "a task",
+    "time": {
+      "seconds": "{{n}}s ago",
+      "minutes": "{{n}}m ago",
+      "hours": "{{n}}h ago",
+      "days": "{{n}}d ago"
+    }
+  },
   "board": {
     "backToBoards": "Boards",
     "board": "Board",

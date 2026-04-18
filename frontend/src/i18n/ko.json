@@ -44,6 +44,45 @@
       "invited": "초대받은 보드"
     }
   },
+  "notifications": {
+    "title": "알림",
+    "tabUnread": "안읽음",
+    "tabAll": "전체",
+    "markAllRead": "모두 읽음",
+    "markRead": "읽음 처리",
+    "markUnread": "안읽음으로",
+    "viewAll": "모두 보기",
+    "bellLabel": "알림",
+    "bellUnreadLabel": "알림 ({{count}}건 안읽음)",
+    "loading": "불러오는 중…",
+    "emptyUnread": "아직 읽지 않은 알림이 없어요.",
+    "emptyAll": "알림이 아직 없어요.",
+    "emptyHint": "기한이 다가오거나 관련된 보드에서 활동이 생기면 여기로 알려드릴게요.",
+    "loadMore": "더 보기",
+    "openBackend": "백엔드 연결에 실패했습니다. 관리자에게 문의하세요.",
+    "kind": {
+      "deadline_soon": "기한 임박",
+      "deadline_overdue": "기한 초과",
+      "board_activity": "활동",
+      "mentioned": "멘션",
+      "assigned": "할당"
+    },
+    "line": {
+      "deadline_soon": "{{task}} 의 기한이 24시간 안에 다가와요.",
+      "deadline_overdue": "{{task}} 이(가) 기한을 지났어요.",
+      "assigned": "{{who}} 님이 {{task}} 을(를) 나에게 할당했어요.",
+      "mentioned": "{{who}} 님이 {{task}} 에서 나를 언급했어요.",
+      "board_activity": "{{who}} 님이 {{task}} 을(를) 업데이트했어요."
+    },
+    "unknownActor": "누군가",
+    "unknownTask": "작업",
+    "time": {
+      "seconds": "{{n}}초 전",
+      "minutes": "{{n}}분 전",
+      "hours": "{{n}}시간 전",
+      "days": "{{n}}일 전"
+    }
+  },
   "board": {
     "backToBoards": "보드 목록",
     "board": "보드",
