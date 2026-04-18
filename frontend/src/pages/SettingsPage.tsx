@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePreferences, usePatchPreferences } from '../api/preferences';
+import { useAppConfig } from '../api/config';
 import { useTheme } from '../theme/ThemeProvider';
 import { Spinner } from '../components/Spinner';
 import { useToastStore } from '../stores/toastStore';
@@ -44,6 +45,8 @@ const densityOptions = [
 export default function SettingsPage() {
   const { data, isLoading } = usePreferences();
   const patchPrefs = usePatchPreferences();
+  const { data: appConfig } = useAppConfig();
+  const isPersonal = appConfig?.mode === 'personal';
   const { theme, setTheme, resolved } = useTheme();
   const addToast = useToastStore((s) => s.addToast);
   const { i18n, t } = useTranslation();
@@ -309,7 +312,12 @@ export default function SettingsPage() {
         </h2>
         <div className="text-sm space-y-1" style={{ color: 'var(--color-text-secondary)' }}>
           <p>Taskboard v0.1.0</p>
-          <p>{t('settings.aboutAd', 'Accounts managed via Active Directory.')}</p>
+          {!isPersonal && (
+            <p>{t('settings.aboutAd', 'Accounts managed via Active Directory.')}</p>
+          )}
+          {isPersonal && (
+            <p>{t('settings.aboutPersonal', '개인 모드로 실행 중 · 외부 인증 없이 사용됩니다.')}</p>
+          )}
         </div>
       </section>
     </div>

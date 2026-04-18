@@ -96,7 +96,12 @@ export default function DirectoryPage() {
               <input
                 type="text"
                 placeholder={t('directory.searchPlaceholder')}
-                className="ml-auto border rounded-lg px-3 py-1.5 text-sm w-64 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                className="ml-auto rounded-lg px-3 py-1.5 text-sm w-64 outline-none focus:ring-2 focus:ring-[var(--color-border-focus)]"
+                style={{
+                  backgroundColor: 'var(--color-surface)',
+                  color: 'var(--color-text)',
+                  border: '1px solid var(--color-border)',
+                }}
                 value={search}
                 onChange={(e) => handleSearch(e.target.value)}
               />
