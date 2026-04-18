@@ -191,7 +191,36 @@ User Federation 의 **Mappers** 탭에서 `group-ldap-mapper` 추가:
 
 ---
 
-## 6. dev-auth (개발 전용 우회)
+## 6. Personal 모드 (단독 사용)
+
+팀 SSO 없이 한 명이 로컬에서 사용하는 standalone 모드.
+
+### 켜는 법
+
+```
+TASKBOARD_MODE=personal
+```
+
+- SSO 모드일 때와 동일한 바이너리/이미지. 기동 시 env 로 분기됨.
+- `KEYCLOAK_ISSUER` / `KEYCLOAK_AUDIENCE` 는 설정돼 있어도 **무시**되며, 비워둬도 됨.
+- 기동 시 단일 사용자(`external_id='personal'`, name=`Me`, SystemAdmin) 와 루트 부서(slug=`personal`)가 idempotent 하게 시드됨.
+- `docker-compose.personal.yml` 프로필 사용 시 Keycloak/glauth 가 아예 올라오지 않음.
+
+### 동작
+
+- `AuthnUser` extractor 가 Authorization 헤더를 **무시**하고 시드 사용자를 반환. JWT 파싱 경로는 실행되지 않음.
+- 프론트엔드는 부팅 직후 `GET /api/config` 를 호출해 `mode` 확인. `personal` 이면:
+  - `/login` 진입은 즉시 `/` 로 리다이렉트
+  - 로그아웃 버튼, `/directory`(부서 관리), 부서 보드·초대 보드 bucket 을 UI 에서 숨김
+- 권한 매트릭스 자체는 그대로 — 시드 사용자가 SystemAdmin 이라 모든 체크를 통과함.
+
+### 전환 / 마이그레이션
+
+SSO 모드로 다시 바꾸고 싶으면 `TASKBOARD_MODE=sso` 로만 바꿔 재기동. 이미 생성된 `personal` 사용자/부서는 그대로 남아 있으므로 필요 시 수동 삭제.
+
+---
+
+## 7. dev-auth (개발 전용 우회)
 
 `TASKBOARD_DEV_AUTH=1` 환경에서만 컴파일·활성화되는 개발 편의 경로입니다.
 

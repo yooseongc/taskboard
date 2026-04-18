@@ -9,6 +9,7 @@ import TemplatesPage from './pages/TemplatesPage';
 import ManagementPage from './pages/ManagementPage';
 import ProfilePage from './pages/ProfilePage';
 import SettingsPage from './pages/SettingsPage';
+import NotificationsPage from './pages/NotificationsPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 function App() {
@@ -24,6 +25,7 @@ function App() {
           <Route path="/directory" element={<ManagementPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
         </Route>
       </Route>
       <Route path="*" element={<NotFoundPage />} />

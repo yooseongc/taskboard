@@ -84,6 +84,19 @@ impl FromRequestParts<AppState> for AuthnUser {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
+        // Personal mode short-circuit: every request is treated as the
+        // pre-seeded single user, regardless of Authorization header.
+        // `main.rs` guarantees `personal_user` is Some whenever
+        // `config.mode == Personal`.
+        if state.config.mode.is_personal() {
+            if let Some(user) = state.personal_user.as_ref() {
+                return Ok(user.as_ref().clone());
+            }
+            return Err(AppError::Internal(
+                "personal mode enabled but personal_user not bootstrapped".into(),
+            ));
+        }
+
         // 1. Parse Authorization: Bearer <token>
         let header = parts
             .headers
@@ -220,9 +233,17 @@ async fn oidc_path(
     token: &str,
     state: &AppState,
 ) -> Result<AuthnUser, AppError> {
-    // Verify signature and validate exp/aud via JWKS cache
-    let claims = state
+    // Verify signature and validate exp/aud via JWKS cache.
+    // JWKS is only initialized in SSO mode; reaching this path without one
+    // means the operator pointed a JWT-bearing request at a personal-mode
+    // server, which is a misconfiguration.
+    let jwks = state
         .jwks_cache
+        .as_ref()
+        .ok_or_else(|| AppError::InvalidToken(
+            "OIDC verification requested in non-SSO mode".into(),
+        ))?;
+    let claims = jwks
         .verify_token(token, &state.config.keycloak_audience)
         .await?;
 

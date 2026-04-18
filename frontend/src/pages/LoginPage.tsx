@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useDevLogin } from '../api/auth';
 import { useAuthStore } from '../stores/authStore';
+import { useAppConfig } from '../api/config';
 import { startOidcLogin } from '../auth/oidc';
 import Button from '../components/ui/Button';
 
@@ -13,12 +14,16 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const devLogin = useDevLogin();
   const { login, isAuthenticated } = useAuthStore();
+  const { data: appConfig } = useAppConfig();
+  const isPersonal = appConfig?.mode === 'personal';
 
   useEffect(() => {
-    if (isAuthenticated) {
+    // In personal mode there is no login — AuthGuard handles the user
+    // hydration. Bounce any stray /login visit straight back to the app.
+    if (isPersonal || isAuthenticated) {
       navigate('/', { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isPersonal, isAuthenticated, navigate]);
 
   const handleSsoLogin = async () => {
     setSsoLoading(true);

@@ -12,6 +12,7 @@ use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetReques
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
+use config::AppMode;
 use infra::state::AppState;
 
 #[tokio::main]
@@ -27,7 +28,7 @@ async fn main() {
 
     // Load config (S-029) -- panics on missing required env vars
     let config = config::AppConfig::from_env();
-    tracing::info!(bind_addr = %config.bind_addr, "Configuration loaded");
+    tracing::info!(bind_addr = %config.bind_addr, mode = config.mode.as_str(), "Configuration loaded");
 
     // Create DB pool
     let pool = infra::db::create_pool(&config.database_url).await;
@@ -42,16 +43,37 @@ async fn main() {
         .expect("Failed to run migrations");
     tracing::info!("Database migrations applied");
 
-    // Build JWKS cache (S-007)
-    let jwks_cache = std::sync::Arc::new(
-        authz::jwks::JwksCache::new(
-            config.effective_jwks_url(),
-            config.jwks_cache_ttl_secs,
+    // SSO mode: build the JWKS cache. Personal mode: skip — no Keycloak.
+    // Hitting a Keycloak URL during personal-mode boot would crash the
+    // container in air-gapped/standalone deployments.
+    let jwks_cache = match config.mode {
+        AppMode::Sso => Some(std::sync::Arc::new(
+            authz::jwks::JwksCache::new(config.effective_jwks_url(), config.jwks_cache_ttl_secs),
+        )),
+        AppMode::Personal => None,
+    };
+
+    // Personal mode: seed the singleton user/department on every boot
+    // (idempotent) so the `AuthnUser` extractor has something to return.
+    let personal_user = match config.mode {
+        AppMode::Personal => Some(
+            identity::personal::bootstrap_arc(&pool)
+                .await
+                .expect("Failed to bootstrap personal-mode user"),
         ),
-    );
+        AppMode::Sso => None,
+    };
+    if personal_user.is_some() {
+        tracing::info!("Personal mode: singleton user bootstrapped");
+    }
 
     // Build ActiveCache (R-026, D-039)
     let active_cache = infra::active_cache::ActiveCache::new();
+
+    // Deadline scanner — periodic task that turns due_date windows into
+    // inbox rows for the assignees. Runs in every mode (personal included);
+    // the scanner naturally no-ops when there are no assigned tasks.
+    tokio::spawn(collaboration::notifications::deadline_scanner::run(pool.clone()));
 
     // Build AppState
     let state = AppState {
@@ -59,6 +81,7 @@ async fn main() {
         config: config.clone(),
         jwks_cache,
         active_cache,
+        personal_user,
     };
 
     // CORS layer

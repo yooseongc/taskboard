@@ -1,5 +1,6 @@
+use axum::extract::State;
 use axum::routing::{delete, get, patch, post, put};
-use axum::Router;
+use axum::{Json, Router};
 
 use crate::collaboration::handlers as collab;
 use crate::identity::handlers as identity;
@@ -23,6 +24,24 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/api/users/me/preferences",
             get(prefs::get_preferences).patch(prefs::patch_preferences),
+        )
+        // Per-user notification inbox (deadline + board activity fan-out).
+        // `/count` is before `/{id}` so it isn't captured as a UUID path param.
+        .route(
+            "/api/users/me/notifications",
+            get(collab::list_notifications),
+        )
+        .route(
+            "/api/users/me/notifications/count",
+            get(collab::unread_count),
+        )
+        .route(
+            "/api/users/me/notifications/read-all",
+            post(collab::mark_all_read),
+        )
+        .route(
+            "/api/users/me/notifications/{id}",
+            patch(collab::mark_read),
         );
 
     let dept_routes = Router::new()
@@ -225,8 +244,13 @@ pub fn build_router(state: AppState) -> Router {
     // Health check — public, no auth. Same-origin reachable via nginx proxy.
     let health = Router::new().route("/api/health", get(health_check));
 
+    // Runtime config probe — public, no auth. The frontend reads this once
+    // on boot to decide whether to show the login page at all.
+    let config_probe = Router::new().route("/api/config", get(get_app_config));
+
     Router::new()
         .merge(health)
+        .merge(config_probe)
         .merge(auth_routes)
         .merge(user_routes)
         .merge(dept_routes)
@@ -238,4 +262,25 @@ pub fn build_router(state: AppState) -> Router {
 
 async fn health_check() -> &'static str {
     "ok"
+}
+
+#[derive(serde::Serialize)]
+struct AppConfigResponse {
+    mode: &'static str,
+    auth_required: bool,
+    dev_auth_enabled: bool,
+}
+
+async fn get_app_config(State(state): State<AppState>) -> Json<AppConfigResponse> {
+    let mode = state.config.mode.as_str();
+    let auth_required = !state.config.mode.is_personal();
+    #[cfg(feature = "dev-auth")]
+    let dev_auth_enabled = state.config.dev_auth_enabled;
+    #[cfg(not(feature = "dev-auth"))]
+    let dev_auth_enabled = false;
+    Json(AppConfigResponse {
+        mode,
+        auth_required,
+        dev_auth_enabled,
+    })
 }

@@ -1,0 +1,65 @@
+# Personal-mode compose — standalone single-user deployment.
+# Strips Keycloak and GLAuth; the backend boots with TASKBOARD_MODE=personal
+# and seeds a single user at startup. No login, no SSO, no role enforcement.
+#
+# Usage:
+#   docker compose -f docker-compose.personal.yml up -d --build
+#
+# Ports:
+#   frontend  -> http://localhost:5175
+#   backend   -> http://localhost:8080
+#   postgres  -> localhost:5434
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: taskboard
+      POSTGRES_USER: taskboard
+      POSTGRES_PASSWORD: taskboard
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata-personal:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskboard"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    environment:
+      TASKBOARD_MODE: personal
+      DATABASE_URL: postgres://taskboard:taskboard@postgres:5432/taskboard
+      CORS_ALLOWED_ORIGINS: http://localhost:5175
+      BACKEND_BIND_ADDR: 0.0.0.0:8080
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        # Build-time env: wipe Keycloak/dev-auth hints so the bundle never
+        # tries to redirect anywhere. The frontend reads /api/config at
+        # runtime and gates login UI off `mode === 'personal'`.
+        VITE_DEV_AUTH_ENABLED: ""
+        VITE_KEYCLOAK_URL: ""
+        VITE_KEYCLOAK_REALM: ""
+        VITE_KEYCLOAK_CLIENT_ID: ""
+    ports:
+      - "5175:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata-personal:

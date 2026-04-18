@@ -3,4 +3,5 @@
 
 pub mod handlers;
 pub mod models;
+pub mod personal;
 pub mod preference_handlers;

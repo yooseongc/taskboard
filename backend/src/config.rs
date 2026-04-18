@@ -1,6 +1,32 @@
 use std::env;
 use std::net::SocketAddr;
 
+/// Deployment mode — selected at startup via `TASKBOARD_MODE` env var.
+///
+/// * `Sso` — the normal team mode: Keycloak-issued JWTs, role/department
+///   enforcement, multi-user. Default when the env var is unset.
+/// * `Personal` — single-user standalone mode for local/personal use.
+///   No login, no Keycloak, a pre-seeded user that passes every permission
+///   check via `SystemAdmin`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppMode {
+    Sso,
+    Personal,
+}
+
+impl AppMode {
+    pub fn is_personal(self) -> bool {
+        matches!(self, AppMode::Personal)
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AppMode::Sso => "sso",
+            AppMode::Personal => "personal",
+        }
+    }
+}
+
 /// Application configuration loaded from environment variables (S-029).
 ///
 /// `log_level`, `log_format`, and `jwks_grace_ttl_secs` are parsed and
@@ -14,7 +40,9 @@ use std::net::SocketAddr;
 #[derive(Debug, Clone)]
 pub struct AppConfig {
     // Backend core
+    pub mode: AppMode,
     pub database_url: String,
+    /// In personal mode this may be empty — Keycloak isn't consulted.
     pub keycloak_issuer: String,
     pub keycloak_jwks_url: Option<String>,
     pub keycloak_audience: String,
@@ -46,11 +74,33 @@ impl AppConfig {
     /// Panics on missing required keys or invalid values (S-029 failure_semantics).
     pub fn from_env() -> Self {
         let database_url = required_env("DATABASE_URL");
-        let keycloak_issuer = required_env("KEYCLOAK_ISSUER");
-        let keycloak_jwks_url = env::var("KEYCLOAK_JWKS_URL").ok();
-        let keycloak_audience = required_env("KEYCLOAK_AUDIENCE");
 
-        let cors_raw = required_env("CORS_ALLOWED_ORIGINS");
+        let mode = match env::var("TASKBOARD_MODE").as_deref() {
+            Ok("personal") | Ok("Personal") => AppMode::Personal,
+            Ok("sso") | Ok("Sso") | Err(_) => AppMode::Sso,
+            Ok(other) => panic!(
+                "TASKBOARD_MODE must be 'sso' or 'personal'. Got: {other}"
+            ),
+        };
+
+        // Keycloak is only required in SSO mode. In personal mode we accept
+        // empty/missing values so operators can strip them from .env entirely.
+        let (keycloak_issuer, keycloak_audience) = match mode {
+            AppMode::Sso => (required_env("KEYCLOAK_ISSUER"), required_env("KEYCLOAK_AUDIENCE")),
+            AppMode::Personal => (
+                env::var("KEYCLOAK_ISSUER").unwrap_or_default(),
+                env::var("KEYCLOAK_AUDIENCE").unwrap_or_default(),
+            ),
+        };
+        let keycloak_jwks_url = env::var("KEYCLOAK_JWKS_URL").ok();
+
+        // CORS still matters in personal mode (dev server on :5173 hitting
+        // backend on :8080). Default to localhost if unspecified.
+        let cors_raw = match mode {
+            AppMode::Sso => required_env("CORS_ALLOWED_ORIGINS"),
+            AppMode::Personal => env::var("CORS_ALLOWED_ORIGINS")
+                .unwrap_or_else(|_| "http://localhost:5173,http://localhost:5174".to_string()),
+        };
         if cors_raw.contains('*') {
             panic!("CORS_ALLOWED_ORIGINS must not contain '*'. Got: {cors_raw}");
         }
@@ -107,6 +157,7 @@ impl AppConfig {
         }
 
         Self {
+            mode,
             database_url,
             keycloak_issuer,
             keycloak_jwks_url,
@@ -156,6 +207,7 @@ mod tests {
     fn q007_effective_jwks_url_from_issuer() {
         // effective_jwks_url derives from keycloak_issuer if not set.
         let config = AppConfig {
+            mode: AppMode::Sso,
             database_url: String::new(),
             keycloak_issuer: "https://keycloak.example.com/realms/test".into(),
             keycloak_jwks_url: None,
@@ -183,6 +235,7 @@ mod tests {
     #[test]
     fn q007_effective_jwks_url_explicit() {
         let config = AppConfig {
+            mode: AppMode::Sso,
             database_url: String::new(),
             keycloak_issuer: "https://keycloak.example.com/realms/test".into(),
             keycloak_jwks_url: Some("https://custom-jwks.example.com/keys".into()),

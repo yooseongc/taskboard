@@ -1,15 +1,23 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../stores/authStore';
 import { getLogoutUrl } from '../auth/oidc';
+import { useAppConfig } from '../api/config';
 import { usePermissions } from '../hooks/usePermissions';
 import { useMyBoards, useToggleBoardPin } from '../api/boards';
 import { useBoardViews, type ViewType } from '../api/views';
+import { usePreferences, usePatchPreferences } from '../api/preferences';
 import { ToastContainer } from './Toast';
 import CommandPalette from './CommandPalette';
 import OnboardingTour from './OnboardingTour';
 import AccentColorSync from './AccentColorSync';
+import NotificationBell from './NotificationBell';
+
+const SIDEBAR_MIN = 180;
+const SIDEBAR_MAX = 360;
+const SIDEBAR_DEFAULT = 224;
+const SIDEBAR_KEY_STEP = 16;
 
 const navItems = [
   { path: '/', labelKey: 'nav.boards', icon: 'M4 6h16M4 12h16M4 18h16', adminOnly: false },
@@ -40,18 +48,95 @@ export default function Layout() {
   const { isSystemAdmin } = usePermissions();
   const { t } = useTranslation();
   const { data: myBoardsData } = useMyBoards('all');
+  const { data: appConfig } = useAppConfig();
+  const isPersonal = appConfig?.mode === 'personal';
+
+  // Sidebar width is a user preference stored in the free-form `preferences`
+  // JSONB bag. We clamp to [180, 360] px — narrower clips the brand text,
+  // wider steals meaningful space from the main canvas on common laptop
+  // screens. The hook is only active on desktop (md:relative); mobile
+  // still uses the full-height drawer toggle.
+  const { data: prefs } = usePreferences();
+  const patchPrefs = usePatchPreferences();
+  const storedWidth = (prefs?.preferences as { sidebar_width?: number } | undefined)?.sidebar_width;
+  const [sidebarWidth, setSidebarWidth] = useState<number>(SIDEBAR_DEFAULT);
+  useEffect(() => {
+    if (typeof storedWidth === 'number' && storedWidth >= SIDEBAR_MIN && storedWidth <= SIDEBAR_MAX) {
+      setSidebarWidth(storedWidth);
+    }
+  }, [storedWidth]);
+  const dragStartRef = useRef<{ x: number; startWidth: number } | null>(null);
+  const startResize = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      dragStartRef.current = { x: e.clientX, startWidth: sidebarWidth };
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      const onMove = (ev: MouseEvent) => {
+        const start = dragStartRef.current;
+        if (!start) return;
+        const next = Math.max(
+          SIDEBAR_MIN,
+          Math.min(SIDEBAR_MAX, start.startWidth + (ev.clientX - start.x)),
+        );
+        setSidebarWidth(next);
+      };
+      const onUp = () => {
+        const start = dragStartRef.current;
+        dragStartRef.current = null;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        // Persist only if the width actually changed — avoids needless
+        // PATCH round-trips on a stray click on the handle.
+        if (start && start.startWidth !== sidebarWidthRef.current) {
+          patchPrefs.mutate({
+            preferences: {
+              ...(prefs?.preferences ?? {}),
+              sidebar_width: sidebarWidthRef.current,
+            },
+          });
+        }
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    },
+    [sidebarWidth, prefs, patchPrefs],
+  );
+  // Mirror in a ref so the mouseup handler reads the latest value without
+  // re-binding the effect.
+  const sidebarWidthRef = useRef(sidebarWidth);
+  useEffect(() => {
+    sidebarWidthRef.current = sidebarWidth;
+  }, [sidebarWidth]);
+  const onResizeKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      const delta = e.key === 'ArrowLeft' ? -SIDEBAR_KEY_STEP : SIDEBAR_KEY_STEP;
+      const next = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, sidebarWidth + delta));
+      setSidebarWidth(next);
+      patchPrefs.mutate({
+        preferences: { ...(prefs?.preferences ?? {}), sidebar_width: next },
+      });
+    },
+    [sidebarWidth, prefs, patchPrefs],
+  );
 
   // ROLES.md §5: 4 buckets — favorites + department + personal + invited.
   // A pinned board appears in both "Favorites" and its native bucket.
+  // Personal mode collapses this to just favorites + personal (no teams,
+  // no invitations, so the empty buckets would just be noise).
   const boardBuckets = useMemo(() => {
     const all = myBoardsData?.items ?? [];
     return {
       favorites: all.filter((b) => b.pinned),
-      department: all.filter((b) => b.bucket === 'department'),
+      department: isPersonal ? [] : all.filter((b) => b.bucket === 'department'),
       personal: all.filter((b) => b.bucket === 'personal'),
-      invited: all.filter((b) => b.bucket === 'invited'),
+      invited: isPersonal ? [] : all.filter((b) => b.bucket === 'invited'),
     };
-  }, [myBoardsData]);
+  }, [myBoardsData, isPersonal]);
   const totalBoards = (myBoardsData?.items ?? []).length;
 
   // Ctrl+K / Cmd+K opens command palette
@@ -96,10 +181,13 @@ export default function Layout() {
           aria-hidden="true"
         />
       )}
-      {/* Sidebar */}
+      {/* Sidebar — width is user-resizable on desktop (see resize handle
+          below). On mobile it collapses to 0 and the drawer pattern takes
+          over via the fixed positioning + backdrop above. */}
       <aside
-        className={`${sidebarOpen ? 'w-56' : 'w-0 overflow-hidden'} flex-shrink-0 flex flex-col transition-all duration-200 fixed md:relative inset-y-0 left-0 z-40`}
+        className={`${sidebarOpen ? '' : 'w-0 overflow-hidden'} flex-shrink-0 flex flex-col transition-[width] duration-200 fixed md:relative inset-y-0 left-0 z-40`}
         style={{
+          width: sidebarOpen ? `${sidebarWidth}px` : 0,
           backgroundColor: 'var(--color-sidebar-bg)',
           color: 'var(--color-sidebar-text)',
         }}
@@ -119,7 +207,12 @@ export default function Layout() {
         {/* `min-h-0` lets this flex child shrink below its intrinsic content
             size so the inner overflow-y-auto actually engages. */}
         <nav className="flex-1 min-h-0 py-2 overflow-y-auto" aria-label="Main navigation">
-          {navItems.filter((item) => !item.adminOnly || isSystemAdmin).map((item) => {
+          {navItems
+            .filter((item) => !item.adminOnly || isSystemAdmin)
+            // Personal mode: hide the directory link — there are no other
+            // users or departments to browse.
+            .filter((item) => !(isPersonal && item.path === '/directory'))
+            .map((item) => {
             const active = location.pathname === item.path;
             return (
               <Link
@@ -174,21 +267,25 @@ export default function Layout() {
                     boards={boardBuckets.favorites}
                     pathname={location.pathname}
                   />
+                  {!isPersonal && (
+                    <BoardBucketSection
+                      label={t('boards.bucket.department', '부서 보드')}
+                      boards={boardBuckets.department}
+                      pathname={location.pathname}
+                    />
+                  )}
                   <BoardBucketSection
-                    label={t('boards.bucket.department', '부서 보드')}
-                    boards={boardBuckets.department}
-                    pathname={location.pathname}
-                  />
-                  <BoardBucketSection
-                    label={t('boards.bucket.personal', '개인 보드')}
+                    label={isPersonal ? t('boards.bucket.all', '내 보드') : t('boards.bucket.personal', '개인 보드')}
                     boards={boardBuckets.personal}
                     pathname={location.pathname}
                   />
-                  <BoardBucketSection
-                    label={t('boards.bucket.invited', '초대받은 보드')}
-                    boards={boardBuckets.invited}
-                    pathname={location.pathname}
-                  />
+                  {!isPersonal && (
+                    <BoardBucketSection
+                      label={t('boards.bucket.invited', '초대받은 보드')}
+                      boards={boardBuckets.invited}
+                      pathname={location.pathname}
+                    />
+                  )}
                 </div>
               )}
             </div>
@@ -229,21 +326,42 @@ export default function Layout() {
                 </div>
               </div>
             </Link>
-            <button
-              onClick={() => {
-                logout();
-                window.location.href = getLogoutUrl();
-              }}
-              className="p-1.5 rounded flex-shrink-0 hover:bg-[var(--color-sidebar-hover)]"
-              style={{ color: 'var(--color-text-muted)' }}
-              title="Logout"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-            </button>
+            {!isPersonal && (
+              <button
+                onClick={() => {
+                  logout();
+                  window.location.href = getLogoutUrl();
+                }}
+                className="p-1.5 rounded flex-shrink-0 hover:bg-[var(--color-sidebar-hover)]"
+                style={{ color: 'var(--color-text-muted)' }}
+                title="Logout"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
+        {/* Resize handle — desktop only (hidden on mobile drawer) and only
+            while the sidebar is open. 4 px hit area with a hover tint so the
+            affordance reads without cluttering the border.
+            role=separator + aria-valuenow makes screen readers announce the
+            current width; Arrow keys nudge it in 16 px steps. */}
+        {sidebarOpen && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-valuemin={SIDEBAR_MIN}
+            aria-valuemax={SIDEBAR_MAX}
+            aria-valuenow={sidebarWidth}
+            aria-label="Resize sidebar"
+            tabIndex={0}
+            onMouseDown={startResize}
+            onKeyDown={onResizeKeyDown}
+            className="hidden md:block absolute top-0 right-0 h-full w-1 cursor-col-resize hover:bg-[var(--color-primary)]/40 focus:bg-[var(--color-primary)]/60 focus:outline-none transition-colors"
+          />
+        )}
       </aside>
 
       {/* Main area — `min-w-0` is what lets flex children shrink below
@@ -277,9 +395,11 @@ export default function Layout() {
               />
             </svg>
           </button>
+          <div className="ml-auto flex items-center gap-2">
+          <NotificationBell />
           <button
             onClick={() => setPaletteOpen(true)}
-            className="ml-auto flex items-center gap-2 px-2.5 py-1 rounded text-xs"
+            className="flex items-center gap-2 px-2.5 py-1 rounded text-xs"
             style={{
               backgroundColor: 'var(--color-surface-hover)',
               color: 'var(--color-text-muted)',
@@ -293,6 +413,7 @@ export default function Layout() {
             <span>Search</span>
             <kbd className="px-1 rounded" style={{ backgroundColor: 'var(--color-bg)' }}>Ctrl+K</kbd>
           </button>
+          </div>
         </header>
 
         {/* Page content. `overflow-auto` gives both axes so page-level
