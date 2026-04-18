@@ -354,14 +354,24 @@ export default function CalendarView({
   }, [tasks, dateField, customFieldValues, groupBy, customFields, allFieldValues, visibleFields, valuesByTask]);
 
   const eventStyleGetter = useCallback((event: CalendarEvent) => {
+    // Fading-chip pattern — soft-tinted background + 3px color stripe on
+    // the left, body text uses the surface's --color-text. Readability wins
+    // over saturation: month cells stacked 4+ deep no longer read as a
+    // blaring "traffic-cone" row, and the chip still telegraphs its priority
+    // via the stripe + subtle tint. color-mix() is widely supported (all
+    // evergreen browsers 2023+); graceful fallback would simply show the
+    // raw event.color if the UA couldn't parse it.
     return {
       style: {
-        backgroundColor: event.color,
+        backgroundColor: `color-mix(in srgb, ${event.color} 14%, var(--color-surface))`,
+        borderLeft: `3px solid ${event.color}`,
+        borderTop: '1px solid var(--color-border)',
+        borderRight: '1px solid var(--color-border)',
+        borderBottom: '1px solid var(--color-border)',
         borderRadius: '4px',
-        opacity: 0.9,
-        color: '#ffffff',
-        border: 'none',
+        color: 'var(--color-text)',
         fontSize: '12px',
+        padding: '1px 6px',
       },
     };
   }, []);
@@ -408,8 +418,10 @@ export default function CalendarView({
  */
 function chipStyle(c: ChipDescriptor): React.CSSProperties {
   if (c.hex) {
-    // Operator-chosen hex: paint directly, keep white text so the tag stays
-    // legible over arbitrary hues on top of the saturated event background.
+    // Operator-chosen hex: paint directly. The event pill is now a light
+    // fading chip, so any strong hex tends to read fine with white text —
+    // we pick white because arbitrary hex can be either light or dark and
+    // white is the safer default against saturated user palettes.
     return { backgroundColor: c.hex, color: '#ffffff' };
   }
   if (c.variant) {
@@ -420,9 +432,13 @@ function chipStyle(c: ChipDescriptor): React.CSSProperties {
       color: `var(--tag-${c.variant}-text)`,
     };
   }
-  // Unknown/missing — translucent white overlay so the event color still
-  // reads through without a transparent "ghost" chip.
-  return { backgroundColor: 'rgba(255,255,255,0.22)', color: '#ffffff' };
+  // Unknown/missing — soft surface chip that sits on top of the fading
+  // event background without punching through. `-hover` gives us a bump
+  // above the event's tinted backdrop so the chip's edge still reads.
+  return {
+    backgroundColor: 'var(--color-surface-hover)',
+    color: 'var(--color-text-secondary)',
+  };
 }
 
 /**
