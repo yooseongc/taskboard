@@ -15,6 +15,11 @@ export default defineConfig({
     },
   },
   build: {
+    // The `emoji-data` chunk is inherently ~500KB (full Unicode emoji set).
+    // It's dynamically imported by EmojiPickerButton so it never touches the
+    // main bundle, but Rollup still warns at the default 500KB threshold.
+    // Bump to 600KB so real regressions — not the emoji blob — surface.
+    chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
         manualChunks: {
@@ -24,7 +29,13 @@ export default defineConfig({
           state: ['zustand'],
           calendar: ['react-big-calendar', 'date-fns'],
           markdown: ['react-markdown'],
-          emoji: ['emoji-mart', '@emoji-mart/react', '@emoji-mart/data'],
+          // Split the emoji library into runtime (React component, small)
+          // and data (full emoji catalog, ~500KB) so the picker UI mounts
+          // as soon as the tiny runtime arrives and the data blob
+          // downloads in parallel — the old combined chunk made the
+          // Suspense spinner hold until both finished.
+          'emoji-runtime': ['emoji-mart', '@emoji-mart/react'],
+          'emoji-data': ['@emoji-mart/data'],
         },
       },
     },
