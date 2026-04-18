@@ -622,14 +622,11 @@ export default function TableView({
     </tr>
   );
 
-  const filterAddDisabled = customFields.length === 0;
-
   return (
-    <div className="p-4">
-      {/* Single unified toolbar: Search · Group · +Filter · Properties ·
-          count · Density · +New. All view-scoped controls live in the
-          same row so users don't have to scan two stripes for the
-          related actions. */}
+    <div>
+      {/* Unified toolbar — same border-bottom+surface strip as Board and
+          Calendar, so switching between the three tabs doesn't re-draw the
+          chrome. The table body below lives inside its own padded region. */}
       <ViewToolbar
         search={search}
         onSearchChange={setSearch}
@@ -648,32 +645,9 @@ export default function TableView({
         customFields={customFields.filter((f) => !f.id.startsWith('__builtin:'))}
         density={density}
         onDensityChange={onDensityChange}
-        filter={{
-          count: filters.length,
-          onClick: () => {
-            // Clicking Filter either adds a first chip or focuses the
-            // existing chip row — keeping the action idempotent means the
-            // user never has to think "was it already open?".
-            if (filters.length > 0) return;
-            const firstField = customFields[0];
-            if (!firstField) return;
-            setFilters([
-              {
-                id: crypto.randomUUID(),
-                fieldId: firstField.id,
-                operator: operatorsFor(firstField.field_type)[0],
-                value: '',
-              },
-            ]);
-          },
-        }}
         sort={{
           key: sortKey,
           dir: sortDir,
-          // Built-in keys first, then every custom field the user has on
-          // this board. Sorting by any field with a primitive (text /
-          // number / date / checkbox / select) value is supported; the
-          // generic comparator in `sorted` handles each type.
           options: [
             { id: 'title', label: t('tableView.colTitle') },
             { id: 'column', label: t('tableView.colColumn') },
@@ -685,90 +659,31 @@ export default function TableView({
             setSortDir(dir);
           },
         }}
-        leftExtras={
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => setPropertiesOpen(true)}
-          >
-            {t('tableView.properties')}
-          </Button>
-        }
-        rightExtras={
-          onCreateTask ? (
-            <Button size="sm" onClick={() => setAdding(true)}>
-              {t('board.addTask')}
-            </Button>
-          ) : null
+        filters={{
+          chips: filters,
+          fields: customFields,
+          mode: filterMode,
+          onModeChange: setFilterMode,
+          onChange: (chip) =>
+            setFilters((prev) => {
+              const exists = prev.some((c) => c.id === chip.id);
+              return exists
+                ? prev.map((c) => (c.id === chip.id ? chip : c))
+                : [...prev, chip];
+            }),
+          onRemove: (id) => setFilters((prev) => prev.filter((c) => c.id !== id)),
+          onClear: () => setFilters([]),
+        }}
+        properties={{ onOpen: () => setPropertiesOpen(true) }}
+        newAction={
+          onCreateTask
+            ? { onClick: () => setAdding(true), label: t('board.addTask') }
+            : undefined
         }
       />
 
-      {/* Active filter chips. Each chip is editable in place — change the
-          field, operator, or value and the table re-filters live. */}
-      {filters.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 mb-4">
-          {/* AND/OR mode toggle. Visible only when ≥ 2 chips since a single
-              chip's mode is meaningless. Combinator label appears between
-              chips below to make the relation explicit. */}
-          {filters.length >= 2 && (
-            <div
-              className="inline-flex rounded text-xs overflow-hidden"
-              style={{ border: '1px solid var(--color-border)' }}
-            >
-              {(['and', 'or'] as FilterMode[]).map((m) => {
-                const active = filterMode === m;
-                return (
-                  <button
-                    key={m}
-                    onClick={() => setFilterMode(m)}
-                    className="px-2 py-0.5 font-medium uppercase"
-                    style={{
-                      backgroundColor: active
-                        ? 'var(--color-primary)'
-                        : 'var(--color-surface)',
-                      color: active
-                        ? 'var(--color-text-inverse)'
-                        : 'var(--color-text-secondary)',
-                    }}
-                  >
-                    {t(`tableView.mode.${m}`)}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          {filters.map((chip, idx) => (
-            <span key={chip.id} className="inline-flex items-center gap-2">
-              {idx > 0 && (
-                <span
-                  className="text-[10px] font-bold uppercase tracking-wider"
-                  style={{ color: 'var(--color-text-muted)' }}
-                >
-                  {t(`tableView.mode.${filterMode}`)}
-                </span>
-              )}
-              <FilterChipEditor
-                chip={chip}
-                fields={customFields}
-                onChange={(next) =>
-                  setFilters((prev) => prev.map((c) => (c.id === chip.id ? next : c)))
-                }
-                onRemove={() =>
-                  setFilters((prev) => prev.filter((c) => c.id !== chip.id))
-                }
-              />
-            </span>
-          ))}
-          <button
-            onClick={() => setFilters([])}
-            className="text-xs hover:underline"
-            style={{ color: 'var(--color-text-muted)' }}
-          >
-            {t('tableView.clearFilters')}
-          </button>
-        </div>
-      )}
-
+      {/* Table body lives in its own padded region below the toolbar strip. */}
+      <div className="p-4">
       {/* Bulk action bar */}
       {selected.size > 0 && (
         <div
@@ -1067,6 +982,7 @@ export default function TableView({
           </div>
         </Modal>
       )}
+      </div>
     </div>
   );
 }

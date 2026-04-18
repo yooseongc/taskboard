@@ -53,7 +53,20 @@
     "addColumn": "+ Add status",
     "addTask": "+ Add task",
     "columnTitle": "Status name...",
-    "taskTitle": "Task title..."
+    "taskTitle": "Task title...",
+    "editView": "Edit view",
+    "viewName": "View name",
+    "viewNamePlaceholder": "Enter view name",
+    "viewType": "View type",
+    "shareView": "Share with board",
+    "shared": "Shared",
+    "notShared": "Private",
+    "deleteView": "Delete view",
+    "deleteThisView": "Delete this view",
+    "deleteViewConfirm": "Delete the view \"{{name}}\"?",
+    "calendarNewTaskPrompt": "Task title for this date",
+    "calendarNewTaskBlocked": "No column available — add a status column first.",
+    "searchPlaceholderCalendar": "Search tasks by title..."
   },
   "task": {
     "summary": "Summary",

@@ -48,6 +48,11 @@ export function useCreateTask(boardId: string) {
       description?: string;
       priority?: string;
       icon?: string;
+      /** ISO 8601 datetime strings — backend's CreateTaskRequest already
+       *  accepts these, so the calendar view can stamp a due_date when the
+       *  user creates a task by clicking a slot. */
+      start_date?: string;
+      due_date?: string;
     }) =>
       apiFetch<TaskDto>(`/api/boards/${boardId}/tasks`, {
         method: 'POST',

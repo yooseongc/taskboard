@@ -2,6 +2,29 @@ import { useTranslation } from 'react-i18next';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { CustomField } from '../api/customFields';
 import type { GroupByKey, ViewDensity } from '../types/api';
+import { type FilterChip, FilterChipEditor, operatorsFor } from './TableView';
+import Button from './ui/Button';
+
+type FilterMode = 'and' | 'or';
+
+/** All filter plumbing for a view — the toolbar renders both the "+ 필터"
+ *  button and, when chips exist, a second row with the editable chips and
+ *  (optional) AND/OR mode toggle. Extracting this into a single prop keeps
+ *  Board/Table/Calendar toolbars visually identical.
+ */
+interface FilterControl {
+  chips: FilterChip[];
+  fields: CustomField[];
+  mode?: FilterMode;
+  onModeChange?: (m: FilterMode) => void;
+  onChange: (chip: FilterChip) => void;
+  onRemove: (id: string) => void;
+  onClear: () => void;
+  /** Called when the user clicks "+ 필터". Default: add a chip bound to the
+   *  first available custom field. Override if the view wants a different
+   *  seed (or to open a picker instead). */
+  onAdd?: () => void;
+}
 
 interface Props {
   search?: string;
@@ -17,13 +40,7 @@ interface Props {
   density?: ViewDensity;
   onDensityChange?: (d: ViewDensity) => void;
 
-  /** First-class Filter button (TableView). Showing a count badge makes
-   *  active filters discoverable without scrolling. */
-  filter?: {
-    count: number;
-    onClick: () => void;
-  };
-  /** First-class Sort menu (TableView). `null` key means "no sort". */
+  /** Sort menu (TableView only). `null` key means "no sort". */
   sort?: {
     key: string | null;
     dir: 'asc' | 'desc';
@@ -31,10 +48,24 @@ interface Props {
     onChange: (key: string, dir: 'asc' | 'desc') => void;
   };
 
-  /** Slot for view-specific controls (Properties, ad-hoc actions). */
+  /** Filter plumbing. When passed, the toolbar renders a "+ 필터" button
+   *  (with count badge when chips exist) and a chip row below the main bar. */
+  filters?: FilterControl;
+
+  /** Optional "Properties" button — opens the view's field visibility panel. */
+  properties?: { onOpen: () => void; label?: string };
+
+  /** Optional right-side primary action (e.g. "+ 새 작업" on Table). */
+  newAction?: { onClick: () => void; label: string };
+
+  /** Slot for view-specific controls before density (e.g. calendar Date picker). */
   leftExtras?: ReactNode;
-  /** Slot for right-side content (SavedView bar, + New). */
+  /** Slot for extra right-side content (SavedViewBar). */
   rightExtras?: ReactNode;
+
+  /** When true, strips the default page-level wrapper. Table view opts in
+   *  because it nests the toolbar inside a card container of its own. */
+  bare?: boolean;
 }
 
 const DEFAULT_GROUP_OPTIONS: Array<GroupByKey['type']> = [
@@ -57,14 +88,38 @@ export default function ViewToolbar({
   customFields = [],
   density,
   onDensityChange,
-  filter,
   sort,
+  filters,
+  properties,
+  newAction,
   leftExtras,
   rightExtras,
+  bare = false,
 }: Props) {
   const { t } = useTranslation();
 
-  return (
+  const showModeToggle =
+    filters?.mode !== undefined &&
+    filters?.onModeChange !== undefined &&
+    filters.chips.length >= 2;
+
+  const handleAddFilter = () => {
+    if (!filters) return;
+    if (filters.onAdd) {
+      filters.onAdd();
+      return;
+    }
+    const firstField = filters.fields[0];
+    if (!firstField) return;
+    filters.onChange({
+      id: crypto.randomUUID(),
+      fieldId: firstField.id,
+      operator: operatorsFor(firstField.field_type)[0],
+      value: '',
+    });
+  };
+
+  const mainRow = (
     <div className="flex flex-wrap items-center gap-2 py-2">
       {onSearchChange !== undefined && (
         <input
@@ -88,20 +143,121 @@ export default function ViewToolbar({
           customFields={customFields}
         />
       )}
-      {filter && <FilterButton count={filter.count} onClick={filter.onClick} />}
       {sort && <SortMenu sort={sort} />}
+      {filters && (
+        <AddFilterButton
+          count={filters.chips.length}
+          onClick={handleAddFilter}
+        />
+      )}
+      {properties && (
+        <PropertiesButton
+          label={properties.label ?? t('tableView.properties')}
+          onClick={properties.onOpen}
+        />
+      )}
       {leftExtras}
       <div className="ml-auto flex items-center gap-2">
         {onDensityChange && density && (
           <DensityToggle value={density} onChange={onDensityChange} />
         )}
+        {newAction && (
+          <Button size="sm" onClick={newAction.onClick}>
+            {newAction.label}
+          </Button>
+        )}
         {rightExtras}
       </div>
     </div>
   );
+
+  const chipRow = filters && filters.chips.length > 0 && (
+    <div className="flex flex-wrap items-center gap-2 pb-2">
+      {showModeToggle && (
+        <div
+          className="inline-flex rounded text-xs overflow-hidden"
+          style={{ border: '1px solid var(--color-border)' }}
+        >
+          {(['and', 'or'] as FilterMode[]).map((m) => {
+            const active = filters.mode === m;
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => filters.onModeChange?.(m)}
+                className="px-2 py-0.5 font-medium uppercase"
+                style={{
+                  backgroundColor: active
+                    ? 'var(--color-primary)'
+                    : 'var(--color-surface)',
+                  color: active
+                    ? 'var(--color-text-inverse)'
+                    : 'var(--color-text-secondary)',
+                }}
+              >
+                {t(`tableView.mode.${m}`)}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {filters.chips.map((chip, idx) => (
+        <span key={chip.id} className="inline-flex items-center gap-2">
+          {idx > 0 && (
+            <span
+              className="text-[10px] font-bold uppercase tracking-wider"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              {t(`tableView.mode.${filters.mode ?? 'and'}`)}
+            </span>
+          )}
+          <FilterChipEditor
+            chip={chip}
+            fields={filters.fields}
+            onChange={filters.onChange}
+            onRemove={() => filters.onRemove(chip.id)}
+          />
+        </span>
+      ))}
+      <button
+        type="button"
+        onClick={filters.onClear}
+        className="text-xs hover:underline"
+        style={{ color: 'var(--color-text-muted)' }}
+      >
+        {t('tableView.clearFilters', 'Clear filters')}
+      </button>
+    </div>
+  );
+
+  if (bare) {
+    return (
+      <>
+        {mainRow}
+        {chipRow}
+      </>
+    );
+  }
+
+  return (
+    <div
+      className="px-4 md:px-6"
+      style={{
+        borderBottom: '1px solid var(--color-border)',
+        backgroundColor: 'var(--color-surface)',
+      }}
+    >
+      {mainRow}
+      {chipRow}
+    </div>
+  );
 }
 
-function FilterButton({ count, onClick }: { count: number; onClick: () => void }) {
+// ---------------------------------------------------------------------------
+// Shared button vocabulary — all three views get the same visual rhythm.
+// ---------------------------------------------------------------------------
+
+function AddFilterButton({ count, onClick }: { count: number; onClick: () => void }) {
   const { t } = useTranslation();
   const active = count > 0;
   return (
@@ -115,7 +271,11 @@ function FilterButton({ count, onClick }: { count: number; onClick: () => void }
         color: active ? 'var(--color-primary-text)' : 'var(--color-text)',
       }}
     >
-      <span>{t('toolbar.filter', 'Filter')}</span>
+      <span>
+        {active
+          ? t('toolbar.filter', 'Filter')
+          : `+ ${t('tableView.addFilter', 'Add filter')}`}
+      </span>
       {active && (
         <span
           className="inline-flex items-center justify-center rounded-full text-[10px] font-bold px-1.5 min-w-[18px]"
@@ -127,6 +287,23 @@ function FilterButton({ count, onClick }: { count: number; onClick: () => void }
           {count}
         </span>
       )}
+    </button>
+  );
+}
+
+function PropertiesButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm hover:bg-[var(--color-surface-hover)]"
+      style={{
+        backgroundColor: 'var(--color-surface)',
+        border: '1px solid var(--color-border)',
+        color: 'var(--color-text)',
+      }}
+    >
+      {label}
     </button>
   );
 }
@@ -193,8 +370,6 @@ function SortMenu({
                 <button
                   type="button"
                   onClick={() => {
-                    // Click on the row = toggle dir when already sorted, else
-                    // asc on first click.
                     const next: 'asc' | 'desc' =
                       isActive && sort.dir === 'asc' ? 'desc' : 'asc';
                     sort.onChange(opt.id, next);

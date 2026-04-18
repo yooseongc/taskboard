@@ -43,6 +43,7 @@ import CalendarView, { type CalendarDateField } from '../components/CalendarView
 import BoardSettingsModal from '../components/BoardSettingsModal';
 import BoardMembersModal from '../components/BoardMembersModal';
 import Modal from '../components/ui/Modal';
+import Button from '../components/ui/Button';
 import ViewToolbar from '../components/ViewToolbar';
 import AvatarStack from '../components/AvatarStack';
 import TaskMetaBadges from '../components/TaskMetaBadges';
@@ -56,7 +57,7 @@ import {
 } from '../api/views';
 import type { BoardViewConfig, TableViewConfig } from '../api/views';
 import type { TableViewState } from '../components/TableView';
-import { type FilterChip, evaluateFilter, operatorsFor, FilterChipEditor } from '../components/TableView';
+import { type FilterChip, evaluateFilter } from '../components/TableView';
 import { useToastStore } from '../stores/toastStore';
 import Breadcrumbs from '../components/ui/Breadcrumbs';
 import { useTagTheme } from '../theme/constants';
@@ -225,6 +226,9 @@ export default function BoardViewPage() {
   // Calendar filters mirror the board/table pattern: FilterChip[] applied
   // via evaluateFilter to narrow the event set without touching dates.
   const [calendarFilters, setCalendarFilters] = useState<FilterChip[]>([]);
+  // Calendar title search — independent from board/table search state so
+  // switching tabs doesn't stomp one another's query.
+  const [calendarSearch, setCalendarSearch] = useState('');
 
   // Debounced auto-save: when the active view's local config changes,
   // PATCH the selected view so the change persists without an explicit
@@ -339,20 +343,47 @@ export default function BoardViewPage() {
       .map((f): CalendarDateField => ({ id: f.id, label: f.name, kind: 'custom' })),
   ];
 
-  // Calendar-specific filters: applied on top of `tasks` so a saved
-  // calendar view can narrow independently of the board view. Declared
-  // here so it's in scope before the early board-filter returns below.
+  // Calendar-specific task creator. Only entry path is the per-cell
+  // hover-to-"+", click-to-expand inline input rendered by CalendarView's
+  // DateCellWrapper. No modal, no window.prompt — the title already
+  // comes in from the inline editor's Enter handler.
+  const handleCreateTaskAtDate = (date: Date, title: string) => {
+    const columns = columnsData?.items ?? [];
+    const firstColumn = columns[0];
+    if (!firstColumn) {
+      addToast('error', t('board.calendarNewTaskBlocked'));
+      return;
+    }
+    createTask.mutate({
+      title: title.trim(),
+      column_id: firstColumn.id,
+      due_date: date.toISOString(),
+    });
+  };
+
+  // Calendar-specific filters + search: applied on top of `tasks` so a
+  // saved calendar view can narrow independently of the board view.
+  // Returns a predicate (or null when no narrowing is needed) so the
+  // calendar render below can do `calendarTasks ? tasks.filter(...) : tasks`.
   const calendarTasks = (() => {
-    if (calendarFilters.length === 0) return null;
+    const q = calendarSearch.trim().toLowerCase();
+    if (calendarFilters.length === 0 && !q) return null;
     const allFields = fieldsData?.items ?? [];
-    return (task: TaskDto) =>
-      calendarFilters.every((chip) => {
+    return (task: TaskDto) => {
+      if (q) {
+        const hit =
+          task.title.toLowerCase().includes(q) ||
+          (task.summary ?? '').toLowerCase().includes(q);
+        if (!hit) return false;
+      }
+      return calendarFilters.every((chip) => {
         const field = allFields.find((f) => f.id === chip.fieldId);
         if (!field) return true;
         const taskValues = valuesByTask.get(task.id) ?? [];
         const fv = taskValues.find((v) => v.field_id === chip.fieldId);
         return evaluateFilter(chip, field, fv?.value);
       });
+    };
   })();
 
   // Apply board-level search/filter (only affects board view)
@@ -753,84 +784,44 @@ export default function BoardViewPage() {
         </button>
       </div>
 
-      {/* Board toolbar (search/group-by/density + priority filter) */}
+      {/* Board toolbar — unified ViewToolbar: search/groupBy/density +
+          filter chip row + properties. The page-level wrapper (border, bg)
+          is baked into ViewToolbar so Board/Calendar match pixel-for-pixel. */}
       {activeView === 'board' && (
-        <div
-          className="px-4 md:px-6"
-          style={{
-            borderBottom: '1px solid var(--color-border)',
-            backgroundColor: 'var(--color-surface)',
+        <ViewToolbar
+          search={boardSearch}
+          onSearchChange={setBoardSearch}
+          groupBy={groupBy}
+          onGroupByChange={setGroupBy}
+          groupByOptions={[
+            'column',
+            'status',
+            'priority',
+            'assignee',
+            'label',
+            'custom_field',
+          ]}
+          customFields={fieldsData?.items ?? []}
+          density={density}
+          onDensityChange={setDensity}
+          filters={{
+            chips: boardFilters,
+            fields: fieldsData?.items ?? [],
+            onChange: (chip) =>
+              setBoardFilters((prev) => {
+                const exists = prev.some((c) => c.id === chip.id);
+                return exists
+                  ? prev.map((c) => (c.id === chip.id ? chip : c))
+                  : [...prev, chip];
+              }),
+            onRemove: (id) => setBoardFilters((prev) => prev.filter((c) => c.id !== id)),
+            onClear: () => {
+              setBoardSearch('');
+              setBoardFilters([]);
+            },
           }}
-        >
-          <ViewToolbar
-            search={boardSearch}
-            onSearchChange={setBoardSearch}
-            groupBy={groupBy}
-            onGroupByChange={setGroupBy}
-            groupByOptions={[
-              'column',
-              'status',
-              'priority',
-              'assignee',
-              'label',
-              'custom_field',
-            ]}
-            customFields={fieldsData?.items ?? []}
-            density={density}
-            onDensityChange={setDensity}
-            leftExtras={
-              <>
-                <button
-                  onClick={() => {
-                    const allFields = fieldsData?.items ?? [];
-                    const firstField = allFields[0];
-                    if (!firstField) return;
-                    setBoardFilters((prev) => [
-                      ...prev,
-                      {
-                        id: crypto.randomUUID(),
-                        fieldId: firstField.id,
-                        operator: operatorsFor(firstField.field_type)[0],
-                        value: '',
-                      },
-                    ]);
-                  }}
-                  className="text-sm px-2 py-1"
-                  style={{
-                    color: 'var(--color-text-muted)',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: 'var(--radius-md)',
-                  }}
-                >
-                  + {t('tableView.addFilter')}
-                </button>
-                <button
-                  onClick={() => setBoardPropertiesOpen(true)}
-                  className="text-sm px-2 py-1"
-                  style={{
-                    color: 'var(--color-text-muted)',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: 'var(--radius-md)',
-                  }}
-                >
-                  {t('tableView.properties')}
-                </button>
-                {(boardSearch || boardFilters.length > 0) && (
-                  <button
-                    onClick={() => {
-                      setBoardSearch('');
-                      setBoardFilters([]);
-                    }}
-                    className="text-xs"
-                    style={{ color: 'var(--color-text-muted)' }}
-                  >
-                    {t('tableView.clearFilters', 'Clear filters')}
-                  </button>
-                )}
-              </>
-            }
-          />
-        </div>
+          properties={{ onOpen: () => setBoardPropertiesOpen(true) }}
+        />
       )}
 
       {/* View Content */}
@@ -980,116 +971,60 @@ export default function BoardViewPage() {
 
       {activeView === 'calendar' && (
         <div className="flex flex-col flex-1 overflow-hidden">
-          {/* Calendar toolbar — date field picker + filter chips.
-              Calendar intentionally omits GroupBy: grouping only tints event
-              colors here (no spatial grouping like board), which proved more
-              confusing than useful. Filters and the date-field picker are
-              the two controls the calendar actually needs. */}
-          <div
-            className="flex flex-col gap-1 px-4 md:px-6 pt-1 pb-2 flex-shrink-0"
-            style={{
-              borderBottom: '1px solid var(--color-border)',
-              backgroundColor: 'var(--color-surface)',
+          {/* Calendar shares the unified toolbar with Board/Table. The
+              Date-field picker is calendar-unique so it sits in leftExtras;
+              search, filter chips, Properties, +새 작업 all come from
+              ViewToolbar itself so the chrome matches the other tabs. */}
+          <ViewToolbar
+            search={calendarSearch}
+            onSearchChange={setCalendarSearch}
+            searchPlaceholder={t('board.searchPlaceholderCalendar')}
+            customFields={fieldsData?.items ?? []}
+            filters={{
+              chips: calendarFilters,
+              fields: fieldsData?.items ?? [],
+              onChange: (chip) =>
+                setCalendarFilters((prev) => {
+                  const exists = prev.some((c) => c.id === chip.id);
+                  return exists
+                    ? prev.map((c) => (c.id === chip.id ? chip : c))
+                    : [...prev, chip];
+                }),
+              onRemove: (id) =>
+                setCalendarFilters((prev) => prev.filter((c) => c.id !== id)),
+              onClear: () => {
+                setCalendarFilters([]);
+                setCalendarSearch('');
+              },
             }}
-          >
-            <ViewToolbar
-              customFields={fieldsData?.items ?? []}
-              leftExtras={
-                <>
-                  <span
-                    className="text-sm"
-                    style={{ color: 'var(--color-text-muted)' }}
-                  >
-                    Date:
-                  </span>
-                  <select
-                    value={calendarDateField.id}
-                    onChange={(e) => {
-                      const opt = dateFieldOptions.find(
-                        (o) => o.id === e.target.value,
-                      );
-                      if (opt) setCalendarDateField(opt);
-                    }}
-                    className="text-sm rounded-lg px-2 py-1.5"
-                    style={{
-                      backgroundColor: 'var(--color-surface)',
-                      border: '1px solid var(--color-border)',
-                      color: 'var(--color-text)',
-                    }}
-                  >
-                    {dateFieldOptions.map((opt) => (
-                      <option key={opt.id} value={opt.id}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={() => {
-                      const allFields = fieldsData?.items ?? [];
-                      const firstField = allFields[0];
-                      if (!firstField) return;
-                      setCalendarFilters((prev) => [
-                        ...prev,
-                        {
-                          id: crypto.randomUUID(),
-                          fieldId: firstField.id,
-                          operator: operatorsFor(firstField.field_type)[0],
-                          value: '',
-                        },
-                      ]);
-                    }}
-                    className="text-sm px-2 py-1"
-                    style={{
-                      color: 'var(--color-text-muted)',
-                      border: '1px solid var(--color-border)',
-                      borderRadius: 'var(--radius-md)',
-                    }}
-                  >
-                    + {t('tableView.addFilter')}
-                  </button>
-                  {calendarFilters.length > 0 && (
-                    <button
-                      onClick={() => setCalendarFilters([])}
-                      className="text-xs"
-                      style={{ color: 'var(--color-text-muted)' }}
-                    >
-                      {t('tableView.clearFilters', 'Clear filters')}
-                    </button>
-                  )}
-                </>
-              }
-            />
-            {calendarFilters.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2 pb-1">
-                {calendarFilters.map((chip, idx) => (
-                  <span key={chip.id} className="inline-flex items-center gap-2">
-                    {idx > 0 && (
-                      <span
-                        className="text-[10px] font-bold uppercase tracking-wider"
-                        style={{ color: 'var(--color-text-muted)' }}
-                      >
-                        {t('tableView.mode.and')}
-                      </span>
-                    )}
-                    <FilterChipEditor
-                      chip={chip}
-                      fields={fieldsData?.items ?? []}
-                      onChange={(next) =>
-                        setCalendarFilters((prev) =>
-                          prev.map((c) => (c.id === chip.id ? next : c)),
-                        )
-                      }
-                      onRemove={() =>
-                        setCalendarFilters((prev) =>
-                          prev.filter((c) => c.id !== chip.id),
-                        )
-                      }
-                    />
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+            properties={{ onOpen: () => setBoardPropertiesOpen(true) }}
+            leftExtras={
+              <>
+                <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                  Date:
+                </span>
+                <select
+                  value={calendarDateField.id}
+                  onChange={(e) => {
+                    const opt = dateFieldOptions.find((o) => o.id === e.target.value);
+                    if (opt) setCalendarDateField(opt);
+                  }}
+                  className="text-sm rounded-lg px-2 py-1.5"
+                  style={{
+                    backgroundColor: 'var(--color-surface)',
+                    border: '1px solid var(--color-border)',
+                    color: 'var(--color-text)',
+                  }}
+                >
+                  {dateFieldOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </>
+            }
+          />
           <div className="flex-1 overflow-auto">
             <CalendarView
               tasks={calendarTasks ? tasks.filter(calendarTasks) : tasks}
@@ -1098,6 +1033,7 @@ export default function BoardViewPage() {
               customFieldValues={customFieldValues}
               customFields={fieldsData?.items ?? []}
               allFieldValues={fieldValuesData?.items ?? []}
+              onCreateTask={handleCreateTaskAtDate}
             />
           </div>
         </div>
@@ -1282,41 +1218,33 @@ export default function BoardViewPage() {
       {/* Edit View Modal */}
       {editingView && (
         <Modal
-          title={t('board.editView', 'Edit View')}
+          title={t('board.editView')}
           onClose={() => setEditingView(null)}
           width="max-w-sm"
           footer={
             <>
-              <button
-                onClick={() => setEditingView(null)}
-                className="px-3 py-1.5 text-sm rounded"
-                style={{ color: 'var(--color-text-muted)' }}
-              >
+              <Button variant="ghost" size="md" onClick={() => setEditingView(null)}>
                 {t('common.cancel')}
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="primary"
+                size="md"
                 onClick={handleSaveEditView}
                 disabled={!editViewName.trim() || patchBoardView.isPending}
-                className="px-4 py-1.5 text-sm rounded font-medium"
-                style={{
-                  backgroundColor: 'var(--color-primary)',
-                  color: 'var(--color-text-inverse)',
-                  opacity: editViewName.trim() ? 1 : 0.5,
-                }}
               >
-                {t('common.save', 'Save')}
-              </button>
+                {t('common.save')}
+              </Button>
             </>
           }
         >
           <div className="space-y-3">
             <div>
               <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>
-                {t('board.viewName', 'View name')}
+                {t('board.viewName')}
               </label>
               <input
                 autoFocus
-                placeholder="View name"
+                placeholder={t('board.viewNamePlaceholder')}
                 value={editViewName}
                 onChange={(e) => setEditViewName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && editViewName.trim() && handleSaveEditView()}
@@ -1330,7 +1258,7 @@ export default function BoardViewPage() {
             </div>
             <div>
               <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>
-                {t('board.viewType', 'View type')}
+                {t('board.viewType')}
               </label>
               <select
                 value={editViewType}
@@ -1342,47 +1270,45 @@ export default function BoardViewPage() {
                   color: 'var(--color-text)',
                 }}
               >
-                <option value="board">Kanban</option>
-                <option value="table">Table</option>
-                <option value="calendar">Calendar</option>
+                <option value="board">{t('board.board')}</option>
+                <option value="table">{t('board.table')}</option>
+                <option value="calendar">{t('board.calendar')}</option>
               </select>
             </div>
-            {/* Share toggle */}
+            {/* Share toggle — a pill button that flips between shared/private.
+                Uses the `secondary` Button so its rhythm matches the modal
+                footer actions instead of being a bespoke pill. */}
             <div className="flex items-center justify-between">
               <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
-                {t('board.shareView', 'Share with board')}
+                {t('board.shareView')}
               </label>
-              <button
+              <Button
+                variant={editingView?.shared ? 'primary' : 'secondary'}
+                size="sm"
                 onClick={() => {
                   if (!editingView) return;
                   patchBoardView.mutate({ viewId: editingView.id, shared: !editingView.shared });
                 }}
-                className="text-sm px-3 py-1 rounded"
-                style={{
-                  backgroundColor: editingView?.shared ? 'var(--color-primary-light)' : 'var(--color-bg)',
-                  color: editingView?.shared ? 'var(--color-primary-text)' : 'var(--color-text-muted)',
-                  border: '1px solid var(--color-border)',
-                }}
               >
-                {editingView?.shared ? t('board.shared', 'Shared') : t('board.notShared', 'Not shared')}
-              </button>
+                {editingView?.shared ? t('board.shared') : t('board.notShared')}
+              </Button>
             </div>
-            {/* Delete */}
-            <div
-              className="pt-2"
-              style={{ borderTop: '1px solid var(--color-border)' }}
-            >
-              <button
+            {/* Delete — danger variant keeps it visually separate from the
+                footer's Save/Cancel pair and lines up with the other delete
+                actions across the app. */}
+            <div className="pt-2" style={{ borderTop: '1px solid var(--color-border)' }}>
+              <Button
+                variant="danger"
+                size="md"
+                className="w-full"
                 onClick={() => {
                   if (!editingView) return;
                   setEditingView(null);
                   handleDeleteView(editingView);
                 }}
-                className="w-full text-sm py-1.5 rounded hover:bg-[var(--color-danger-light)]"
-                style={{ color: 'var(--color-danger)' }}
               >
-                {t('board.deleteThisView', 'Delete this view')}
-              </button>
+                {t('board.deleteThisView')}
+              </Button>
             </div>
           </div>
         </Modal>
@@ -1391,34 +1317,27 @@ export default function BoardViewPage() {
       {/* Delete View Confirm Modal */}
       {deletingView && (
         <Modal
-          title={t('board.deleteView', 'Delete View')}
+          title={t('board.deleteView')}
           onClose={() => setDeletingView(null)}
           width="max-w-sm"
           footer={
             <>
-              <button
-                onClick={() => setDeletingView(null)}
-                className="px-3 py-1.5 text-sm rounded"
-                style={{ color: 'var(--color-text-muted)' }}
-              >
+              <Button variant="ghost" size="md" onClick={() => setDeletingView(null)}>
                 {t('common.cancel')}
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="danger"
+                size="md"
                 onClick={confirmDeleteView}
                 disabled={deleteBoardView.isPending}
-                className="px-4 py-1.5 text-sm rounded font-medium"
-                style={{
-                  backgroundColor: 'var(--color-danger)',
-                  color: '#fff',
-                }}
               >
-                {t('common.delete', 'Delete')}
-              </button>
+                {t('common.delete')}
+              </Button>
             </>
           }
         >
           <p className="text-sm" style={{ color: 'var(--color-text)' }}>
-            {t('board.deleteViewConfirm', `Are you sure you want to delete the view "${deletingView.name}"?`)}
+            {t('board.deleteViewConfirm', { name: deletingView.name })}
           </p>
         </Modal>
       )}
